@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChannelView</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="app-layout">
+  <!-- Mobile menu toggle -->
+  <button class="mobile-menu-btn" onclick="toggleMobileSidebar()">&#9776;</button>
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="app-sidebar">
+    <div class="sidebar-header">
+      <a href="/dashboard" class="logo"><span>C</span> ChannelView</a>
+      <div class="beta-badge">BETA</div>
+      <button id="notif-bell" onclick="toggleNotifPanel()" class="notif-bell" title="Notifications" style="position:relative;background:none;border:none;cursor:pointer;margin-left:auto;padding:4px 6px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" width="20" height="20"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span id="notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;align-items:center;justify-content:center"></span>
+      </button>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section" style="padding:4px 12px">
+        <a href="/global-search" class="nav-item {{ 'active' if page=='global-search' }}" data-page="global-search" style="background:#f3f4f6;border-radius:6px;color:#999;font-size:13px;padding:6px 12px;display:flex;align-items:center;gap:6px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search...
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Main</div>
+        <a href="/dashboard" class="nav-item {{ 'active' if page=='dashboard' }}" data-page="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a href="/candidates" class="nav-item {{ 'active' if page=='candidates' }}" data-page="candidates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Candidates
+        </a>
+        <a href="/interviews" class="nav-item {{ 'active' if page in ('interviews','interview_builder','interview_detail') }}" data-page="interviews">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Interviews
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Intelligence</div>
+        <a href="/ai" class="nav-item {{ 'active' if page=='ai' }}" data-page="ai">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-1.1 2.3A4 4 0 0 1 16 20H8a4 4 0 0 1-2.9-6.7A3 3 0 0 1 4 11v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><path d="M9 14l2 2 4-4"/></svg>
+          AI Insights
+        </a>
+        <a href="/analytics" class="nav-item {{ 'active' if page=='analytics' }}" data-page="analytics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Analytics
+        </a>
+        <!-- Pipeline removed: Board view is now built into Candidates page via List/Board toggle -->
+        <a href="/enhanced-kanban" class="nav-item {{ 'active' if page=='enhanced-kanban' }}" data-page="enhanced-kanban">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Pipeline Board
+        </a>
+        <a href="/pipeline-funnel" class="nav-item {{ 'active' if page=='pipeline-funnel' }}" data-page="pipeline-funnel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Pipeline Funnel
+        </a>
+        <a href="/source-tracking" class="nav-item {{ 'active' if page=='source-tracking' }}" data-page="source-tracking">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Source Tracking
+        </a>
+        <a href="/job-board" class="nav-item {{ 'active' if page=='job-board' }}" data-page="job-board">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          Job Board
+        </a>
+        <a href="/candidate-experience" class="nav-item {{ 'active' if page=='candidate-experience' }}" data-page="candidate-experience">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Candidate Experience
+        </a>
+        <a href="/lead-sourcing" class="nav-item {{ 'active' if page=='lead-sourcing' }}" data-page="lead-sourcing">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          Lead Sourcing
+        </a>
+        <a href="/referral-links" class="nav-item {{ 'active' if page=='referral-links' }}" data-page="referral-links">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Referral Links
+        </a>
+        <a href="/job-syndication" class="nav-item {{ 'active' if page=='job-syndication' }}" data-page="job-syndication">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+          Job Syndication
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Management</div>
+        <a href="/branding" class="nav-item {{ 'active' if page=='branding' }}" data-page="branding">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          Branding
+        </a>
+        <a href="/white-label" class="nav-item {{ 'active' if page=='white-label' }}" data-page="white-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 2a8 8 0 0 1 5.3 2.1L12 12V4z"/></svg>
+          White Label
+        </a>
+        <a href="/reports" class="nav-item {{ 'active' if page=='reports' }}" data-page="reports">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Reports
+        </a>
+        <a href="/report-hub" class="nav-item {{ 'active' if page=='report-hub' }}" data-page="report-hub">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 17H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/><path d="M13 21h6a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2z"/><line x1="15" y1="15" x2="19" y2="15"/><line x1="15" y1="18" x2="17" y2="18"/></svg>
+          Report Hub
+        </a>
+        <a href="/video-library" class="nav-item {{ 'active' if page=='video-library' }}" data-page="video-library">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Video Library
+        </a>
+        <a href="/bulk-ops" class="nav-item {{ 'active' if page=='bulk-ops' }}" data-page="bulk-ops">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
+          Bulk Ops & Workflows
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Review</div>
+        <a href="/review" class="nav-item {{ 'active' if page=='review-hub' }}" data-page="review-hub">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Review & Compare
+        </a>
+        <a href="/email-templates" class="nav-item {{ 'active' if page=='email-templates' }}" data-page="email-templates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Email Templates
+        </a>
+        {% if user.is_fmo_admin %}
+        <a href="/fmo" class="nav-item {{ 'active' if page=='fmo' }}" data-page="fmo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          FMO Portal
+        </a>
+        {% endif %}
+      </div>
+      {% if user.is_fmo_admin %}
+      <div class="nav-section">
+        <div class="nav-label">Intelligence</div>
+        <a href="/ai-scoring" class="nav-item {{ 'active' if page=='ai-scoring' }}" data-page="ai-scoring">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="14" r="2"/></svg>
+          AI Scoring
+        </a>
+        <a href="/admin-analytics" class="nav-item {{ 'active' if page=='admin-analytics' }}" data-page="admin-analytics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+          Admin Analytics
+        </a>
+        <a href="/analytics-dashboard" class="nav-item {{ 'active' if page=='analytics-dashboard' }}" data-page="analytics-dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          Analytics Dashboard
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Operations</div>
+        <a href="/security" class="nav-item {{ 'active' if page=='security' }}" data-page="security">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Security
+        </a>
+        <a href="/integrations" class="nav-item {{ 'active' if page=='integrations' }}" data-page="integrations">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Integrations
+        </a>
+        <a href="/integrations-hub" class="nav-item {{ 'active' if page=='integrations-hub' }}" data-page="integrations-hub">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          Webhooks & Embed
+        </a>
+        <a href="/compliance" class="nav-item {{ 'active' if page=='compliance' }}" data-page="compliance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Compliance
+        </a>
+        <a href="/ai-insights" class="nav-item {{ 'active' if page=='ai-insights' }}" data-page="ai-insights">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-1.1 2.3"/><circle cx="12" cy="16" r="2"/><path d="M8 20h8"/></svg>
+          AI Insights
+        </a>
+        <a href="/notification-settings" class="nav-item {{ 'active' if page=='notification-settings' }}" data-page="notification-settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Notifications
+        </a>
+        <a href="/audit" class="nav-item {{ 'active' if page=='audit' }}" data-page="audit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+          Audit Trail
+        </a>
+        <a href="/ams-integrations" class="nav-item {{ 'active' if page=='ams-integrations' }}" data-page="ams-integrations">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          AMS Integrations
+        </a>
+        <a href="/api-management" class="nav-item {{ 'active' if page=='api-management' }}" data-page="api-management">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          API Keys
+        </a>
+        <a href="/demo-manager" class="nav-item {{ 'active' if page=='demo-manager' }}" data-page="demo-manager">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Demo Manager
+        </a>
+        <a href="/email-delivery" class="nav-item {{ 'active' if page=='email-delivery' }}" data-page="email-delivery">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Email Delivery
+        </a>
+        <a href="/system" class="nav-item {{ 'active' if page=='system' }}" data-page="system">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          System
+        </a>
+      </div>
+      {% endif %}
+      <div class="nav-section">
+        <div class="nav-label">Account</div>
+        <a href="/team" class="nav-item {{ 'active' if page=='team' }}" data-page="team">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Team
+        </a>
+        {% if user.is_fmo_admin %}
+        <a href="/activity" class="nav-item {{ 'active' if page=='activity' }}" data-page="activity">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Activity
+        </a>
+        {% endif %}
+        <a href="/profile-settings" class="nav-item {{ 'active' if page=='profile-settings' }}" data-page="profile-settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Profile & Prefs
+        </a>
+        {% if user.is_fmo_admin %}
+        <a href="/data-management" class="nav-item {{ 'active' if page=='data-management' }}" data-page="data-management">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          Data Import/Export
+        </a>
+        {% endif %}
+        <a href="/billing" class="nav-item {{ 'active' if page=='billing' }}" data-page="billing">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Billing
+        </a>
+        {% if user.is_fmo_admin %}
+        <a href="/onboarding-wizard" class="nav-item {{ 'active' if page=='onboarding-wizard' }}" data-page="onboarding-wizard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Setup Wizard
+        </a>
+        <a href="/security-settings" class="nav-item {{ 'active' if page=='security-settings' }}" data-page="security-settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+          Security Settings
+        </a>
+        <a href="/activity-log" class="nav-item {{ 'active' if page=='activity-log' }}" data-page="activity-log">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          Activity Log
+        </a>
+        {% endif %}
+        <a href="/help-center" class="nav-item {{ 'active' if page=='help-center' }}" data-page="help-center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Help Center
+        </a>
+        <a href="/settings" class="nav-item {{ 'active' if page=='settings' }}" data-page="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="avatar">{{ user.name[0] }}</div>
+        <div>
+          <div class="user-name">{{ user.name }}</div>
+          <div class="user-agency">{{ user.agency_name or 'My Agency' }}</div>
+        </div>
+      </div>
+      <button onclick="logout()" class="logout-btn" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div id="page-content">
+      <!-- Dynamic content loads here -->
+      <div class="loading-spinner"><div class="spinner"></div>Loading...</div>
+    </div>
+  </main>
+</div>
+
+<!-- Notification Panel -->
+<div id="notif-panel" style="display:none;position:fixed;top:0;right:0;width:380px;height:100vh;background:#fff;box-shadow:-4px 0 20px rgba(0,0,0,.15);z-index:1001;overflow-y:auto">
+  <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center">
+    <h3 style="font-size:16px;font-weight:600">Notifications</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="markAllNotifRead()" class="btn btn-sm btn-outline" style="font-size:12px;padding:4px 10px">Mark all read</button>
+      <button onclick="clearReadNotifs()" class="btn btn-sm btn-outline" style="font-size:12px;padding:4px 10px">Clear read</button>
+      <button onclick="toggleNotifPanel()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#999">&times;</button>
+    </div>
+  </div>
+  <div id="notif-list" style="padding:8px"></div>
+</div>
+<div id="notif-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.2);z-index:1000" onclick="toggleNotifPanel()"></div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Global data from server -->
+<script>
+const APP_USER = {{ user | tojson }};
+const APP_PAGE = "{{ page }}";
+const EXTRA_ID = "{{ interview_id if interview_id is defined else (candidate_id if candidate_id is defined else '') }}";
+</script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
