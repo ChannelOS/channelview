@@ -1966,6 +1966,170 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 34: VOICE AGENT TABLES ========================
+
+    # Voice agent configuration per account
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_agents (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT 'Recruiting Agent',
+            agent_type TEXT NOT NULL DEFAULT 'scheduling',
+            retell_agent_id TEXT,
+            retell_phone_number TEXT,
+            voice_id TEXT DEFAULT 'eleven_labs_rachel',
+            language TEXT DEFAULT 'en-US',
+            greeting_script TEXT DEFAULT 'Hi, this is the recruiting team calling about an opportunity we think you would be great for.',
+            persona_prompt TEXT,
+            max_call_duration INTEGER DEFAULT 300,
+            active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_voice_agents_user ON voice_agents(user_id)")
+
+    # Voice call scripts / conversation templates
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_scripts (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            script_type TEXT NOT NULL DEFAULT 'scheduling',
+            purpose TEXT,
+            conversation_flow TEXT DEFAULT '{}',
+            variables TEXT DEFAULT '[]',
+            active INTEGER DEFAULT 1,
+            use_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (agent_id) REFERENCES voice_agents(id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_voice_scripts_agent ON voice_scripts(agent_id)")
+
+    # Individual voice call records
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_calls (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            candidate_id TEXT,
+            script_id TEXT,
+            retell_call_id TEXT UNIQUE,
+            direction TEXT NOT NULL DEFAULT 'outbound',
+            status TEXT DEFAULT 'queued',
+            phone_number TEXT NOT NULL,
+            duration_seconds INTEGER,
+            started_at TIMESTAMP,
+            ended_at TIMESTAMP,
+            transcript TEXT,
+            summary TEXT,
+            sentiment_score REAL,
+            outcome TEXT,
+            outcome_details TEXT DEFAULT '{}',
+            recording_url TEXT,
+            cost_cents INTEGER DEFAULT 0,
+            error_message TEXT,
+            metadata TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (agent_id) REFERENCES voice_agents(id),
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id),
+            FOREIGN KEY (script_id) REFERENCES voice_scripts(id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_user ON voice_calls(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_candidate ON voice_calls(candidate_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_status ON voice_calls(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_retell ON voice_calls(retell_call_id)")
+
+    # Scheduled voice calls (queue for future calls)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_call_schedule (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            script_id TEXT,
+            scheduled_at TIMESTAMP NOT NULL,
+            call_type TEXT NOT NULL DEFAULT 'scheduling',
+            priority INTEGER DEFAULT 5,
+            attempt_count INTEGER DEFAULT 0,
+            max_attempts INTEGER DEFAULT 3,
+            last_attempt_at TIMESTAMP,
+            status TEXT DEFAULT 'pending',
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (agent_id) REFERENCES voice_agents(id),
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id),
+            FOREIGN KEY (script_id) REFERENCES voice_scripts(id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_call_schedule_status ON voice_call_schedule(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_call_schedule_time ON voice_call_schedule(scheduled_at)")
+
+    # Voice agent analytics / daily rollups
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_analytics (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            total_calls INTEGER DEFAULT 0,
+            connected_calls INTEGER DEFAULT 0,
+            avg_duration_seconds INTEGER DEFAULT 0,
+            interviews_scheduled INTEGER DEFAULT 0,
+            candidates_engaged INTEGER DEFAULT 0,
+            candidates_at_risk INTEGER DEFAULT 0,
+            total_cost_cents INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(user_id, date)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_voice_analytics_user_date ON voice_analytics(user_id, date)")
+
+    # Candidate engagement tracking (voice-specific touchpoints)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS candidate_engagement (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            engagement_type TEXT NOT NULL,
+            channel TEXT NOT NULL DEFAULT 'voice',
+            details TEXT DEFAULT '{}',
+            engagement_score REAL,
+            risk_level TEXT DEFAULT 'low',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_engagement_candidate ON candidate_engagement(candidate_id)")
+
+    # C34 migrations — add voice-related columns to existing tables
+    c34_migrations = [
+        ("candidates", "voice_consent", "INTEGER DEFAULT 0"),
+        ("candidates", "preferred_call_time", "TEXT"),
+        ("candidates", "last_voice_contact", "TIMESTAMP"),
+        ("candidates", "voice_engagement_score", "REAL"),
+        ("candidates", "voice_risk_level", "TEXT DEFAULT 'unknown'"),
+        ("users", "retell_api_key", "TEXT"),
+        ("users", "voice_agent_enabled", "INTEGER DEFAULT 0"),
+        ("users", "voice_caller_id", "TEXT"),
+    ]
+    for table, col, coltype in c34_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
     conn.commit()
     conn.close()
 

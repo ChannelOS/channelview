@@ -87,6 +87,7 @@ def csrf_protect():
         '/api/stripe/webhook',  # Stripe webhook uses its own signature verification
         '/api/v1/',  # Public API uses API key auth, not cookies
         '/api/integrations/zapier/webhook',  # Zapier inbound webhook
+        '/api/voice/webhook',  # Retell AI webhook (uses its own verification)
     ]
     if request.method in ('GET', 'HEAD', 'OPTIONS'):
         return
@@ -15256,6 +15257,297 @@ def api_zip_search_c33():
 
     db.close()
     return jsonify({'leads': leads, 'total': len(leads), 'zip_code': zip_code, 'radius': radius})
+
+
+# ======================== CYCLE 34: VOICE AGENT ROUTES ========================
+
+from voice_service import VoiceService
+
+def _get_voice_service():
+    """Get a VoiceService instance with the current user's API key."""
+    db = get_db()
+    try:
+        user = db.execute("SELECT retell_api_key FROM users WHERE id = ?", (g.user_id,)).fetchone()
+        api_key = dict(user).get('retell_api_key') if user else None
+        return VoiceService(api_key=api_key)
+    finally:
+        db.close()
+
+# --- Voice Agent Page ---
+@app.route('/voice-agent')
+@require_auth
+def voice_agent_page():
+    return render_template('app.html', page='voice-agent', user=g.user)
+
+# --- Agent CRUD ---
+@app.route('/api/voice/agents', methods=['GET'])
+@require_auth
+def api_voice_agents_list():
+    svc = _get_voice_service()
+    agents = svc.get_agents(g.user_id)
+    return jsonify({'agents': agents})
+
+@app.route('/api/voice/agents', methods=['POST'])
+@require_auth
+def api_voice_agents_create_c34():
+    data = request.get_json() or {}
+    name = data.get('name', 'Recruiting Agent')
+    voice_id = data.get('voice_id', 'eleven_labs_rachel')
+    greeting = data.get('greeting_script', 'Hi, this is the recruiting team calling about an opportunity.')
+    prompt = data.get('persona_prompt')
+    svc = _get_voice_service()
+    agent_id, error = svc.create_retell_agent(g.user_id, name, voice_id, greeting, prompt)
+    if error:
+        return jsonify({'error': error}), 400
+    return jsonify({'agent_id': agent_id, 'message': 'Voice agent created'}), 201
+
+@app.route('/api/voice/agents/<agent_id>', methods=['GET'])
+@require_auth
+def api_voice_agent_get_c34(agent_id):
+    svc = _get_voice_service()
+    agent = svc.get_agent(agent_id, g.user_id)
+    if not agent:
+        return jsonify({'error': 'Agent not found'}), 404
+    return jsonify({'agent': agent})
+
+@app.route('/api/voice/agents/<agent_id>', methods=['PUT'])
+@require_auth
+def api_voice_agent_update_c34(agent_id):
+    data = request.get_json() or {}
+    svc = _get_voice_service()
+    ok, error = svc.update_agent(agent_id, g.user_id, data)
+    if not ok:
+        return jsonify({'error': error}), 400
+    return jsonify({'message': 'Agent updated'})
+
+@app.route('/api/voice/agents/<agent_id>', methods=['DELETE'])
+@require_auth
+def api_voice_agent_delete_c34(agent_id):
+    svc = _get_voice_service()
+    ok, error = svc.delete_agent(agent_id, g.user_id)
+    if not ok:
+        return jsonify({'error': error}), 400
+    return jsonify({'message': 'Agent deleted'})
+
+# --- Call Management ---
+@app.route('/api/voice/calls', methods=['GET'])
+@require_auth
+def api_voice_calls_list_c34():
+    filters = {
+        'status': request.args.get('status'),
+        'candidate_id': request.args.get('candidate_id'),
+        'agent_id': request.args.get('agent_id'),
+        'date_from': request.args.get('date_from'),
+        'date_to': request.args.get('date_to'),
+    }
+    filters = {k: v for k, v in filters.items() if v}
+    svc = _get_voice_service()
+    calls = svc.get_calls(g.user_id, filters if filters else None)
+    return jsonify({'calls': calls, 'total': len(calls)})
+
+@app.route('/api/voice/calls', methods=['POST'])
+@require_auth
+def api_voice_call_create_c34():
+    data = request.get_json() or {}
+    agent_id = data.get('agent_id')
+    candidate_id = data.get('candidate_id')
+    phone = data.get('phone_number')
+
+    if not agent_id:
+        return jsonify({'error': 'agent_id required'}), 400
+    if not phone and not candidate_id:
+        return jsonify({'error': 'phone_number or candidate_id required'}), 400
+
+    # If no phone provided, get from candidate
+    if not phone and candidate_id:
+        db = get_db()
+        try:
+            cand = db.execute("SELECT phone FROM candidates WHERE id = ? AND user_id = ?",
+                              (candidate_id, g.user_id)).fetchone()
+            if cand:
+                phone = dict(cand).get('phone')
+        finally:
+            db.close()
+        if not phone:
+            return jsonify({'error': 'Candidate has no phone number'}), 400
+
+    svc = _get_voice_service()
+    call_id, error = svc.create_call(g.user_id, agent_id, candidate_id, phone,
+                                      data.get('script_id'), data.get('metadata'))
+    if error:
+        return jsonify({'error': error}), 400
+    return jsonify({'call_id': call_id, 'message': 'Call initiated'}), 201
+
+@app.route('/api/voice/calls/<call_id>', methods=['GET'])
+@require_auth
+def api_voice_call_get_c34(call_id):
+    svc = _get_voice_service()
+    call = svc.get_call(call_id, g.user_id)
+    if not call:
+        return jsonify({'error': 'Call not found'}), 404
+    return jsonify({'call': call})
+
+# --- Retell Webhook (no auth — Retell sends events here) ---
+@app.route('/api/voice/webhook', methods=['POST'])
+def api_voice_webhook_c34():
+    data = request.get_json() or {}
+    svc = VoiceService()  # No API key needed for receiving webhooks
+    ok, error = svc.handle_call_event(data)
+    if not ok:
+        return jsonify({'error': error}), 400
+    return jsonify({'received': True})
+
+# --- Scripts ---
+@app.route('/api/voice/scripts', methods=['GET'])
+@require_auth
+def api_voice_scripts_list_c34():
+    agent_id = request.args.get('agent_id')
+    svc = _get_voice_service()
+    scripts = svc.get_scripts(g.user_id, agent_id)
+    return jsonify({'scripts': scripts})
+
+@app.route('/api/voice/scripts', methods=['POST'])
+@require_auth
+def api_voice_scripts_create_c34():
+    data = request.get_json() or {}
+    agent_id = data.get('agent_id')
+    name = data.get('name', 'New Script')
+    if not agent_id:
+        return jsonify({'error': 'agent_id required'}), 400
+    svc = _get_voice_service()
+    script_id, error = svc.create_script(
+        g.user_id, agent_id, name,
+        data.get('script_type', 'scheduling'),
+        data.get('purpose'),
+        data.get('conversation_flow')
+    )
+    if error:
+        return jsonify({'error': error}), 400
+    return jsonify({'script_id': script_id, 'message': 'Script created'}), 201
+
+@app.route('/api/voice/scripts/<script_id>', methods=['PUT'])
+@require_auth
+def api_voice_scripts_update_c34(script_id):
+    data = request.get_json() or {}
+    svc = _get_voice_service()
+    ok, error = svc.update_script(script_id, g.user_id, data)
+    if not ok:
+        return jsonify({'error': error}), 400
+    return jsonify({'message': 'Script updated'})
+
+# --- Scheduling ---
+@app.route('/api/voice/schedule', methods=['GET'])
+@require_auth
+def api_voice_schedule_list_c34():
+    status = request.args.get('status', 'pending')
+    svc = _get_voice_service()
+    scheduled = svc.get_scheduled_calls(g.user_id, status)
+    return jsonify({'scheduled_calls': scheduled, 'total': len(scheduled)})
+
+@app.route('/api/voice/schedule', methods=['POST'])
+@require_auth
+def api_voice_schedule_create_c34():
+    data = request.get_json() or {}
+    required = ['agent_id', 'candidate_id', 'scheduled_at']
+    for field in required:
+        if not data.get(field):
+            return jsonify({'error': f'{field} required'}), 400
+    svc = _get_voice_service()
+    sched_id, error = svc.schedule_call(
+        g.user_id, data['agent_id'], data['candidate_id'],
+        data['scheduled_at'], data.get('call_type', 'scheduling'),
+        data.get('script_id'), data.get('notes')
+    )
+    if error:
+        return jsonify({'error': error}), 400
+    return jsonify({'schedule_id': sched_id, 'message': 'Call scheduled'}), 201
+
+@app.route('/api/voice/schedule/execute', methods=['POST'])
+@require_auth
+def api_voice_schedule_execute_c34():
+    svc = _get_voice_service()
+    results = svc.execute_scheduled_calls(g.user_id)
+    return jsonify({'results': results, 'executed': len(results)})
+
+# --- Analytics ---
+@app.route('/api/voice/stats', methods=['GET'])
+@require_auth
+def api_voice_stats_c34():
+    days = int(request.args.get('days', 30))
+    svc = _get_voice_service()
+    stats = svc.get_voice_stats(g.user_id, days)
+    return jsonify({'stats': stats})
+
+# --- Consent ---
+@app.route('/api/voice/consent/<candidate_id>', methods=['PUT'])
+@require_auth
+def api_voice_consent_c34(candidate_id):
+    data = request.get_json() or {}
+    consent = data.get('consent', True)
+    svc = _get_voice_service()
+    ok = svc.set_voice_consent(candidate_id, g.user_id, consent)
+    if not ok:
+        return jsonify({'error': 'Failed to update consent'}), 400
+    return jsonify({'message': 'Consent updated'})
+
+# --- Callable Candidates ---
+@app.route('/api/voice/candidates', methods=['GET'])
+@require_auth
+def api_voice_candidates_c34():
+    stage = request.args.get('pipeline_stage')
+    consent_only = request.args.get('consent_only', 'true').lower() == 'true'
+    svc = _get_voice_service()
+    candidates = svc.get_candidates_for_calling(g.user_id, stage, consent_only)
+    return jsonify({'candidates': candidates, 'total': len(candidates)})
+
+# --- Voice Settings (API key config) ---
+@app.route('/api/voice/settings', methods=['GET'])
+@require_auth
+def api_voice_settings_get_c34():
+    db = get_db()
+    try:
+        user = db.execute(
+            "SELECT retell_api_key, voice_agent_enabled, voice_caller_id FROM users WHERE id = ?",
+            (g.user_id,)
+        ).fetchone()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        u = dict(user)
+        return jsonify({
+            'retell_api_key_set': bool(u.get('retell_api_key')),
+            'voice_agent_enabled': bool(u.get('voice_agent_enabled')),
+            'voice_caller_id': u.get('voice_caller_id', ''),
+        })
+    finally:
+        db.close()
+
+@app.route('/api/voice/settings', methods=['PUT'])
+@require_auth
+def api_voice_settings_update_c34():
+    data = request.get_json() or {}
+    db = get_db()
+    try:
+        updates = []
+        values = []
+        if 'retell_api_key' in data:
+            updates.append("retell_api_key = ?")
+            values.append(data['retell_api_key'])
+        if 'voice_agent_enabled' in data:
+            updates.append("voice_agent_enabled = ?")
+            values.append(1 if data['voice_agent_enabled'] else 0)
+        if 'voice_caller_id' in data:
+            updates.append("voice_caller_id = ?")
+            values.append(data['voice_caller_id'])
+        if not updates:
+            return jsonify({'error': 'No settings to update'}), 400
+        updates.append("updated_at = ?")
+        values.append(datetime.utcnow().isoformat())
+        values.append(g.user_id)
+        db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", values)
+        db.commit()
+        return jsonify({'message': 'Voice settings updated'})
+    finally:
+        db.close()
 
 
 # ======================== INIT & RUN ========================

@@ -183,6 +183,7 @@ const pages = {
   'lead-sourcing': renderLeadSourcing,
   'referral-links': renderReferralLinks,
   'job-syndication': renderJobSyndication,
+  'voice-agent': renderVoiceAgent,
 };
 
 async function loadPage() {
@@ -8532,6 +8533,543 @@ async function c33DeleteSyndication(id) {
     await api('/api/job-syndication/' + id, { method: 'DELETE' });
     toast('Syndication removed', 'success');
     renderJobSyndication();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+
+// ==================== CYCLE 34: VOICE AGENT ====================
+
+async function renderVoiceAgent() {
+  const el = document.getElementById('page-content');
+
+  // Load initial data
+  let settings = {}, agents = [], calls = [], stats = {}, scripts = [];
+  try {
+    const [sRes, aRes, cRes, stRes] = await Promise.all([
+      api('GET', '/api/voice/settings'),
+      api('GET', '/api/voice/agents'),
+      api('GET', '/api/voice/calls'),
+      api('GET', '/api/voice/stats'),
+    ]);
+    settings = sRes;
+    agents = aRes.agents || [];
+    calls = cRes.calls || [];
+    stats = stRes.stats || {};
+  } catch(e) { /* settings not configured yet */ }
+
+  const isConfigured = settings.retell_api_key_set && settings.voice_agent_enabled;
+  const callStats = stats.calls || {};
+
+  el.innerHTML = `
+    <div style="max-width:1200px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+          <h2 style="margin:0;font-size:24px;font-weight:700">Voice Agent</h2>
+          <p style="color:#666;margin:4px 0 0">AI-powered outbound calls for recruiting & pipeline engagement</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="c34ShowSettings()" class="btn btn-secondary" style="font-size:13px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Settings
+          </button>
+          ${isConfigured ? `<button onclick="c34ShowNewCall()" class="btn btn-primary" style="font-size:13px;background:#0ace0a;color:#000">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            New Call
+          </button>` : ''}
+        </div>
+      </div>
+
+      ${!isConfigured ? `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:48px;text-align:center;margin-bottom:24px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0ace0a" stroke-width="1.5" width="48" height="48" style="margin-bottom:16px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <h3 style="margin:0 0 8px;font-size:20px">Set Up Your Voice Agent</h3>
+          <p style="color:#666;margin:0 0 20px;max-width:500px;margin-left:auto;margin-right:auto">Connect your Retell AI account to enable AI-powered outbound calls for scheduling interviews, checking in with candidates, and keeping your pipeline engaged.</p>
+          <button onclick="c34ShowSettings()" class="btn btn-primary" style="background:#0ace0a;color:#000;padding:10px 24px;font-size:14px">Connect Retell AI</button>
+        </div>
+      ` : `
+        <!-- Stats Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+            <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">Total Calls (30d)</div>
+            <div style="font-size:28px;font-weight:700;margin-top:4px">${callStats.total_calls || 0}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+            <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">Connected</div>
+            <div style="font-size:28px;font-weight:700;color:#0ace0a;margin-top:4px">${callStats.completed_calls || 0}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+            <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">Avg Duration</div>
+            <div style="font-size:28px;font-weight:700;margin-top:4px">${callStats.avg_duration ? Math.round(callStats.avg_duration) + 's' : '—'}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+            <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">Avg Sentiment</div>
+            <div style="font-size:28px;font-weight:700;margin-top:4px;color:${(callStats.avg_sentiment||0)>=0?'#0ace0a':'#dc2626'}">${callStats.avg_sentiment ? (callStats.avg_sentiment > 0 ? '+' : '') + callStats.avg_sentiment.toFixed(1) : '—'}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+            <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">At-Risk</div>
+            <div style="font-size:28px;font-weight:700;color:#dc2626;margin-top:4px">${(stats.at_risk_candidates||[]).length}</div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div style="display:flex;gap:0;border-bottom:1px solid #e5e7eb;margin-bottom:20px">
+          <button onclick="c34SwitchTab('calls')" class="c34-tab active" id="c34-tab-calls" style="padding:10px 20px;background:none;border:none;border-bottom:2px solid #0ace0a;font-weight:600;cursor:pointer">Call History</button>
+          <button onclick="c34SwitchTab('agents')" class="c34-tab" id="c34-tab-agents" style="padding:10px 20px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:#666">Agents</button>
+          <button onclick="c34SwitchTab('scripts')" class="c34-tab" id="c34-tab-scripts" style="padding:10px 20px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:#666">Scripts</button>
+          <button onclick="c34SwitchTab('schedule')" class="c34-tab" id="c34-tab-schedule" style="padding:10px 20px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:#666">Scheduled</button>
+          <button onclick="c34SwitchTab('atrisk')" class="c34-tab" id="c34-tab-atrisk" style="padding:10px 20px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:#666">At-Risk</button>
+        </div>
+
+        <div id="c34-tab-content">
+          ${c34RenderCallHistory(calls)}
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function c34SwitchTab(tab) {
+  document.querySelectorAll('.c34-tab').forEach(t => {
+    t.style.borderBottomColor = 'transparent';
+    t.style.color = '#666';
+    t.style.fontWeight = '400';
+  });
+  const active = document.getElementById('c34-tab-' + tab);
+  if (active) {
+    active.style.borderBottomColor = '#0ace0a';
+    active.style.color = '#000';
+    active.style.fontWeight = '600';
+  }
+  if (tab === 'calls') c34LoadCalls();
+  else if (tab === 'agents') c34LoadAgents();
+  else if (tab === 'scripts') c34LoadScripts();
+  else if (tab === 'schedule') c34LoadSchedule();
+  else if (tab === 'atrisk') c34LoadAtRisk();
+}
+
+function c34RenderCallHistory(calls) {
+  if (!calls || calls.length === 0) {
+    return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:40px;text-align:center;color:#666">No calls yet. Create your first voice agent and start making calls!</div>';
+  }
+  return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb">
+        <th style="padding:10px 14px;text-align:left;font-weight:600">Candidate</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600">Agent</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600">Status</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600">Duration</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600">Sentiment</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600">Outcome</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600">Date</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600"></th>
+      </tr></thead>
+      <tbody>
+        ${calls.map(c => `<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="c34ViewCall('${c.id}')">
+          <td style="padding:10px 14px;font-weight:500">${c.candidate_name || c.phone_number || '—'}</td>
+          <td style="padding:10px 14px;color:#666">${c.agent_name || '—'}</td>
+          <td style="padding:10px 14px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;${c34StatusStyle(c.status)}">${c.status || 'unknown'}</span></td>
+          <td style="padding:10px 14px">${c.duration_seconds ? c.duration_seconds + 's' : '—'}</td>
+          <td style="padding:10px 14px;color:${(c.sentiment_score||0)>=0?'#0ace0a':'#dc2626'}">${c.sentiment_score != null ? (c.sentiment_score > 0 ? '+' : '') + c.sentiment_score.toFixed(1) : '—'}</td>
+          <td style="padding:10px 14px">${c.outcome || '—'}</td>
+          <td style="padding:10px 14px;color:#666">${c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
+          <td style="padding:10px 14px"><button class="btn btn-secondary" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();c34ViewCall('${c.id}')">View</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function c34StatusStyle(status) {
+  const styles = {
+    completed: 'background:#dcfce7;color:#166534',
+    in_progress: 'background:#dbeafe;color:#1e40af',
+    initiated: 'background:#fef9c3;color:#854d0e',
+    queued: 'background:#f3f4f6;color:#374151',
+    failed: 'background:#fce4ec;color:#b71c1c',
+  };
+  return styles[status] || 'background:#f3f4f6;color:#374151';
+}
+
+async function c34LoadCalls() {
+  const el = document.getElementById('c34-tab-content');
+  try {
+    const res = await api('GET', '/api/voice/calls');
+    el.innerHTML = c34RenderCallHistory(res.calls || []);
+  } catch(e) { el.innerHTML = '<p style="color:red">Error loading calls: ' + e.message + '</p>'; }
+}
+
+async function c34LoadAgents() {
+  const el = document.getElementById('c34-tab-content');
+  try {
+    const res = await api('GET', '/api/voice/agents');
+    const agents = res.agents || [];
+    if (agents.length === 0) {
+      el.innerHTML = `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:40px;text-align:center">
+        <p style="color:#666;margin-bottom:16px">No voice agents configured yet.</p>
+        <button onclick="c34CreateAgent()" class="btn btn-primary" style="background:#0ace0a;color:#000">Create Agent</button>
+      </div>`;
+      return;
+    }
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
+      ${agents.map(a => `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">
+          <div>
+            <h4 style="margin:0;font-size:16px;font-weight:600">${a.name}</h4>
+            <span style="font-size:12px;color:#666">${a.agent_type}</span>
+          </div>
+          <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;${a.active ? 'background:#dcfce7;color:#166534' : 'background:#f3f4f6;color:#666'}">${a.active ? 'Active' : 'Inactive'}</span>
+        </div>
+        <div style="font-size:13px;color:#666;margin-bottom:12px">
+          <div><strong>Voice:</strong> ${a.voice_id || 'Default'}</div>
+          <div><strong>Phone:</strong> ${a.retell_phone_number || 'Not assigned'}</div>
+          <div><strong>Max duration:</strong> ${a.max_call_duration}s</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="c34EditAgent('${a.id}')" class="btn btn-secondary" style="font-size:12px;flex:1">Edit</button>
+          <button onclick="c34DeleteAgent('${a.id}')" class="btn btn-secondary" style="font-size:12px;color:#dc2626">Delete</button>
+        </div>
+      </div>`).join('')}
+      <div style="background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:20px;display:flex;align-items:center;justify-content:center;min-height:160px;cursor:pointer" onclick="c34CreateAgent()">
+        <div style="text-align:center;color:#666">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <div style="margin-top:8px;font-size:14px;font-weight:500">Create New Agent</div>
+        </div>
+      </div>
+    </div>`;
+  } catch(e) { el.innerHTML = '<p style="color:red">Error: ' + e.message + '</p>'; }
+}
+
+async function c34LoadScripts() {
+  const el = document.getElementById('c34-tab-content');
+  try {
+    const res = await api('GET', '/api/voice/scripts');
+    const scripts = res.scripts || [];
+    if (scripts.length === 0) {
+      el.innerHTML = `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:40px;text-align:center">
+        <p style="color:#666;margin-bottom:16px">No conversation scripts yet. Create an agent first, then add scripts.</p>
+      </div>`;
+      return;
+    }
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
+      ${scripts.map(s => {
+        const flow = typeof s.conversation_flow === 'string' ? JSON.parse(s.conversation_flow) : s.conversation_flow;
+        return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+            <h4 style="margin:0;font-size:15px;font-weight:600">${s.name}</h4>
+            <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f3f4f6">${s.script_type}</span>
+          </div>
+          <p style="font-size:13px;color:#666;margin:0 0 12px">${s.purpose || 'No description'}</p>
+          <div style="font-size:12px;color:#999">${flow && flow.steps ? flow.steps.length + ' steps' : '—'} &bull; Used ${s.use_count || 0} times</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } catch(e) { el.innerHTML = '<p style="color:red">Error: ' + e.message + '</p>'; }
+}
+
+async function c34LoadSchedule() {
+  const el = document.getElementById('c34-tab-content');
+  try {
+    const res = await api('GET', '/api/voice/schedule');
+    const scheduled = res.scheduled_calls || [];
+    if (scheduled.length === 0) {
+      el.innerHTML = '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:40px;text-align:center;color:#666">No scheduled calls.</div>';
+      return;
+    }
+    el.innerHTML = `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb">
+          <th style="padding:10px 14px;text-align:left">Candidate</th>
+          <th style="padding:10px 14px;text-align:left">Agent</th>
+          <th style="padding:10px 14px;text-align:left">Type</th>
+          <th style="padding:10px 14px;text-align:left">Scheduled</th>
+          <th style="padding:10px 14px;text-align:left">Attempts</th>
+          <th style="padding:10px 14px;text-align:left">Status</th>
+        </tr></thead>
+        <tbody>
+          ${scheduled.map(s => `<tr style="border-bottom:1px solid #f3f4f6">
+            <td style="padding:10px 14px;font-weight:500">${s.candidate_name || '—'}</td>
+            <td style="padding:10px 14px;color:#666">${s.agent_name || '—'}</td>
+            <td style="padding:10px 14px">${s.call_type}</td>
+            <td style="padding:10px 14px">${new Date(s.scheduled_at).toLocaleString()}</td>
+            <td style="padding:10px 14px">${s.attempt_count}/${s.max_attempts}</td>
+            <td style="padding:10px 14px"><span style="padding:2px 8px;border-radius:10px;font-size:11px;${c34StatusStyle(s.status)}">${s.status}</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  } catch(e) { el.innerHTML = '<p style="color:red">Error: ' + e.message + '</p>'; }
+}
+
+async function c34LoadAtRisk() {
+  const el = document.getElementById('c34-tab-content');
+  try {
+    const res = await api('GET', '/api/voice/stats');
+    const atRisk = (res.stats || {}).at_risk_candidates || [];
+    if (atRisk.length === 0) {
+      el.innerHTML = '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:40px;text-align:center;color:#666">No at-risk candidates detected. Great news!</div>';
+      return;
+    }
+    el.innerHTML = `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb">
+          <th style="padding:10px 14px;text-align:left">Candidate</th>
+          <th style="padding:10px 14px;text-align:left">Email</th>
+          <th style="padding:10px 14px;text-align:left">Pipeline Stage</th>
+          <th style="padding:10px 14px;text-align:left">Risk Level</th>
+          <th style="padding:10px 14px;text-align:left">Engagement</th>
+          <th style="padding:10px 14px;text-align:left">Action</th>
+        </tr></thead>
+        <tbody>
+          ${atRisk.map(c => `<tr style="border-bottom:1px solid #f3f4f6">
+            <td style="padding:10px 14px;font-weight:500">${c.first_name} ${c.last_name}</td>
+            <td style="padding:10px 14px;color:#666">${c.email || '—'}</td>
+            <td style="padding:10px 14px">${c.pipeline_stage || '—'}</td>
+            <td style="padding:10px 14px"><span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;${c.voice_risk_level === 'high' ? 'background:#fce4ec;color:#b71c1c' : 'background:#fef9c3;color:#854d0e'}">${c.voice_risk_level}</span></td>
+            <td style="padding:10px 14px">${c.voice_engagement_score ? c.voice_engagement_score.toFixed(0) + '/100' : '—'}</td>
+            <td style="padding:10px 14px">
+              <button onclick="c34QuickCall('${c.id}')" class="btn btn-primary" style="font-size:11px;padding:3px 10px;background:#0ace0a;color:#000">Call Now</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  } catch(e) { el.innerHTML = '<p style="color:red">Error: ' + e.message + '</p>'; }
+}
+
+// Settings modal
+function c34ShowSettings() {
+  const modal = document.createElement('div');
+  modal.id = 'c34-settings-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h3 style="margin:0;font-size:18px">Voice Agent Settings</h3>
+        <button onclick="document.getElementById('c34-settings-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">&times;</button>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Retell AI API Key</label>
+        <input type="password" id="c34-api-key" placeholder="Enter your Retell API key" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#666;margin:4px 0 0">Get your API key from <a href="https://www.retellai.com" target="_blank" style="color:#0ace0a">retellai.com</a></p>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Caller ID Phone Number</label>
+        <input type="text" id="c34-caller-id" placeholder="+1234567890" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="c34-enabled" style="width:16px;height:16px;accent-color:#0ace0a">
+          <span style="font-size:13px;font-weight:600">Enable Voice Agent</span>
+        </label>
+      </div>
+      <button onclick="c34SaveSettings()" class="btn btn-primary" style="width:100%;background:#0ace0a;color:#000;padding:10px;font-size:14px;font-weight:600">Save Settings</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Load current settings
+  api('GET', '/api/voice/settings').then(s => {
+    if (s.voice_caller_id) document.getElementById('c34-caller-id').value = s.voice_caller_id;
+    document.getElementById('c34-enabled').checked = s.voice_agent_enabled;
+  }).catch(() => {});
+}
+
+async function c34SaveSettings() {
+  const apiKey = document.getElementById('c34-api-key').value;
+  const callerId = document.getElementById('c34-caller-id').value;
+  const enabled = document.getElementById('c34-enabled').checked;
+  const body = { voice_agent_enabled: enabled, voice_caller_id: callerId };
+  if (apiKey) body.retell_api_key = apiKey;
+  try {
+    await api('PUT', '/api/voice/settings', body);
+    document.getElementById('c34-settings-modal').remove();
+    toast('Voice settings saved!', 'success');
+    renderVoiceAgent();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// Create agent
+async function c34CreateAgent() {
+  const name = prompt('Agent name:', 'Recruiting Agent');
+  if (!name) return;
+  try {
+    await api('POST', '/api/voice/agents', { name, agent_type: 'scheduling' });
+    toast('Voice agent created!', 'success');
+    c34LoadAgents();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function c34EditAgent(id) {
+  try {
+    const res = await api('GET', '/api/voice/agents/' + id);
+    const a = res.agent;
+    const modal = document.createElement('div');
+    modal.id = 'c34-edit-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:28px;max-width:520px;width:90%;max-height:80vh;overflow-y:auto">
+        <h3 style="margin:0 0 20px;font-size:18px">Edit Agent: ${a.name}</h3>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Name</label>
+          <input type="text" id="c34-edit-name" value="${a.name}" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Greeting Script</label>
+          <textarea id="c34-edit-greeting" rows="3" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;resize:vertical">${a.greeting_script || ''}</textarea>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Persona Prompt</label>
+          <textarea id="c34-edit-prompt" rows="4" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;resize:vertical" placeholder="Describe the agent's personality and behavior...">${a.persona_prompt || ''}</textarea>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Max Call Duration (seconds)</label>
+          <input type="number" id="c34-edit-duration" value="${a.max_call_duration}" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:20px">
+          <button onclick="c34SaveAgent('${id}')" class="btn btn-primary" style="flex:1;background:#0ace0a;color:#000">Save</button>
+          <button onclick="document.getElementById('c34-edit-modal').remove()" class="btn btn-secondary" style="flex:1">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function c34SaveAgent(id) {
+  try {
+    await api('PUT', '/api/voice/agents/' + id, {
+      name: document.getElementById('c34-edit-name').value,
+      greeting_script: document.getElementById('c34-edit-greeting').value,
+      persona_prompt: document.getElementById('c34-edit-prompt').value,
+      max_call_duration: parseInt(document.getElementById('c34-edit-duration').value) || 300,
+    });
+    document.getElementById('c34-edit-modal').remove();
+    toast('Agent updated!', 'success');
+    c34LoadAgents();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function c34DeleteAgent(id) {
+  if (!confirm('Delete this voice agent? This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/api/voice/agents/' + id);
+    toast('Agent deleted', 'success');
+    c34LoadAgents();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// New call modal
+async function c34ShowNewCall() {
+  const modal = document.createElement('div');
+  modal.id = 'c34-call-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+
+  let agentsHtml = '<option value="">Loading...</option>';
+  try {
+    const res = await api('GET', '/api/voice/agents');
+    agentsHtml = (res.agents || []).filter(a => a.active).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    if (!agentsHtml) agentsHtml = '<option value="">No active agents</option>';
+  } catch(e) {}
+
+  let candidatesHtml = '<option value="">Select candidate (optional)</option>';
+  try {
+    const res = await api('GET', '/api/voice/candidates?consent_only=false');
+    candidatesHtml += (res.candidates || []).map(c => `<option value="${c.id}" data-phone="${c.phone || ''}">${c.first_name} ${c.last_name} (${c.phone || 'no phone'})</option>`).join('');
+  } catch(e) {}
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:90%">
+      <h3 style="margin:0 0 20px;font-size:18px">New Voice Call</h3>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Agent</label>
+        <select id="c34-call-agent" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box">${agentsHtml}</select>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Candidate</label>
+        <select id="c34-call-candidate" onchange="c34FillPhone()" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box">${candidatesHtml}</select>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Phone Number</label>
+        <input type="text" id="c34-call-phone" placeholder="+1234567890" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="c34MakeCall()" class="btn btn-primary" style="flex:1;background:#0ace0a;color:#000">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="display:inline-block;vertical-align:-2px;margin-right:4px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          Call Now
+        </button>
+        <button onclick="document.getElementById('c34-call-modal').remove()" class="btn btn-secondary" style="flex:1">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function c34FillPhone() {
+  const sel = document.getElementById('c34-call-candidate');
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.phone) {
+    document.getElementById('c34-call-phone').value = opt.dataset.phone;
+  }
+}
+
+async function c34MakeCall() {
+  const agentId = document.getElementById('c34-call-agent').value;
+  const candidateId = document.getElementById('c34-call-candidate').value;
+  const phone = document.getElementById('c34-call-phone').value;
+  if (!agentId) { toast('Select an agent', 'error'); return; }
+  if (!phone) { toast('Enter a phone number', 'error'); return; }
+  try {
+    await api('POST', '/api/voice/calls', {
+      agent_id: agentId,
+      candidate_id: candidateId || null,
+      phone_number: phone,
+    });
+    document.getElementById('c34-call-modal').remove();
+    toast('Call initiated!', 'success');
+    c34LoadCalls();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function c34QuickCall(candidateId) {
+  try {
+    const agents = (await api('GET', '/api/voice/agents')).agents || [];
+    const active = agents.find(a => a.active);
+    if (!active) { toast('No active voice agent. Create one first.', 'error'); return; }
+    await api('POST', '/api/voice/calls', { agent_id: active.id, candidate_id: candidateId });
+    toast('Call initiated!', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function c34ViewCall(callId) {
+  try {
+    const res = await api('GET', '/api/voice/calls/' + callId);
+    const c = res.call;
+    const modal = document.createElement('div');
+    modal.id = 'c34-view-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:28px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <h3 style="margin:0;font-size:18px">Call Details</h3>
+          <button onclick="document.getElementById('c34-view-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">&times;</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+          <div><strong style="font-size:12px;color:#666">Candidate</strong><div>${c.candidate_name || '—'}</div></div>
+          <div><strong style="font-size:12px;color:#666">Phone</strong><div>${c.phone_number}</div></div>
+          <div><strong style="font-size:12px;color:#666">Agent</strong><div>${c.agent_name || '—'}</div></div>
+          <div><strong style="font-size:12px;color:#666">Status</strong><div><span style="padding:2px 8px;border-radius:10px;font-size:11px;${c34StatusStyle(c.status)}">${c.status}</span></div></div>
+          <div><strong style="font-size:12px;color:#666">Duration</strong><div>${c.duration_seconds ? c.duration_seconds + ' seconds' : '—'}</div></div>
+          <div><strong style="font-size:12px;color:#666">Sentiment</strong><div style="color:${(c.sentiment_score||0)>=0?'#0ace0a':'#dc2626'}">${c.sentiment_score != null ? c.sentiment_score.toFixed(2) : '—'}</div></div>
+          <div><strong style="font-size:12px;color:#666">Outcome</strong><div>${c.outcome || '—'}</div></div>
+          <div><strong style="font-size:12px;color:#666">Date</strong><div>${c.created_at ? new Date(c.created_at).toLocaleString() : '—'}</div></div>
+        </div>
+        ${c.summary ? `<div style="margin-bottom:16px"><strong style="font-size:12px;color:#666">Summary</strong><div style="background:#f9fafb;border-radius:8px;padding:12px;margin-top:4px;font-size:13px">${c.summary}</div></div>` : ''}
+        ${c.transcript ? `<div style="margin-bottom:16px"><strong style="font-size:12px;color:#666">Transcript</strong><div style="background:#f9fafb;border-radius:8px;padding:12px;margin-top:4px;font-size:12px;max-height:300px;overflow-y:auto;white-space:pre-wrap">${c.transcript}</div></div>` : ''}
+        ${c.recording_url ? `<div style="margin-bottom:16px"><strong style="font-size:12px;color:#666">Recording</strong><div style="margin-top:4px"><audio controls src="${c.recording_url}" style="width:100%"></audio></div></div>` : ''}
+        ${c.error_message ? `<div style="background:#fce4ec;border-radius:8px;padding:12px;color:#b71c1c;font-size:13px"><strong>Error:</strong> ${c.error_message}</div>` : ''}
+      </div>
+    `;
+    document.body.appendChild(modal);
   } catch(e) { toast(e.message, 'error'); }
 }
 
