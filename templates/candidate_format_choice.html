@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Choose Your Interview Format - {{ candidate.interview_title or 'ChannelView' }}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--brand:{{ brand_color or '#0ace0a' }}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;min-height:100vh;display:flex;flex-direction:column}
+.header{padding:14px 28px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #222;background:#0a0a0a}
+.header-logo{font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px}
+.header-logo span{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--brand);color:#000;border-radius:6px;font-weight:900}
+.main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.container{max-width:700px;width:100%}
+h1{font-size:28px;margin-bottom:6px;text-align:center}
+.subtitle{color:#aaa;font-size:15px;margin-bottom:32px;line-height:1.5;text-align:center}
+.interview-title{text-align:center;margin-bottom:32px}
+.interview-title h2{font-size:14px;color:var(--brand);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:4px}
+.interview-title p{font-size:20px;font-weight:700}
+.format-cards{display:grid;gap:16px}
+.format-card{background:#1a1a1a;border:2px solid #2a2a2a;border-radius:14px;padding:24px;cursor:pointer;transition:all .2s ease;position:relative;overflow:hidden}
+.format-card:hover{border-color:var(--brand);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.format-card.disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
+.format-icon{width:48px;height:48px;border-radius:12px;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:22px;color:#000;margin-bottom:14px}
+.format-card h3{font-size:18px;margin-bottom:6px}
+.format-card p{color:#999;font-size:14px;line-height:1.5;margin-bottom:16px}
+.format-meta{display:flex;gap:16px;flex-wrap:wrap}
+.format-meta .tag{display:inline-flex;align-items:center;gap:4px;background:#222;padding:4px 10px;border-radius:6px;font-size:12px;color:#aaa}
+.format-meta .tag svg{width:14px;height:14px}
+.choose-btn{display:inline-block;margin-top:16px;background:var(--brand);color:#000;font-weight:700;font-size:14px;padding:10px 24px;border-radius:8px;border:none;cursor:pointer;text-decoration:none;transition:opacity .2s}
+.choose-btn:hover{opacity:.85}
+
+/* Session list within group card */
+.session-list{margin-top:16px;border-top:1px solid #333;padding-top:14px}
+.session-item{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#222;border-radius:8px;margin-bottom:8px}
+.session-item:last-child{margin-bottom:0}
+.session-info{display:flex;flex-direction:column;gap:2px}
+.session-info .date{font-size:14px;font-weight:600}
+.session-info .detail{font-size:12px;color:#888}
+.session-spots{font-size:12px;color:var(--brand);font-weight:600;white-space:nowrap}
+.rsvp-btn{background:var(--brand);color:#000;border:none;padding:6px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .2s}
+.rsvp-btn:hover{opacity:.85}
+.rsvp-btn.full{background:#555;cursor:not-allowed}
+
+/* Slot list within 1-on-1 card */
+.slot-list{margin-top:16px;border-top:1px solid #333;padding-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.slot-item{text-align:center;padding:10px;background:#222;border-radius:8px;cursor:pointer;border:2px solid transparent;transition:all .15s}
+.slot-item:hover{border-color:var(--brand)}
+.slot-item .day{font-size:13px;font-weight:600;margin-bottom:2px}
+.slot-item .time{font-size:12px;color:#aaa}
+
+/* Toast/alert */
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--brand);color:#000;padding:12px 24px;border-radius:10px;font-weight:700;font-size:14px;z-index:999;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.toast.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+.powered{color:#555;font-size:11px;margin-top:32px;text-align:center}
+.powered a{color:var(--brand);text-decoration:none;font-weight:600}
+
+@media(max-width:600px){
+  .header{padding:10px 16px}
+  .header-logo{font-size:15px}
+  .main{padding:16px}
+  h1{font-size:22px}
+  .format-card{padding:18px}
+  .format-card h3{font-size:16px}
+  .session-item{flex-direction:column;gap:8px;align-items:flex-start}
+  .slot-list{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-logo">
+    <span>U</span>
+    {{ agency_name or 'ChannelView' }}
+  </div>
+</div>
+
+<div class="main">
+<div class="container">
+
+  <div class="interview-title">
+    <h2>Interview</h2>
+    <p>{{ candidate.title or 'Interview' }}</p>
+  </div>
+
+  <h1>Choose How You'd Like to Interview</h1>
+  <p class="subtitle">Pick the format that works best for your schedule. All options lead to the same opportunity.</p>
+
+  <div class="format-cards">
+
+    {% if 'video' in formats %}
+    <div class="format-card" onclick="chooseVideo()">
+      <div class="format-icon">&#127909;</div>
+      <h3>Record a Video Interview</h3>
+      <p>Answer a few questions on video at your own pace, from any device. Takes about 10-15 minutes. No scheduling needed — do it whenever you're ready.</p>
+      <div class="format-meta">
+        <span class="tag">&#128338; On your own time</span>
+        <span class="tag">&#128241; Any device</span>
+        <span class="tag">&#128274; Private &amp; secure</span>
+      </div>
+      <button class="choose-btn">Start Video Interview &rarr;</button>
+    </div>
+    {% endif %}
+
+    {% if 'group_session' in formats %}
+    <div class="format-card">
+      <div class="format-icon">&#128101;</div>
+      <h3>Attend a Group Information Session</h3>
+      <p>{{ candidate.group_session_description or 'Join a live session where a recruiter will walk you through the opportunity and answer questions. Meet other candidates and get a feel for the team.' }}</p>
+      <div class="format-meta">
+        <span class="tag">&#128197; Scheduled times</span>
+        {% if upcoming_sessions and upcoming_sessions[0].session_type == 'virtual' %}
+        <span class="tag">&#128187; Virtual (Zoom/Teams)</span>
+        {% else %}
+        <span class="tag">&#127970; In person</span>
+        {% endif %}
+      </div>
+      {% if upcoming_sessions %}
+      <div class="session-list">
+        <p style="font-size:12px;color:#888;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Upcoming Sessions</p>
+        {% for sess in upcoming_sessions[:5] %}
+        <div class="session-item">
+          <div class="session-info">
+            <span class="date">{{ sess.session_date }}</span>
+            <span class="detail">
+              {{ sess.duration_minutes }} min &bull;
+              {% if sess.session_type == 'virtual' %}Virtual{% else %}{{ sess.location or 'In Person' }}{% endif %}
+            </span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            {% if sess.spots_remaining is not none and sess.spots_remaining <= 0 %}
+            <span class="session-spots" style="color:#888">Full</span>
+            <button class="rsvp-btn full" disabled>Full</button>
+            {% else %}
+            {% if sess.spots_remaining is not none %}
+            <span class="session-spots">{{ sess.spots_remaining }} spots left</span>
+            {% endif %}
+            <button class="rsvp-btn" onclick="rsvpSession('{{ sess.id }}')">RSVP</button>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="color:#666;font-size:13px;margin-top:12px">No sessions currently scheduled. Check back soon or choose another format.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if 'one_on_one' in formats %}
+    <div class="format-card">
+      <div class="format-icon">&#128222;</div>
+      <h3>Schedule a One-on-One Call</h3>
+      <p>{{ candidate.one_on_one_description or 'Have a personal conversation with a recruiter. Pick a time that works for you and we\'ll call you directly.' }}</p>
+      <div class="format-meta">
+        <span class="tag">&#128222; Phone or video call</span>
+        <span class="tag">&#9201; 15-30 minutes</span>
+      </div>
+      {% if available_slots %}
+      <div class="slot-list">
+        {% for slot in available_slots[:12] %}
+        <div class="slot-item" onclick="bookSlot('{{ slot.id }}')">
+          <div class="day">{{ slot.slot_date[:10] }}</div>
+          <div class="time">{{ slot.slot_date[11:16] }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="color:#666;font-size:13px;margin-top:12px">No time slots currently available. Check back soon or choose another format.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if 'ai_phone' in formats %}
+    <div class="format-card" onclick="chooseVideo()">
+      <div class="format-icon">&#129302;</div>
+      <h3>AI Phone Screen</h3>
+      <p>Receive an automated phone call from our AI recruiting assistant. It'll ask you a few quick questions about your background and interest in the opportunity. Natural conversation, takes about 5 minutes.</p>
+      <div class="format-meta">
+        <span class="tag">&#128222; Phone call</span>
+        <span class="tag">&#9201; ~5 minutes</span>
+        <span class="tag">&#129302; AI-powered</span>
+      </div>
+      <button class="choose-btn">Request AI Call &rarr;</button>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <p class="powered">Powered by <a href="https://mychannelview.com">ChannelView</a></p>
+
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = '{{ token }}';
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function chooseVideo() {
+  fetch(`/i/${TOKEN}/choose-video`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.redirect) window.location.href = data.redirect;
+      else showToast(data.message || 'Video selected');
+    })
+    .catch(() => showToast('Something went wrong. Please try again.'));
+}
+
+function rsvpSession(sessionId) {
+  fetch(`/i/${TOKEN}/rsvp/${sessionId}`, { method: 'POST', headers: {'Content-Type':'application/json'} })
+    .then(r => r.json())
+    .then(data => {
+      if (data.message) {
+        showToast('You\'re registered! Check your email for details.');
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        showToast(data.error || 'Could not register. Please try again.');
+      }
+    })
+    .catch(() => showToast('Something went wrong. Please try again.'));
+}
+
+function bookSlot(slotId) {
+  fetch(`/i/${TOKEN}/book/${slotId}`, { method: 'POST', headers: {'Content-Type':'application/json'} })
+    .then(r => r.json())
+    .then(data => {
+      if (data.message) {
+        showToast('Booking confirmed! Check your email for details.');
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        showToast(data.error || 'Slot no longer available.');
+      }
+    })
+    .catch(() => showToast('Something went wrong. Please try again.'));
+}
+</script>
+</body>
+</html>

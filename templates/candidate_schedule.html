@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schedule Your Interview - {{ candidate.interview_title or 'ChannelView' }}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--brand:{{ brand_color or '#0ace0a' }}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;min-height:100vh;display:flex;flex-direction:column}
+.header{padding:14px 28px;display:flex;align-items:center;gap:14px;border-bottom:1px solid #222;background:#0a0a0a}
+.header-logo{font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px}
+.header-logo span{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--brand);color:#000;border-radius:6px;font-weight:900}
+.main{flex:1;display:flex;justify-content:center;padding:32px 24px}
+.container{max-width:640px;width:100%}
+.badge{display:inline-block;background:var(--brand);color:#000;font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:.8px;margin-bottom:16px}
+h1{font-size:28px;margin-bottom:6px}
+.subtitle{color:#aaa;font-size:15px;margin-bottom:32px;line-height:1.5}
+.interview-info{background:#1a1a1a;border-radius:12px;padding:18px 20px;margin-bottom:28px;border-left:3px solid var(--brand)}
+.interview-info h3{font-size:12px;color:var(--brand);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-weight:600}
+.interview-info p{font-size:15px;font-weight:600}
+.day-group{margin-bottom:24px}
+.day-label{font-size:13px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #2a2a2a}
+.slots-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.slot{text-align:center;padding:14px 10px;background:#1a1a1a;border:2px solid #2a2a2a;border-radius:10px;cursor:pointer;transition:all .15s}
+.slot:hover{border-color:var(--brand);background:#1f1f1f;transform:translateY(-1px)}
+.slot.selected{border-color:var(--brand);background:rgba(10,206,10,.1)}
+.slot .time{font-size:16px;font-weight:700;margin-bottom:2px}
+.slot .duration{font-size:11px;color:#888}
+.slot .type{font-size:11px;color:#666;margin-top:2px}
+.confirm-bar{position:sticky;bottom:0;background:#0a0a0a;border-top:1px solid #222;padding:16px 0;margin-top:24px;display:none}
+.confirm-bar.show{display:block}
+.confirm-bar .inner{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.confirm-bar .selected-info{font-size:14px;color:#ccc}
+.confirm-bar .selected-info strong{color:#fff}
+.confirm-btn{background:var(--brand);color:#000;border:none;padding:12px 32px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;transition:opacity .2s}
+.confirm-btn:hover{opacity:.85}
+.confirm-btn:disabled{opacity:.4;cursor:not-allowed}
+.empty{text-align:center;padding:48px 20px;color:#666}
+.empty h2{font-size:20px;color:#999;margin-bottom:8px}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--brand);color:#000;padding:12px 24px;border-radius:10px;font-weight:700;font-size:14px;z-index:999;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.toast.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.success-card{text-align:center;padding:48px 24px}
+.success-card .check{width:80px;height:80px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 20px;color:#000;animation:scaleIn .4s ease}
+@keyframes scaleIn{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+.success-card h2{font-size:24px;margin-bottom:8px}
+.success-card p{color:#aaa;font-size:15px;line-height:1.5}
+.success-detail{background:#1a1a1a;border-radius:12px;padding:16px 20px;text-align:left;margin-top:20px}
+.success-detail .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #222;font-size:14px}
+.success-detail .row:last-child{border-bottom:none}
+.success-detail .label{color:#888}
+.success-detail .value{color:#fff;font-weight:600}
+.powered{color:#555;font-size:11px;margin-top:32px;text-align:center}
+.powered a{color:var(--brand);text-decoration:none;font-weight:600}
+@media(max-width:600px){
+  .header{padding:10px 16px}
+  .main{padding:16px}
+  h1{font-size:22px}
+  .slots-grid{grid-template-columns:repeat(3,1fr)}
+  .confirm-bar .inner{flex-direction:column;text-align:center}
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-logo">
+    <span>U</span>
+    {{ agency_name or 'ChannelView' }}
+  </div>
+</div>
+
+<div class="main">
+<div class="container" id="main-content">
+
+  <span class="badge">Second Interview</span>
+  <h1>Pick a Time</h1>
+  <p class="subtitle">Choose a time that works for your schedule. This will be a one-on-one conversation about the opportunity.</p>
+
+  <div class="interview-info">
+    <h3>Position</h3>
+    <p>{{ candidate.interview_title or 'Interview' }}</p>
+  </div>
+
+  {% if slots %}
+  <div id="slots-container">
+    <!-- JS groups slots by date -->
+  </div>
+
+  <div class="confirm-bar" id="confirm-bar">
+    <div class="inner">
+      <div class="selected-info">Selected: <strong id="selected-display">—</strong></div>
+      <button class="confirm-btn" id="confirm-btn" onclick="confirmBooking()">Confirm This Time</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">
+    <h2>No times available right now</h2>
+    <p>The recruiter hasn't posted availability yet. Check back soon or reply to the email you received.</p>
+  </div>
+  {% endif %}
+
+  <p class="powered">Powered by <a href="https://mychannelview.com">ChannelView</a></p>
+
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = '{{ token }}';
+const SLOTS = {{ slots | tojson }};
+let selectedSlotId = null;
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function renderSlots() {
+  const container = document.getElementById('slots-container');
+  if (!container || !SLOTS.length) return;
+  // Group by date
+  const groups = {};
+  SLOTS.forEach(s => {
+    const dayKey = s.slot_date.substring(0, 10);
+    if (!groups[dayKey]) groups[dayKey] = [];
+    groups[dayKey].push(s);
+  });
+  let html = '';
+  Object.keys(groups).sort().forEach(day => {
+    const label = formatDate(groups[day][0].slot_date);
+    html += `<div class="day-group"><div class="day-label">${label}</div><div class="slots-grid">`;
+    groups[day].forEach(s => {
+      const typeLabel = s.slot_type === 'recruiter_call' ? 'Phone' : s.slot_type === 'in_person' ? 'In Person' : 'Video';
+      html += `<div class="slot" data-id="${s.id}" data-date="${s.slot_date}" onclick="selectSlot(this, '${s.id}', '${s.slot_date}', ${s.duration_minutes})">
+        <div class="time">${formatTime(s.slot_date)}</div>
+        <div class="duration">${s.duration_minutes} min</div>
+        <div class="type">${typeLabel}</div>
+      </div>`;
+    });
+    html += '</div></div>';
+  });
+  container.innerHTML = html;
+}
+
+function selectSlot(el, slotId, slotDate, duration) {
+  document.querySelectorAll('.slot.selected').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedSlotId = slotId;
+  document.getElementById('selected-display').textContent = `${formatDate(slotDate)} at ${formatTime(slotDate)} (${duration} min)`;
+  document.getElementById('confirm-bar').classList.add('show');
+}
+
+function confirmBooking() {
+  if (!selectedSlotId) return;
+  const btn = document.getElementById('confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'Booking...';
+  fetch(`/schedule/${TOKEN}/book`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slot_id: selectedSlotId })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.message && data.scheduled_date) {
+      // Show success
+      const mc = document.getElementById('main-content');
+      const typeLabel = data.meeting_type === 'recruiter_call' ? 'Phone Call' : data.meeting_type === 'in_person' ? 'In Person' : 'Video Call';
+      mc.innerHTML = `
+        <div class="success-card">
+          <div class="check">&#10003;</div>
+          <h2>You're Booked!</h2>
+          <p>Your second interview has been scheduled. We'll be in touch with any additional details.</p>
+          <div class="success-detail">
+            <div class="row"><span class="label">Date</span><span class="value">${formatDate(data.scheduled_date)}</span></div>
+            <div class="row"><span class="label">Time</span><span class="value">${formatTime(data.scheduled_date)}</span></div>
+            <div class="row"><span class="label">Duration</span><span class="value">${data.duration_minutes} minutes</span></div>
+            <div class="row"><span class="label">Type</span><span class="value">${typeLabel}</span></div>
+            ${data.meeting_url ? `<div class="row"><span class="label">Meeting Link</span><span class="value"><a href="${data.meeting_url}" style="color:var(--brand)">${data.meeting_url}</a></span></div>` : ''}
+            ${data.phone_number ? `<div class="row"><span class="label">Phone</span><span class="value">${data.phone_number}</span></div>` : ''}
+          </div>
+          <p class="powered" style="margin-top:24px">Powered by <a href="https://mychannelview.com">ChannelView</a></p>
+        </div>`;
+    } else {
+      showToast(data.error || 'Could not book. Please try another time.');
+      btn.disabled = false;
+      btn.textContent = 'Confirm This Time';
+    }
+  })
+  .catch(() => {
+    showToast('Something went wrong. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Confirm This Time';
+  });
+}
+
+renderSlots();
+</script>
+</body>
+</html>

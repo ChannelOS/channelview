@@ -2130,6 +2130,272 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 29: FIRST INTERVIEW HUB ========================
+    # Features: Multi-Format Interviews, Group Info Sessions, Waterfall Engagement,
+    #           Candidate Format Selector, RSVP Tracking, One-on-One Booking
+
+    # Group info sessions (in-person or virtual recurring sessions)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS group_sessions (
+            id TEXT PRIMARY KEY,
+            interview_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            session_type TEXT NOT NULL DEFAULT 'in_person',
+            location TEXT,
+            meeting_url TEXT,
+            session_date TIMESTAMP NOT NULL,
+            duration_minutes INTEGER DEFAULT 60,
+            capacity INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'scheduled',
+            recurring_rule TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (interview_id) REFERENCES interviews(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gsess_interview ON group_sessions(interview_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gsess_user ON group_sessions(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gsess_date ON group_sessions(session_date)")
+    except:
+        pass
+
+    # RSVP tracking for group sessions
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_rsvps (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            status TEXT DEFAULT 'rsvp',
+            rsvp_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            confirmed_at TIMESTAMP,
+            attended_at TIMESTAMP,
+            cancelled_at TIMESTAMP,
+            notes TEXT,
+            FOREIGN KEY (session_id) REFERENCES group_sessions(id) ON DELETE CASCADE,
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rsvp_session ON session_rsvps(session_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rsvp_candidate ON session_rsvps(candidate_id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_unique ON session_rsvps(session_id, candidate_id)")
+    except:
+        pass
+
+    # One-on-one booking slots (recruiter availability)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS booking_slots (
+            id TEXT PRIMARY KEY,
+            interview_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            slot_date TIMESTAMP NOT NULL,
+            duration_minutes INTEGER DEFAULT 30,
+            slot_type TEXT DEFAULT 'recruiter_call',
+            meeting_url TEXT,
+            phone_number TEXT,
+            is_booked INTEGER DEFAULT 0,
+            booked_by_candidate_id TEXT,
+            booked_at TIMESTAMP,
+            status TEXT DEFAULT 'available',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (interview_id) REFERENCES interviews(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bslot_interview ON booking_slots(interview_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bslot_date ON booking_slots(slot_date)")
+    except:
+        pass
+
+    c29_migrations = [
+        # Interview format configuration
+        ("interviews", "formats_enabled", "TEXT DEFAULT '[\"video\"]'"),
+        ("interviews", "format_selector_enabled", "INTEGER DEFAULT 0"),
+        ("interviews", "waterfall_enabled", "INTEGER DEFAULT 0"),
+        ("interviews", "waterfall_config_json", "TEXT DEFAULT '{}'"),
+        ("interviews", "group_session_description", "TEXT"),
+        ("interviews", "one_on_one_description", "TEXT"),
+        ("interviews", "one_on_one_type", "TEXT DEFAULT 'recruiter_call'"),
+        # Candidate format tracking
+        ("candidates", "interview_format", "TEXT DEFAULT 'video'"),
+        ("candidates", "waterfall_stage", "TEXT"),
+        ("candidates", "waterfall_next_at", "TIMESTAMP"),
+        ("candidates", "waterfall_step_index", "INTEGER DEFAULT 0"),
+        ("candidates", "format_chosen_at", "TIMESTAMP"),
+        ("candidates", "session_rsvp_id", "TEXT"),
+        ("candidates", "booking_slot_id", "TEXT"),
+    ]
+    for table, col, coltype in c29_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
+    # ======================== CYCLE 29B: SCHEDULING & 2ND INTERVIEWS ========================
+    # Recurring availability patterns, conflict detection, 2nd interview scheduling
+
+    # Recruiter availability patterns ("box the repetitive")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS availability_patterns (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            label TEXT NOT NULL DEFAULT 'My Availability',
+            day_of_week INTEGER NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            slot_duration_minutes INTEGER DEFAULT 30,
+            slot_type TEXT DEFAULT 'recruiter_call',
+            meeting_url TEXT,
+            phone_number TEXT,
+            location TEXT,
+            is_active INTEGER DEFAULT 1,
+            generate_weeks_ahead INTEGER DEFAULT 4,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_avail_user ON availability_patterns(user_id)")
+    except:
+        pass
+
+    # 2nd interview scheduling — always 1-on-1, recruiter picks method
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS second_interviews (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            interview_id TEXT NOT NULL,
+            schedule_method TEXT NOT NULL DEFAULT 'email',
+            status TEXT DEFAULT 'pending',
+            scheduled_date TIMESTAMP,
+            duration_minutes INTEGER DEFAULT 30,
+            meeting_type TEXT DEFAULT 'phone',
+            meeting_url TEXT,
+            phone_number TEXT,
+            location TEXT,
+            booking_slot_id TEXT,
+            notes TEXT,
+            recruiter_notes TEXT,
+            outcome TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            scheduled_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id),
+            FOREIGN KEY (interview_id) REFERENCES interviews(id)
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_2nd_user ON second_interviews(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_2nd_candidate ON second_interviews(candidate_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_2nd_date ON second_interviews(scheduled_date)")
+    except:
+        pass
+
+    c29b_migrations = [
+        # 2nd interview tracking on candidate
+        ("candidates", "second_interview_id", "TEXT"),
+        ("candidates", "second_interview_status", "TEXT"),
+        ("candidates", "second_interview_date", "TIMESTAMP"),
+        # Availability pattern link on booking slots
+        ("booking_slots", "pattern_id", "TEXT"),
+        ("booking_slots", "interview_stage", "TEXT DEFAULT 'first'"),
+    ]
+    for table, col, coltype in c29b_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
+    # ======================== CYCLE 29C: POST-INTERVIEW PIPELINE & ENGAGEMENT ========================
+    # Full candidate lifecycle: Offer → Testing → Appointment → Writing Number → Production
+    # Engagement tracking: every call, email, AI contact logged and tracked
+
+    # Pipeline touchpoints — every engagement action tracked
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pipeline_touchpoints (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
+            touchpoint_type TEXT NOT NULL,
+            channel TEXT NOT NULL DEFAULT 'email',
+            direction TEXT DEFAULT 'outbound',
+            subject TEXT,
+            body TEXT,
+            status TEXT DEFAULT 'completed',
+            notes TEXT,
+            milestone_stage TEXT,
+            scheduled_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_touch_candidate ON pipeline_touchpoints(candidate_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_touch_user ON pipeline_touchpoints(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_touch_stage ON pipeline_touchpoints(milestone_stage)")
+    except:
+        pass
+
+    # Engagement automation rules — what to send at each milestone stage
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS engagement_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            interview_id TEXT,
+            milestone_stage TEXT NOT NULL,
+            trigger_type TEXT NOT NULL DEFAULT 'days_in_stage',
+            trigger_days INTEGER DEFAULT 2,
+            action_type TEXT NOT NULL DEFAULT 'email',
+            email_subject TEXT,
+            email_body TEXT,
+            ai_voice_script TEXT,
+            is_active INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_erule_user ON engagement_rules(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_erule_stage ON engagement_rules(milestone_stage)")
+    except:
+        pass
+
+    c29c_migrations = [
+        # Pipeline milestone dates on candidates
+        ("candidates", "is_licensed", "INTEGER DEFAULT 0"),
+        ("candidates", "offer_made_at", "TIMESTAMP"),
+        ("candidates", "offer_accepted_at", "TIMESTAMP"),
+        ("candidates", "entered_testing_at", "TIMESTAMP"),
+        ("candidates", "testing_date", "TIMESTAMP"),
+        ("candidates", "passed_test_at", "TIMESTAMP"),
+        ("candidates", "entered_appointment_at", "TIMESTAMP"),
+        ("candidates", "received_writing_number_at", "TIMESTAMP"),
+        ("candidates", "first_production_at", "TIMESTAMP"),
+        ("candidates", "milestone_stage", "TEXT DEFAULT 'screening'"),
+        ("candidates", "milestone_updated_at", "TIMESTAMP"),
+        ("candidates", "days_since_milestone", "INTEGER DEFAULT 0"),
+        ("candidates", "engagement_score_total", "REAL DEFAULT 0"),
+        ("candidates", "last_touchpoint_at", "TIMESTAMP"),
+        ("candidates", "touchpoint_count", "INTEGER DEFAULT 0"),
+        ("candidates", "next_engagement_at", "TIMESTAMP"),
+    ]
+    for table, col, coltype in c29c_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
     conn.commit()
     conn.close()
 

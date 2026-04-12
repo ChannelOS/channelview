@@ -412,7 +412,8 @@ def candidate_interview(token):
     candidate = db.execute(
         '''SELECT c.*, i.title, i.welcome_msg, i.thank_you_msg, i.thinking_time,
            i.max_answer_time, i.max_retakes, i.brand_color, i.description,
-           i.intro_video_path, u.agency_name, u.name as interviewer_name
+           i.intro_video_path, i.format_selector_enabled, i.formats_enabled,
+           u.agency_name, u.name as interviewer_name
            FROM candidates c
            JOIN interviews i ON c.interview_id = i.id
            JOIN users u ON c.user_id = u.id
@@ -421,9 +422,15 @@ def candidate_interview(token):
     db.close()
     if not candidate:
         return render_template('candidate_error.html', error='Interview link not found or has expired.'), 404
-    if candidate['status'] == 'completed':
-        return render_template('candidate_done.html', candidate=dict(candidate))
-    return render_template('candidate_interview.html', candidate=dict(candidate), token=token)
+    cd = dict(candidate)
+    if cd['status'] == 'completed':
+        return render_template('candidate_done.html', candidate=cd)
+    # Redirect to format choice if multi-format enabled and candidate hasn't chosen yet
+    import json as _json
+    formats = _json.loads(cd.get('formats_enabled') or '["video"]')
+    if cd.get('format_selector_enabled') and len(formats) > 1 and not cd.get('format_chosen_at'):
+        return redirect(f'/i/{token}/choose')
+    return render_template('candidate_interview.html', candidate=cd, token=token)
 
 # ======================== CONFIG API ========================
 
@@ -15748,6 +15755,1645 @@ def api_voice_settings_update_c34():
         db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", values)
         db.commit()
         return jsonify({'message': 'Voice settings updated'})
+    finally:
+        db.close()
+
+
+# ======================== CYCLE 29: FIRST INTERVIEW HUB ========================
+# Multi-Format Interviews, Group Sessions, Waterfall Engagement, Format Selector
+
+# --- Format Configuration ---
+
+@app.route('/api/interviews/<interview_id>/formats', methods=['GET'])
+@require_auth
+def api_get_formats_c29(interview_id):
+    """Get interview format configuration."""
+    db = get_db()
+    try:
+        interview = db.execute('SELECT * FROM interviews WHERE id=? AND user_id=?', (interview_id, g.user_id)).fetchone()
+        if not interview:
+            return jsonify({'error': 'Interview not found'}), 404
+        row = dict(interview)
+        import json as _json
+        formats_enabled = _json.loads(row.get('formats_enabled') or '["video"]')
+        waterfall_config = _json.loads(row.get('waterfall_config_json') or '{}')
+        return jsonify({
+            'interview_id': interview_id,
+            'formats_enabled': formats_enabled,
+            'format_selector_enabled': bool(row.get('format_selector_enabled', 0)),
+            'waterfall_enabled': bool(row.get('waterfall_enabled', 0)),
+            'waterfall_config': waterfall_config,
+            'group_session_description': row.get('group_session_description', ''),
+            'one_on_one_description': row.get('one_on_one_description', ''),
+            'one_on_one_type': row.get('one_on_one_type', 'recruiter_call'),
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/interviews/<interview_id>/formats', methods=['PUT'])
+@require_auth
+def api_update_formats_c29(interview_id):
+    """Update interview format configuration."""
+    db = get_db()
+    try:
+        interview = db.execute('SELECT id FROM interviews WHERE id=? AND user_id=?', (interview_id, g.user_id)).fetchone()
+        if not interview:
+            return jsonify({'error': 'Interview not found'}), 404
+        data = request.get_json() or {}
+        import json as _json
+        updates = []
+        values = []
+        if 'formats_enabled' in data:
+            valid_formats = {'video', 'group_session', 'one_on_one', 'ai_phone'}
+            fmts = [f for f in data['formats_enabled'] if f in valid_formats]
+            if 'video' not in fmts:
+                fmts.insert(0, 'video')
+            updates.append("formats_enabled = ?")
+            values.append(_json.dumps(fmts))
+            updates.append("format_selector_enabled = ?")
+            values.append(1 if len(fmts) > 1 else 0)
+        if 'waterfall_enabled' in data:
+            updates.append("waterfall_enabled = ?")
+            values.append(1 if data['waterfall_enabled'] else 0)
+        if 'waterfall_config' in data:
+            wf = data['waterfall_config']
+            updates.append("waterfall_config_json = ?")
+            values.append(_json.dumps(wf))
+        if 'group_session_description' in data:
+            updates.append("group_session_description = ?")
+            values.append(data['group_session_description'])
+        if 'one_on_one_description' in data:
+            updates.append("one_on_one_description = ?")
+            values.append(data['one_on_one_description'])
+        if 'one_on_one_type' in data:
+            valid_types = {'recruiter_call', 'ai_phone', 'in_person'}
+            ot = data['one_on_one_type'] if data['one_on_one_type'] in valid_types else 'recruiter_call'
+            updates.append("one_on_one_type = ?")
+            values.append(ot)
+        if not updates:
+            return jsonify({'error': 'No valid fields to update'}), 400
+        updates.append("updated_at = ?")
+        values.append(datetime.utcnow().isoformat())
+        values.append(interview_id)
+        db.execute(f"UPDATE interviews SET {', '.join(updates)} WHERE id = ?", values)
+        db.commit()
+        return jsonify({'message': 'Format configuration updated', 'interview_id': interview_id})
+    finally:
+        db.close()
+
+
+# --- Group Sessions CRUD ---
+
+@app.route('/api/interviews/<interview_id>/group-sessions', methods=['POST'])
+@require_auth
+def api_create_group_session_c29(interview_id):
+    """Create a group info session (single or recurring series)."""
+    db = get_db()
+    try:
+        interview = db.execute('SELECT id, title FROM interviews WHERE id=? AND user_id=?', (interview_id, g.user_id)).fetchone()
+        if not interview:
+            return jsonify({'error': 'Interview not found'}), 404
+        data = request.get_json() or {}
+        title = data.get('title', f"Info Session — {dict(interview)['title']}")
+        session_type = data.get('session_type', 'in_person')
+        if session_type not in ('in_person', 'virtual'):
+            session_type = 'in_person'
+        import json as _json
+        sessions_created = []
+        # If recurring_rule provided, generate multiple sessions
+        recurring_rule = data.get('recurring_rule')
+        dates = data.get('session_dates', [])
+        if not dates:
+            if not data.get('session_date'):
+                return jsonify({'error': 'session_date or session_dates required'}), 400
+            dates = [data['session_date']]
+        for sdate in dates:
+            sid = str(uuid.uuid4())
+            db.execute("""INSERT INTO group_sessions
+                (id, interview_id, user_id, title, session_type, location, meeting_url,
+                 session_date, duration_minutes, capacity, status, recurring_rule, notes)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (sid, interview_id, g.user_id, title, session_type,
+                 data.get('location', ''), data.get('meeting_url', ''),
+                 sdate, data.get('duration_minutes', 60),
+                 data.get('capacity', 0), 'scheduled',
+                 _json.dumps(recurring_rule) if recurring_rule else None,
+                 data.get('notes', '')))
+            sessions_created.append(sid)
+        db.commit()
+        return jsonify({'message': f'{len(sessions_created)} session(s) created', 'session_ids': sessions_created})
+    finally:
+        db.close()
+
+
+@app.route('/api/interviews/<interview_id>/group-sessions', methods=['GET'])
+@require_auth
+def api_list_group_sessions_c29(interview_id):
+    """List all group sessions for an interview."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            '''SELECT gs.*, (SELECT COUNT(*) FROM session_rsvps sr WHERE sr.session_id=gs.id AND sr.status != 'cancelled') as rsvp_count,
+               (SELECT COUNT(*) FROM session_rsvps sr WHERE sr.session_id=gs.id AND sr.status='attended') as attended_count
+               FROM group_sessions gs WHERE gs.interview_id=? AND gs.user_id=? ORDER BY gs.session_date ASC''',
+            (interview_id, g.user_id)
+        ).fetchall()
+        sessions = []
+        for r in rows:
+            d = dict(r)
+            d['spots_remaining'] = max(0, d['capacity'] - d['rsvp_count']) if d['capacity'] > 0 else None
+            sessions.append(d)
+        return jsonify(sessions)
+    finally:
+        db.close()
+
+
+@app.route('/api/group-sessions/<session_id>', methods=['PUT'])
+@require_auth
+def api_update_group_session_c29(session_id):
+    """Update a group session."""
+    db = get_db()
+    try:
+        session = db.execute('SELECT id FROM group_sessions WHERE id=? AND user_id=?', (session_id, g.user_id)).fetchone()
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+        data = request.get_json() or {}
+        allowed = ['title', 'session_type', 'location', 'meeting_url', 'session_date',
+                    'duration_minutes', 'capacity', 'status', 'notes']
+        updates = []
+        values = []
+        for field in allowed:
+            if field in data:
+                updates.append(f"{field} = ?")
+                values.append(data[field])
+        if not updates:
+            return jsonify({'error': 'No fields to update'}), 400
+        updates.append("updated_at = ?")
+        values.append(datetime.utcnow().isoformat())
+        values.append(session_id)
+        db.execute(f"UPDATE group_sessions SET {', '.join(updates)} WHERE id = ?", values)
+        db.commit()
+        return jsonify({'message': 'Session updated'})
+    finally:
+        db.close()
+
+
+@app.route('/api/group-sessions/<session_id>', methods=['DELETE'])
+@require_auth
+def api_delete_group_session_c29(session_id):
+    """Cancel/delete a group session."""
+    db = get_db()
+    try:
+        session = db.execute('SELECT id FROM group_sessions WHERE id=? AND user_id=?', (session_id, g.user_id)).fetchone()
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+        db.execute("UPDATE group_sessions SET status='cancelled', updated_at=? WHERE id=?",
+                   (datetime.utcnow().isoformat(), session_id))
+        db.commit()
+        return jsonify({'message': 'Session cancelled'})
+    finally:
+        db.close()
+
+
+@app.route('/api/group-sessions/<session_id>/attendees', methods=['GET'])
+@require_auth
+def api_session_attendees_c29(session_id):
+    """Get RSVP and attendance list for a session."""
+    db = get_db()
+    try:
+        session = db.execute('SELECT id FROM group_sessions WHERE id=? AND user_id=?', (session_id, g.user_id)).fetchone()
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+        rows = db.execute(
+            '''SELECT sr.*, c.first_name, c.last_name, c.email, c.phone, c.ai_score
+               FROM session_rsvps sr
+               JOIN candidates c ON sr.candidate_id = c.id
+               WHERE sr.session_id=? ORDER BY sr.rsvp_at ASC''',
+            (session_id,)
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+@app.route('/api/group-sessions/<session_id>/attendance', methods=['PUT'])
+@require_auth
+def api_mark_attendance_c29(session_id):
+    """Mark candidates as attended or no-show."""
+    db = get_db()
+    try:
+        session = db.execute('SELECT id, interview_id FROM group_sessions WHERE id=? AND user_id=?', (session_id, g.user_id)).fetchone()
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+        data = request.get_json() or {}
+        attended = data.get('attended', [])
+        no_show = data.get('no_show', [])
+        now = datetime.utcnow().isoformat()
+        for cid in attended:
+            db.execute("UPDATE session_rsvps SET status='attended', attended_at=? WHERE session_id=? AND candidate_id=?",
+                       (now, session_id, cid))
+            db.execute("UPDATE candidates SET interview_format='group_session', waterfall_stage='group_attended' WHERE id=?", (cid,))
+        for cid in no_show:
+            db.execute("UPDATE session_rsvps SET status='no_show' WHERE session_id=? AND candidate_id=?",
+                       (session_id, cid))
+            db.execute("UPDATE candidates SET waterfall_stage='group_noshow' WHERE id=?", (cid,))
+        db.commit()
+        return jsonify({'message': f'Marked {len(attended)} attended, {len(no_show)} no-show'})
+    finally:
+        db.close()
+
+
+# --- Booking Slots (One-on-One) ---
+
+@app.route('/api/interviews/<interview_id>/booking-slots', methods=['POST'])
+@require_auth
+def api_create_booking_slots_c29(interview_id):
+    """Create availability slots for one-on-one interviews."""
+    db = get_db()
+    try:
+        interview = db.execute('SELECT id FROM interviews WHERE id=? AND user_id=?', (interview_id, g.user_id)).fetchone()
+        if not interview:
+            return jsonify({'error': 'Interview not found'}), 404
+        data = request.get_json() or {}
+        slots = data.get('slots', [])
+        if not slots:
+            return jsonify({'error': 'slots array required'}), 400
+        created = []
+        for slot in slots:
+            sid = str(uuid.uuid4())
+            db.execute("""INSERT INTO booking_slots
+                (id, interview_id, user_id, slot_date, duration_minutes, slot_type, meeting_url, phone_number, status)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (sid, interview_id, g.user_id, slot['date'],
+                 slot.get('duration_minutes', 30),
+                 slot.get('slot_type', 'recruiter_call'),
+                 slot.get('meeting_url', ''), slot.get('phone_number', ''), 'available'))
+            created.append(sid)
+        db.commit()
+        return jsonify({'message': f'{len(created)} slot(s) created', 'slot_ids': created})
+    finally:
+        db.close()
+
+
+@app.route('/api/interviews/<interview_id>/booking-slots', methods=['GET'])
+@require_auth
+def api_list_booking_slots_c29(interview_id):
+    """List booking slots for an interview."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            '''SELECT bs.*, c.first_name, c.last_name, c.email
+               FROM booking_slots bs
+               LEFT JOIN candidates c ON bs.booked_by_candidate_id = c.id
+               WHERE bs.interview_id=? AND bs.user_id=? ORDER BY bs.slot_date ASC''',
+            (interview_id, g.user_id)
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+# --- Candidate-Facing: Format Choice + RSVP (No auth) ---
+
+@app.route('/i/<token>/choose')
+def candidate_format_choice_c29(token):
+    """Candidate format selection page — shows available interview formats."""
+    db = get_db()
+    try:
+        candidate = db.execute(
+            '''SELECT c.*, i.id as interview_id, i.title, i.description, i.brand_color,
+                      i.formats_enabled, i.format_selector_enabled, i.welcome_msg,
+                      i.group_session_description, i.one_on_one_description, i.one_on_one_type,
+                      u.agency_name, u.agency_logo_url, u.name as interviewer_name
+               FROM candidates c
+               JOIN interviews i ON c.interview_id = i.id
+               JOIN users u ON c.user_id = u.id
+               WHERE c.token = ?''', (token,)
+        ).fetchone()
+        if not candidate:
+            return render_template('candidate_error.html', error='Interview link not found or has expired.'), 404
+        cd = dict(candidate)
+        if cd['status'] == 'completed':
+            return render_template('candidate_done.html', candidate=cd)
+        import json as _json
+        formats = _json.loads(cd.get('formats_enabled') or '["video"]')
+        # Get upcoming group sessions if group_session is enabled
+        upcoming_sessions = []
+        if 'group_session' in formats:
+            rows = db.execute(
+                '''SELECT gs.*, (SELECT COUNT(*) FROM session_rsvps sr WHERE sr.session_id=gs.id AND sr.status != 'cancelled') as rsvp_count
+                   FROM group_sessions gs
+                   WHERE gs.interview_id=? AND gs.status='scheduled' AND gs.session_date > datetime('now')
+                   ORDER BY gs.session_date ASC LIMIT 10''',
+                (cd['interview_id'],)
+            ).fetchall()
+            for r in rows:
+                sd = dict(r)
+                sd['spots_remaining'] = max(0, sd['capacity'] - sd['rsvp_count']) if sd['capacity'] > 0 else None
+                upcoming_sessions.append(sd)
+        # Get available booking slots if one_on_one is enabled
+        available_slots = []
+        if 'one_on_one' in formats:
+            rows = db.execute(
+                '''SELECT * FROM booking_slots
+                   WHERE interview_id=? AND is_booked=0 AND status='available' AND slot_date > datetime('now')
+                   ORDER BY slot_date ASC LIMIT 20''',
+                (cd['interview_id'],)
+            ).fetchall()
+            available_slots = [dict(r) for r in rows]
+        return render_template('candidate_format_choice.html',
+            candidate=cd, token=token, formats=formats,
+            upcoming_sessions=upcoming_sessions, available_slots=available_slots,
+            brand_color=cd.get('brand_color', '#0ace0a'),
+            agency_name=cd.get('agency_name', ''))
+    finally:
+        db.close()
+
+
+@app.route('/i/<token>/rsvp/<session_id>', methods=['POST'])
+def candidate_rsvp_c29(token, session_id):
+    """Candidate RSVPs for a group session."""
+    db = get_db()
+    try:
+        candidate = db.execute(
+            'SELECT c.id, c.interview_id, c.status FROM candidates c WHERE c.token=?', (token,)
+        ).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Invalid interview link'}), 404
+        cd = dict(candidate)
+        session = db.execute(
+            'SELECT * FROM group_sessions WHERE id=? AND interview_id=? AND status=?',
+            (session_id, cd['interview_id'], 'scheduled')
+        ).fetchone()
+        if not session:
+            return jsonify({'error': 'Session not found or no longer available'}), 404
+        sd = dict(session)
+        # Check capacity
+        if sd['capacity'] > 0:
+            rsvp_count = db.execute(
+                "SELECT COUNT(*) as cnt FROM session_rsvps WHERE session_id=? AND status != 'cancelled'",
+                (session_id,)
+            ).fetchone()['cnt']
+            if rsvp_count >= sd['capacity']:
+                return jsonify({'error': 'Session is full'}), 400
+        # Check if already RSVP'd
+        existing = db.execute(
+            "SELECT id FROM session_rsvps WHERE session_id=? AND candidate_id=?",
+            (session_id, cd['id'])
+        ).fetchone()
+        if existing:
+            return jsonify({'error': 'Already registered for this session', 'rsvp_id': dict(existing)['id']}), 409
+        rsvp_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
+        db.execute(
+            "INSERT INTO session_rsvps (id, session_id, candidate_id, status, rsvp_at) VALUES (?,?,?,?,?)",
+            (rsvp_id, session_id, cd['id'], 'rsvp', now)
+        )
+        db.execute(
+            "UPDATE candidates SET interview_format='group_session', waterfall_stage='group_rsvp', session_rsvp_id=?, format_chosen_at=? WHERE id=?",
+            (rsvp_id, now, cd['id'])
+        )
+        db.commit()
+        return jsonify({
+            'message': 'RSVP confirmed',
+            'rsvp_id': rsvp_id,
+            'session': {
+                'title': sd['title'],
+                'session_type': sd['session_type'],
+                'location': sd['location'],
+                'meeting_url': sd['meeting_url'],
+                'session_date': sd['session_date'],
+                'duration_minutes': sd['duration_minutes']
+            }
+        })
+    finally:
+        db.close()
+
+
+@app.route('/i/<token>/book/<slot_id>', methods=['POST'])
+def candidate_book_slot_c29(token, slot_id):
+    """Candidate books a one-on-one time slot."""
+    db = get_db()
+    try:
+        candidate = db.execute(
+            'SELECT c.id, c.interview_id FROM candidates c WHERE c.token=?', (token,)
+        ).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Invalid interview link'}), 404
+        cd = dict(candidate)
+        slot = db.execute(
+            'SELECT * FROM booking_slots WHERE id=? AND interview_id=? AND is_booked=0 AND status=?',
+            (slot_id, cd['interview_id'], 'available')
+        ).fetchone()
+        if not slot:
+            return jsonify({'error': 'Slot not available'}), 404
+        now = datetime.utcnow().isoformat()
+        db.execute(
+            "UPDATE booking_slots SET is_booked=1, booked_by_candidate_id=?, booked_at=?, status='booked' WHERE id=?",
+            (cd['id'], now, slot_id)
+        )
+        db.execute(
+            "UPDATE candidates SET interview_format='one_on_one', waterfall_stage='ono_booked', booking_slot_id=?, format_chosen_at=? WHERE id=?",
+            (slot_id, now, cd['id'])
+        )
+        db.commit()
+        sd = dict(slot)
+        return jsonify({
+            'message': 'Booking confirmed',
+            'slot': {
+                'date': sd['slot_date'],
+                'duration_minutes': sd['duration_minutes'],
+                'slot_type': sd['slot_type'],
+                'meeting_url': sd['meeting_url'],
+                'phone_number': sd['phone_number']
+            }
+        })
+    finally:
+        db.close()
+
+
+@app.route('/i/<token>/choose-video', methods=['POST'])
+def candidate_choose_video_c29(token):
+    """Candidate picks async video format — record the choice and redirect."""
+    db = get_db()
+    try:
+        candidate = db.execute('SELECT id FROM candidates WHERE token=?', (token,)).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Invalid link'}), 404
+        now = datetime.utcnow().isoformat()
+        db.execute("UPDATE candidates SET interview_format='video', waterfall_stage='video_chosen', format_chosen_at=? WHERE id=?",
+                   (now, dict(candidate)['id']))
+        db.commit()
+        return jsonify({'message': 'Video format selected', 'redirect': f'/i/{token}'})
+    finally:
+        db.close()
+
+
+# --- Waterfall Engine ---
+
+@app.route('/api/waterfall/process', methods=['POST'])
+@require_auth
+def api_waterfall_process_c29():
+    """Process pending waterfall steps for all interviews owned by this user.
+       In production, call this from a cron job or scheduled task."""
+    db = get_db()
+    try:
+        import json as _json
+        now = datetime.utcnow()
+        now_iso = now.isoformat()
+        # Find candidates due for waterfall advancement
+        candidates = db.execute(
+            '''SELECT c.id, c.token, c.first_name, c.last_name, c.email,
+                      c.interview_id, c.waterfall_stage, c.waterfall_step_index,
+                      i.waterfall_config_json, i.waterfall_enabled, i.formats_enabled,
+                      i.title as interview_title, u.agency_name, u.id as owner_user_id,
+                      i.brand_color
+               FROM candidates c
+               JOIN interviews i ON c.interview_id = i.id
+               JOIN users u ON c.user_id = u.id
+               WHERE c.user_id = ? AND i.waterfall_enabled = 1
+               AND c.waterfall_next_at IS NOT NULL AND c.waterfall_next_at <= ?
+               AND c.status NOT IN ('completed', 'hired', 'rejected')''',
+            (g.user_id, now_iso)
+        ).fetchall()
+        processed = 0
+        for cand in candidates:
+            cd = dict(cand)
+            config = _json.loads(cd['waterfall_config_json'] or '{}')
+            steps = config.get('steps', [])
+            step_idx = cd['waterfall_step_index'] or 0
+            if step_idx >= len(steps):
+                # No more steps — archive
+                db.execute("UPDATE candidates SET waterfall_stage='archived', waterfall_next_at=NULL WHERE id=?", (cd['id'],))
+                processed += 1
+                continue
+            step = steps[step_idx]
+            step_type = step.get('type', 'group_session')
+            wait_days = step.get('wait_days', 3)
+            next_step_idx = step_idx + 1
+            next_at = (now + timedelta(days=wait_days)).isoformat() if next_step_idx < len(steps) else None
+            # Advance candidate to next step
+            new_stage = f'{step_type}_invited'
+            db.execute(
+                "UPDATE candidates SET waterfall_stage=?, waterfall_step_index=?, waterfall_next_at=? WHERE id=?",
+                (new_stage, next_step_idx, next_at, cd['id'])
+            )
+            # Send the appropriate email for this step
+            try:
+                from email_service import send_email, get_smtp_config, build_branded_email
+                smtp_config = get_smtp_config(db, cd['owner_user_id'])
+                candidate_name = f"{cd['first_name']} {cd['last_name']}"
+                if step_type == 'group_session':
+                    subject = f"Join Us: {cd['interview_title']} — Information Session"
+                    link = f"{request.host_url}i/{cd['token']}/choose"
+                    body_html = build_branded_email(
+                        candidate_name, cd['interview_title'],
+                        f"We'd love to meet you! Join one of our upcoming information sessions to learn more about the opportunity.",
+                        link, "View Sessions", cd.get('agency_name', ''), cd.get('brand_color', '#0ace0a')
+                    )
+                elif step_type == 'one_on_one':
+                    subject = f"Let's Talk: {cd['interview_title']} — Schedule a Call"
+                    link = f"{request.host_url}i/{cd['token']}/choose"
+                    body_html = build_branded_email(
+                        candidate_name, cd['interview_title'],
+                        f"We'd like to schedule a quick conversation with you about this opportunity. Pick a time that works for your schedule.",
+                        link, "Schedule a Call", cd.get('agency_name', ''), cd.get('brand_color', '#0ace0a')
+                    )
+                elif step_type == 'ai_phone':
+                    subject = f"Quick Call: {cd['interview_title']} — Phone Interview"
+                    link = f"{request.host_url}i/{cd['token']}/choose"
+                    body_html = build_branded_email(
+                        candidate_name, cd['interview_title'],
+                        f"We'll be giving you a brief phone call to discuss the opportunity. Keep an eye out for a call from our team!",
+                        link, "More Details", cd.get('agency_name', ''), cd.get('brand_color', '#0ace0a')
+                    )
+                else:
+                    subject = f"Reminder: {cd['interview_title']}"
+                    link = f"{request.host_url}i/{cd['token']}"
+                    body_html = build_branded_email(
+                        candidate_name, cd['interview_title'],
+                        f"We're still interested in connecting with you about this opportunity.",
+                        link, "Complete Interview", cd.get('agency_name', ''), cd.get('brand_color', '#0ace0a')
+                    )
+                send_email(smtp_config, cd['email'], subject, body_html)
+                db.execute(
+                    "INSERT INTO email_log (id, user_id, candidate_id, email_type, to_email, subject, status) VALUES (?,?,?,?,?,?,?)",
+                    (str(uuid.uuid4()), cd['owner_user_id'], cd['id'], f'waterfall_{step_type}', cd['email'], subject, 'sent')
+                )
+            except Exception as e:
+                print(f'[Waterfall] Email failed for {cd["id"]}: {e}')
+            processed += 1
+        db.commit()
+        return jsonify({'message': f'Processed {processed} candidates', 'processed': processed})
+    finally:
+        db.close()
+
+
+@app.route('/api/interviews/<interview_id>/waterfall-status', methods=['GET'])
+@require_auth
+def api_waterfall_status_c29(interview_id):
+    """Dashboard: candidates at each waterfall stage."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            '''SELECT waterfall_stage, COUNT(*) as count
+               FROM candidates WHERE interview_id=? AND user_id=? AND waterfall_stage IS NOT NULL
+               GROUP BY waterfall_stage''',
+            (interview_id, g.user_id)
+        ).fetchall()
+        stages = {r['waterfall_stage']: r['count'] for r in rows}
+        total = sum(stages.values())
+        return jsonify({
+            'interview_id': interview_id,
+            'total_in_waterfall': total,
+            'stages': stages,
+            'recovery_rate': round((stages.get('group_attended', 0) + stages.get('group_rsvp', 0) +
+                                    stages.get('ono_booked', 0) + stages.get('completed', 0)) / max(total, 1) * 100, 1)
+        })
+    finally:
+        db.close()
+
+
+# --- Updated Candidate Interview Route (format selector redirect) ---
+
+@app.route('/i/<token>/format-check')
+def candidate_format_check_c29(token):
+    """API endpoint to check if format selection is needed. Called by candidate_interview.html on load."""
+    db = get_db()
+    try:
+        candidate = db.execute(
+            '''SELECT c.interview_format, c.format_chosen_at, i.format_selector_enabled, i.formats_enabled
+               FROM candidates c
+               JOIN interviews i ON c.interview_id = i.id
+               WHERE c.token = ?''', (token,)
+        ).fetchone()
+        if not candidate:
+            return jsonify({'needs_choice': False})
+        cd = dict(candidate)
+        import json as _json
+        formats = _json.loads(cd.get('formats_enabled') or '["video"]')
+        needs_choice = bool(cd.get('format_selector_enabled')) and len(formats) > 1 and not cd.get('format_chosen_at')
+        return jsonify({'needs_choice': needs_choice, 'formats': formats, 'choose_url': f'/i/{token}/choose'})
+    finally:
+        db.close()
+
+
+# ======================== CYCLE 29B: SCHEDULING & 2ND INTERVIEWS ========================
+# Availability patterns, auto-slot generation, conflict detection, 2nd interview scheduling
+
+# --- Availability Patterns ("Box the Repetitive") ---
+
+@app.route('/api/availability-patterns', methods=['POST'])
+@require_auth
+def api_create_availability_pattern_c29b():
+    """Create a recurring availability pattern. System auto-generates slots from these."""
+    db = get_db()
+    try:
+        data = request.get_json() or {}
+        patterns = data.get('patterns', [])
+        if not patterns:
+            # Single pattern creation
+            if 'day_of_week' not in data or 'start_time' not in data or 'end_time' not in data:
+                return jsonify({'error': 'day_of_week, start_time, and end_time are required'}), 400
+            patterns = [data]
+        created_ids = []
+        for p in patterns:
+            pid = str(uuid.uuid4())
+            db.execute("""INSERT INTO availability_patterns
+                (id, user_id, label, day_of_week, start_time, end_time, slot_duration_minutes,
+                 slot_type, meeting_url, phone_number, location, is_active, generate_weeks_ahead)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (pid, g.user_id, p.get('label', 'My Availability'),
+                 p['day_of_week'], p['start_time'], p['end_time'],
+                 p.get('slot_duration_minutes', 30),
+                 p.get('slot_type', 'recruiter_call'),
+                 p.get('meeting_url', ''), p.get('phone_number', ''),
+                 p.get('location', ''), 1,
+                 p.get('generate_weeks_ahead', 4)))
+            created_ids.append(pid)
+        db.commit()
+        return jsonify({'message': f'{len(created_ids)} pattern(s) created', 'pattern_ids': created_ids})
+    finally:
+        db.close()
+
+
+@app.route('/api/availability-patterns', methods=['GET'])
+@require_auth
+def api_list_availability_patterns_c29b():
+    """List all active availability patterns for the recruiter."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            'SELECT * FROM availability_patterns WHERE user_id=? AND is_active=1 ORDER BY day_of_week, start_time',
+            (g.user_id,)
+        ).fetchall()
+        day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        result = []
+        for r in rows:
+            d = dict(r)
+            d['day_name'] = day_names[d['day_of_week']] if 0 <= d['day_of_week'] <= 6 else 'Unknown'
+            result.append(d)
+        return jsonify(result)
+    finally:
+        db.close()
+
+
+@app.route('/api/availability-patterns/<pattern_id>', methods=['PUT'])
+@require_auth
+def api_update_availability_pattern_c29b(pattern_id):
+    """Update an availability pattern."""
+    db = get_db()
+    try:
+        pat = db.execute('SELECT id FROM availability_patterns WHERE id=? AND user_id=?', (pattern_id, g.user_id)).fetchone()
+        if not pat:
+            return jsonify({'error': 'Pattern not found'}), 404
+        data = request.get_json() or {}
+        allowed = ['label', 'day_of_week', 'start_time', 'end_time', 'slot_duration_minutes',
+                    'slot_type', 'meeting_url', 'phone_number', 'location', 'is_active', 'generate_weeks_ahead']
+        updates, values = [], []
+        for field in allowed:
+            if field in data:
+                updates.append(f"{field} = ?")
+                values.append(data[field])
+        if not updates:
+            return jsonify({'error': 'No fields to update'}), 400
+        values.append(pattern_id)
+        db.execute(f"UPDATE availability_patterns SET {', '.join(updates)} WHERE id = ?", values)
+        db.commit()
+        return jsonify({'message': 'Pattern updated'})
+    finally:
+        db.close()
+
+
+@app.route('/api/availability-patterns/<pattern_id>', methods=['DELETE'])
+@require_auth
+def api_delete_availability_pattern_c29b(pattern_id):
+    """Deactivate an availability pattern."""
+    db = get_db()
+    try:
+        db.execute('UPDATE availability_patterns SET is_active=0 WHERE id=? AND user_id=?', (pattern_id, g.user_id))
+        db.commit()
+        return jsonify({'message': 'Pattern deactivated'})
+    finally:
+        db.close()
+
+
+# --- Auto-Generate Slots from Patterns ---
+
+@app.route('/api/availability/generate-slots', methods=['POST'])
+@require_auth
+def api_generate_slots_c29b():
+    """Auto-generate booking slots from active availability patterns.
+       Call this on a schedule or when recruiter saves patterns."""
+    db = get_db()
+    try:
+        data = request.get_json() or {}
+        interview_id = data.get('interview_id')
+        stage = data.get('interview_stage', 'second')  # 'first' or 'second'
+        patterns = db.execute(
+            'SELECT * FROM availability_patterns WHERE user_id=? AND is_active=1',
+            (g.user_id,)
+        ).fetchall()
+        if not patterns:
+            return jsonify({'error': 'No active availability patterns. Create patterns first.'}), 400
+        from datetime import timedelta
+        now = datetime.utcnow()
+        created = 0
+        skipped_conflicts = 0
+        for pat in patterns:
+            pd = dict(pat)
+            weeks = pd['generate_weeks_ahead'] or 4
+            duration = pd['slot_duration_minutes'] or 30
+            # Parse start/end times
+            sh, sm = map(int, pd['start_time'].split(':'))
+            eh, em = map(int, pd['end_time'].split(':'))
+            start_minutes = sh * 60 + sm
+            end_minutes = eh * 60 + em
+            # Generate slots for each week
+            for week_offset in range(weeks):
+                # Find next occurrence of this day_of_week
+                target_day = pd['day_of_week']  # 0=Mon, 6=Sun
+                days_ahead = (target_day - now.weekday()) % 7 + (week_offset * 7)
+                if days_ahead == 0 and week_offset == 0:
+                    days_ahead = 0 if now.hour < sh else 7
+                slot_date_base = now + timedelta(days=days_ahead)
+                slot_date_base = slot_date_base.replace(hour=0, minute=0, second=0, microsecond=0)
+                # Generate slots within the time window
+                current_min = start_minutes
+                while current_min + duration <= end_minutes:
+                    slot_hour = current_min // 60
+                    slot_minute = current_min % 60
+                    slot_dt = slot_date_base.replace(hour=slot_hour, minute=slot_minute)
+                    slot_iso = slot_dt.isoformat()
+                    slot_end_dt = slot_dt + timedelta(minutes=duration)
+                    # --- Conflict detection ---
+                    # Check against existing booking slots
+                    existing = db.execute(
+                        """SELECT id FROM booking_slots
+                           WHERE user_id=? AND status IN ('available','booked')
+                           AND slot_date=?""",
+                        (g.user_id, slot_iso)
+                    ).fetchone()
+                    if existing:
+                        current_min += duration
+                        skipped_conflicts += 1
+                        continue
+                    # Check against group sessions (don't create slots during group sessions)
+                    gs_conflict = db.execute(
+                        """SELECT id FROM group_sessions
+                           WHERE user_id=? AND status='scheduled'
+                           AND session_date <= ? AND datetime(session_date, '+' || duration_minutes || ' minutes') > ?""",
+                        (g.user_id, slot_iso, slot_iso)
+                    ).fetchone()
+                    if gs_conflict:
+                        current_min += duration
+                        skipped_conflicts += 1
+                        continue
+                    # No conflict — create the slot
+                    sid = str(uuid.uuid4())
+                    db.execute("""INSERT INTO booking_slots
+                        (id, interview_id, user_id, slot_date, duration_minutes, slot_type,
+                         meeting_url, phone_number, is_booked, status, pattern_id, interview_stage)
+                        VALUES (?,?,?,?,?,?,?,?,0,?,?,?)""",
+                        (sid, interview_id or '', g.user_id, slot_iso, duration,
+                         pd['slot_type'], pd.get('meeting_url', ''), pd.get('phone_number', ''),
+                         'available', pd['id'], stage))
+                    created += 1
+                    current_min += duration
+        db.commit()
+        return jsonify({
+            'message': f'{created} slot(s) generated, {skipped_conflicts} skipped (conflicts)',
+            'created': created,
+            'skipped_conflicts': skipped_conflicts
+        })
+    finally:
+        db.close()
+
+
+# --- Recruiter Calendar View (unified) ---
+
+@app.route('/api/calendar', methods=['GET'])
+@require_auth
+def api_calendar_view_c29b():
+    """Unified calendar view: group sessions + booking slots + 2nd interviews."""
+    db = get_db()
+    try:
+        start = request.args.get('start', datetime.utcnow().isoformat())
+        end = request.args.get('end', (datetime.utcnow() + timedelta(days=28)).isoformat())
+        events = []
+        # Group sessions
+        rows = db.execute(
+            """SELECT gs.*, (SELECT COUNT(*) FROM session_rsvps sr WHERE sr.session_id=gs.id AND sr.status!='cancelled') as rsvp_count
+               FROM group_sessions gs WHERE gs.user_id=? AND gs.status='scheduled'
+               AND gs.session_date BETWEEN ? AND ? ORDER BY gs.session_date""",
+            (g.user_id, start, end)
+        ).fetchall()
+        for r in rows:
+            d = dict(r)
+            events.append({
+                'id': d['id'], 'type': 'group_session', 'title': d['title'],
+                'start': d['session_date'], 'duration_minutes': d['duration_minutes'],
+                'session_type': d['session_type'], 'location': d['location'],
+                'meeting_url': d['meeting_url'], 'rsvp_count': d['rsvp_count'],
+                'capacity': d['capacity']
+            })
+        # Booking slots
+        rows = db.execute(
+            """SELECT bs.*, c.first_name, c.last_name, c.email
+               FROM booking_slots bs LEFT JOIN candidates c ON bs.booked_by_candidate_id=c.id
+               WHERE bs.user_id=? AND bs.status IN ('available','booked')
+               AND bs.slot_date BETWEEN ? AND ? ORDER BY bs.slot_date""",
+            (g.user_id, start, end)
+        ).fetchall()
+        for r in rows:
+            d = dict(r)
+            title = 'Available' if not d['is_booked'] else f"{d.get('first_name','')} {d.get('last_name','')}"
+            events.append({
+                'id': d['id'], 'type': 'booking_slot', 'title': title,
+                'start': d['slot_date'], 'duration_minutes': d['duration_minutes'],
+                'slot_type': d['slot_type'], 'is_booked': bool(d['is_booked']),
+                'interview_stage': d.get('interview_stage', 'first'),
+                'candidate_name': f"{d.get('first_name','')} {d.get('last_name','')}" if d['is_booked'] else None,
+                'candidate_email': d.get('email') if d['is_booked'] else None
+            })
+        # 2nd interviews
+        rows = db.execute(
+            """SELECT si.*, c.first_name, c.last_name, c.email
+               FROM second_interviews si JOIN candidates c ON si.candidate_id=c.id
+               WHERE si.user_id=? AND si.status IN ('scheduled','confirmed')
+               AND si.scheduled_date BETWEEN ? AND ? ORDER BY si.scheduled_date""",
+            (g.user_id, start, end)
+        ).fetchall()
+        for r in rows:
+            d = dict(r)
+            events.append({
+                'id': d['id'], 'type': 'second_interview',
+                'title': f"2nd Interview: {d['first_name']} {d['last_name']}",
+                'start': d['scheduled_date'], 'duration_minutes': d['duration_minutes'],
+                'meeting_type': d['meeting_type'], 'meeting_url': d.get('meeting_url'),
+                'phone_number': d.get('phone_number'), 'candidate_name': f"{d['first_name']} {d['last_name']}",
+                'candidate_email': d['email'], 'status': d['status']
+            })
+        events.sort(key=lambda e: e['start'] or '')
+        return jsonify({'events': events, 'count': len(events)})
+    finally:
+        db.close()
+
+
+# --- 2nd Interview Scheduling (Always 1-on-1) ---
+
+@app.route('/api/candidates/<candidate_id>/second-interview', methods=['POST'])
+@require_auth
+def api_schedule_second_interview_c29b(candidate_id):
+    """Schedule a 2nd interview for a candidate. Recruiter picks the method:
+       - 'manual': recruiter will call to schedule (just logs intent)
+       - 'ai_voice': AI voice agent calls candidate to schedule
+       - 'email': system emails candidate with available slots to self-book
+    """
+    db = get_db()
+    try:
+        candidate = db.execute(
+            '''SELECT c.*, i.title as interview_title, u.agency_name
+               FROM candidates c JOIN interviews i ON c.interview_id=i.id
+               JOIN users u ON c.user_id=u.id
+               WHERE c.id=? AND c.user_id=?''',
+            (candidate_id, g.user_id)
+        ).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Candidate not found'}), 404
+        cd = dict(candidate)
+        data = request.get_json() or {}
+        method = data.get('schedule_method', 'email')
+        if method not in ('manual', 'ai_voice', 'email'):
+            return jsonify({'error': 'schedule_method must be manual, ai_voice, or email'}), 400
+        now = datetime.utcnow().isoformat()
+        si_id = str(uuid.uuid4())
+        db.execute("""INSERT INTO second_interviews
+            (id, user_id, candidate_id, interview_id, schedule_method, status,
+             scheduled_date, duration_minutes, meeting_type, meeting_url,
+             phone_number, location, notes, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (si_id, g.user_id, candidate_id, cd['interview_id'], method,
+             'pending' if method != 'manual' else 'scheduling',
+             data.get('scheduled_date'), data.get('duration_minutes', 30),
+             data.get('meeting_type', 'phone'),
+             data.get('meeting_url', ''), data.get('phone_number', ''),
+             data.get('location', ''), data.get('notes', ''), now))
+        # Update candidate tracking
+        db.execute(
+            "UPDATE candidates SET second_interview_id=?, second_interview_status=?, pipeline_stage='second_interview' WHERE id=?",
+            (si_id, 'pending', candidate_id))
+        # Method-specific actions
+        if method == 'email':
+            # Send candidate an email with link to pick a time
+            try:
+                from email_service import send_email, get_smtp_config, build_branded_email
+                smtp_config = get_smtp_config(db, g.user_id)
+                candidate_name = f"{cd['first_name']} {cd['last_name']}"
+                schedule_link = f"{request.host_url}schedule/{cd['token']}"
+                html = build_branded_email(
+                    candidate_name, cd['interview_title'],
+                    "Congratulations! We'd like to move forward with a second interview. Please pick a time that works for your schedule.",
+                    schedule_link, "Pick a Time",
+                    cd.get('agency_name', ''), cd.get('brand_color', '#0ace0a'))
+                subject = f"Next Step: {cd['interview_title']} — Schedule Your Interview"
+                send_email(smtp_config, cd['email'], subject, html)
+                db.execute(
+                    "INSERT INTO email_log (id, user_id, candidate_id, email_type, to_email, subject, status) VALUES (?,?,?,?,?,?,?)",
+                    (str(uuid.uuid4()), g.user_id, candidate_id, 'second_interview_schedule', cd['email'], subject, 'sent'))
+            except Exception as e:
+                print(f'[2ndInterview] Email failed: {e}')
+        elif method == 'ai_voice':
+            # Queue AI voice call to schedule (uses existing voice_call_schedule)
+            try:
+                call_id = str(uuid.uuid4())
+                db.execute("""INSERT INTO voice_call_schedule
+                    (id, user_id, candidate_id, agent_id, scheduled_time, call_type, status)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (call_id, g.user_id, candidate_id, data.get('agent_id', ''),
+                     now, 'second_interview_schedule', 'pending'))
+            except Exception as e:
+                print(f'[2ndInterview] Voice schedule failed: {e}')
+        # manual = recruiter handles it themselves, we just track it
+        db.commit()
+        return jsonify({
+            'message': f'2nd interview initiated via {method}',
+            'second_interview_id': si_id,
+            'schedule_method': method,
+            'status': 'pending' if method != 'manual' else 'scheduling'
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/candidates/<candidate_id>/second-interview', methods=['GET'])
+@require_auth
+def api_get_second_interview_c29b(candidate_id):
+    """Get 2nd interview status for a candidate."""
+    db = get_db()
+    try:
+        row = db.execute(
+            'SELECT * FROM second_interviews WHERE candidate_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1',
+            (candidate_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({'error': 'No second interview found'}), 404
+        return jsonify(dict(row))
+    finally:
+        db.close()
+
+
+@app.route('/api/candidates/<candidate_id>/second-interview', methods=['PUT'])
+@require_auth
+def api_update_second_interview_c29b(candidate_id):
+    """Update 2nd interview (confirm time, mark complete, add outcome/notes)."""
+    db = get_db()
+    try:
+        row = db.execute(
+            'SELECT id FROM second_interviews WHERE candidate_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1',
+            (candidate_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({'error': 'No second interview found'}), 404
+        si_id = dict(row)['id']
+        data = request.get_json() or {}
+        updates, values = [], []
+        allowed = ['scheduled_date', 'duration_minutes', 'meeting_type', 'meeting_url',
+                    'phone_number', 'location', 'notes', 'recruiter_notes', 'outcome', 'status']
+        for field in allowed:
+            if field in data:
+                updates.append(f"{field} = ?")
+                values.append(data[field])
+        now = datetime.utcnow().isoformat()
+        if data.get('status') == 'scheduled' and 'scheduled_date' in data:
+            updates.append("scheduled_at = ?")
+            values.append(now)
+            db.execute("UPDATE candidates SET second_interview_status='scheduled', second_interview_date=? WHERE id=?",
+                       (data['scheduled_date'], candidate_id))
+        if data.get('status') == 'completed':
+            updates.append("completed_at = ?")
+            values.append(now)
+            db.execute("UPDATE candidates SET second_interview_status='completed' WHERE id=?", (candidate_id,))
+        if data.get('outcome') in ('offer', 'pass', 'hold'):
+            stage_map = {'offer': 'offer_made', 'pass': 'rejected', 'hold': 'on_hold'}
+            db.execute("UPDATE candidates SET pipeline_stage=? WHERE id=?",
+                       (stage_map[data['outcome']], candidate_id))
+        updates.append("updated_at = ?")
+        values.append(now)
+        values.append(si_id)
+        db.execute(f"UPDATE second_interviews SET {', '.join(updates)} WHERE id = ?", values)
+        db.commit()
+        return jsonify({'message': '2nd interview updated', 'second_interview_id': si_id})
+    finally:
+        db.close()
+
+
+@app.route('/api/second-interviews', methods=['GET'])
+@require_auth
+def api_list_second_interviews_c29b():
+    """List all 2nd interviews for the recruiter, filterable by status."""
+    db = get_db()
+    try:
+        status = request.args.get('status')
+        query = """SELECT si.*, c.first_name, c.last_name, c.email, c.phone, c.ai_score,
+                          c.interview_format, i.title as interview_title
+                   FROM second_interviews si
+                   JOIN candidates c ON si.candidate_id=c.id
+                   JOIN interviews i ON si.interview_id=i.id
+                   WHERE si.user_id=?"""
+        params = [g.user_id]
+        if status:
+            query += " AND si.status=?"
+            params.append(status)
+        query += " ORDER BY si.created_at DESC"
+        rows = db.execute(query, params).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+# --- Candidate Self-Schedule Page (2nd Interview) ---
+
+@app.route('/schedule/<token>')
+def candidate_schedule_page_c29b(token):
+    """Candidate-facing page to pick a time slot for their 2nd interview."""
+    db = get_db()
+    try:
+        candidate = db.execute(
+            '''SELECT c.*, i.title as interview_title, i.brand_color, i.description,
+                      u.agency_name, u.agency_logo_url
+               FROM candidates c
+               JOIN interviews i ON c.interview_id=i.id
+               JOIN users u ON c.user_id=u.id
+               WHERE c.token=?''', (token,)
+        ).fetchone()
+        if not candidate:
+            return render_template('candidate_error.html', error='Interview link not found.'), 404
+        cd = dict(candidate)
+        # Get available 2nd interview slots
+        available = db.execute(
+            """SELECT * FROM booking_slots
+               WHERE user_id=? AND is_booked=0 AND status='available'
+               AND interview_stage='second' AND slot_date > datetime('now')
+               ORDER BY slot_date ASC LIMIT 30""",
+            (cd['user_id'],)
+        ).fetchall()
+        slots = [dict(r) for r in available]
+        return render_template('candidate_schedule.html',
+            candidate=cd, token=token, slots=slots,
+            brand_color=cd.get('brand_color', '#0ace0a'),
+            agency_name=cd.get('agency_name', ''))
+    finally:
+        db.close()
+
+
+@app.route('/schedule/<token>/book', methods=['POST'])
+def candidate_book_second_c29b(token):
+    """Candidate books a slot for their 2nd interview."""
+    db = get_db()
+    try:
+        candidate = db.execute('SELECT * FROM candidates WHERE token=?', (token,)).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Invalid link'}), 404
+        cd = dict(candidate)
+        data = request.get_json() or {}
+        slot_id = data.get('slot_id')
+        if not slot_id:
+            return jsonify({'error': 'slot_id required'}), 400
+        # Atomic slot claim
+        slot = db.execute(
+            "SELECT * FROM booking_slots WHERE id=? AND is_booked=0 AND status='available' AND interview_stage='second'",
+            (slot_id,)
+        ).fetchone()
+        if not slot:
+            return jsonify({'error': 'Slot no longer available. Please pick another time.'}), 409
+        sd = dict(slot)
+        now = datetime.utcnow().isoformat()
+        # Book the slot
+        db.execute(
+            "UPDATE booking_slots SET is_booked=1, booked_by_candidate_id=?, booked_at=?, status='booked' WHERE id=?",
+            (cd['id'], now, slot_id))
+        # Update 2nd interview record
+        db.execute(
+            """UPDATE second_interviews SET status='scheduled', scheduled_date=?, duration_minutes=?,
+               booking_slot_id=?, scheduled_at=?, updated_at=?
+               WHERE candidate_id=? AND user_id=? AND status='pending'""",
+            (sd['slot_date'], sd['duration_minutes'], slot_id, now, now, cd['id'], cd['user_id']))
+        # Update candidate
+        db.execute(
+            "UPDATE candidates SET second_interview_status='scheduled', second_interview_date=? WHERE id=?",
+            (sd['slot_date'], cd['id']))
+        db.commit()
+        return jsonify({
+            'message': 'Interview scheduled!',
+            'scheduled_date': sd['slot_date'],
+            'duration_minutes': sd['duration_minutes'],
+            'meeting_type': sd['slot_type'],
+            'meeting_url': sd.get('meeting_url', ''),
+            'phone_number': sd.get('phone_number', '')
+        })
+    finally:
+        db.close()
+
+
+# --- Conflict Check Utility ---
+
+@app.route('/api/calendar/check-conflicts', methods=['POST'])
+@require_auth
+def api_check_conflicts_c29b():
+    """Check if a proposed time conflicts with existing events."""
+    db = get_db()
+    try:
+        data = request.get_json() or {}
+        proposed_start = data.get('start')
+        duration = data.get('duration_minutes', 30)
+        if not proposed_start:
+            return jsonify({'error': 'start required'}), 400
+        from datetime import timedelta
+        proposed_end = (datetime.fromisoformat(proposed_start) + timedelta(minutes=duration)).isoformat()
+        conflicts = []
+        # Check booking slots
+        row = db.execute(
+            """SELECT id, slot_date, duration_minutes FROM booking_slots
+               WHERE user_id=? AND status IN ('available','booked')
+               AND slot_date < ? AND datetime(slot_date, '+' || duration_minutes || ' minutes') > ?""",
+            (g.user_id, proposed_end, proposed_start)
+        ).fetchone()
+        if row:
+            conflicts.append({'type': 'booking_slot', 'id': dict(row)['id'], 'start': dict(row)['slot_date']})
+        # Check group sessions
+        row = db.execute(
+            """SELECT id, session_date, duration_minutes, title FROM group_sessions
+               WHERE user_id=? AND status='scheduled'
+               AND session_date < ? AND datetime(session_date, '+' || duration_minutes || ' minutes') > ?""",
+            (g.user_id, proposed_end, proposed_start)
+        ).fetchone()
+        if row:
+            conflicts.append({'type': 'group_session', 'id': dict(row)['id'], 'start': dict(row)['session_date'], 'title': dict(row)['title']})
+        # Check 2nd interviews
+        row = db.execute(
+            """SELECT id, scheduled_date, duration_minutes FROM second_interviews
+               WHERE user_id=? AND status IN ('scheduled','confirmed')
+               AND scheduled_date < ? AND datetime(scheduled_date, '+' || duration_minutes || ' minutes') > ?""",
+            (g.user_id, proposed_end, proposed_start)
+        ).fetchone()
+        if row:
+            conflicts.append({'type': 'second_interview', 'id': dict(row)['id'], 'start': dict(row)['scheduled_date']})
+        return jsonify({'has_conflict': len(conflicts) > 0, 'conflicts': conflicts})
+    finally:
+        db.close()
+
+
+# ======================== CYCLE 29C: POST-INTERVIEW PIPELINE & ENGAGEMENT ========================
+# Full lifecycle: Offer → Testing → Appointment → Writing Number → Production
+# Engagement: automated emails, AI voice, personal calls — all tracked
+
+# Valid milestone stages in order (unlicensed path)
+MILESTONE_ORDER_UNLICENSED = [
+    'screening', 'second_interview', 'offer_made', 'offer_accepted',
+    'entered_testing', 'testing_scheduled', 'passed_test',
+    'entered_appointment', 'received_writing_number', 'first_production'
+]
+# Licensed path: skip testing stages
+MILESTONE_ORDER_LICENSED = [
+    'screening', 'second_interview', 'offer_made', 'offer_accepted',
+    'entered_appointment', 'received_writing_number', 'first_production'
+]
+# Map milestone to candidate date column
+MILESTONE_DATE_COLUMNS = {
+    'offer_made': 'offer_made_at',
+    'offer_accepted': 'offer_accepted_at',
+    'entered_testing': 'entered_testing_at',
+    'testing_scheduled': 'testing_date',
+    'passed_test': 'passed_test_at',
+    'entered_appointment': 'entered_appointment_at',
+    'received_writing_number': 'received_writing_number_at',
+    'first_production': 'first_production_at',
+}
+
+
+@app.route('/api/candidates/<candidate_id>/milestone', methods=['PUT'])
+@require_auth
+def api_update_milestone_c29c(candidate_id):
+    """Advance a candidate to a milestone stage. Auto-routes licensed candidates past testing."""
+    db = get_db()
+    try:
+        candidate = db.execute(
+            'SELECT * FROM candidates WHERE id=? AND user_id=?', (candidate_id, g.user_id)
+        ).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Candidate not found'}), 404
+        cd = dict(candidate)
+        data = request.get_json() or {}
+        new_stage = data.get('milestone_stage')
+        is_licensed = data.get('is_licensed', cd.get('is_licensed', 0))
+        # Auto-skip: if licensed and recruiter tries to move to a testing stage, jump to appointment
+        if is_licensed and new_stage in ('entered_testing', 'testing_scheduled', 'passed_test'):
+            new_stage = 'entered_appointment'
+        valid_stages = MILESTONE_ORDER_LICENSED if is_licensed else MILESTONE_ORDER_UNLICENSED
+        if new_stage and new_stage not in valid_stages:
+            return jsonify({'error': f'Invalid stage. Valid stages: {valid_stages}'}), 400
+        now = datetime.utcnow().isoformat()
+        updates = ["milestone_stage = ?", "milestone_updated_at = ?", "pipeline_stage = ?"]
+        values = [new_stage, now, new_stage]
+        # Set the appropriate date column
+        date_col = MILESTONE_DATE_COLUMNS.get(new_stage)
+        if date_col:
+            # Allow explicit date override or use now
+            stage_date = data.get('date', now)
+            updates.append(f"{date_col} = ?")
+            values.append(stage_date)
+        if 'is_licensed' in data:
+            updates.append("is_licensed = ?")
+            values.append(1 if is_licensed else 0)
+        values.append(candidate_id)
+        db.execute(f"UPDATE candidates SET {', '.join(updates)} WHERE id = ?", values)
+        # Auto-log touchpoint
+        tp_id = str(uuid.uuid4())
+        db.execute(
+            """INSERT INTO pipeline_touchpoints
+               (id, user_id, candidate_id, touchpoint_type, channel, direction, subject, milestone_stage, completed_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (tp_id, g.user_id, candidate_id, 'milestone_advance', 'system', 'internal',
+             f'Advanced to {new_stage}', new_stage, now))
+        db.commit()
+        return jsonify({
+            'message': f'Candidate moved to {new_stage}',
+            'milestone_stage': new_stage,
+            'is_licensed': bool(is_licensed),
+            'date_recorded': date_col
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/candidates/<candidate_id>/milestone', methods=['GET'])
+@require_auth
+def api_get_milestone_c29c(candidate_id):
+    """Get full milestone timeline for a candidate."""
+    db = get_db()
+    try:
+        candidate = db.execute(
+            'SELECT * FROM candidates WHERE id=? AND user_id=?', (candidate_id, g.user_id)
+        ).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Candidate not found'}), 404
+        cd = dict(candidate)
+        is_licensed = bool(cd.get('is_licensed', 0))
+        stages = MILESTONE_ORDER_LICENSED if is_licensed else MILESTONE_ORDER_UNLICENSED
+        timeline = []
+        for stage in stages:
+            date_col = MILESTONE_DATE_COLUMNS.get(stage)
+            date_val = cd.get(date_col) if date_col else None
+            timeline.append({
+                'stage': stage,
+                'date': date_val,
+                'completed': date_val is not None,
+                'is_current': cd.get('milestone_stage') == stage
+            })
+        # Get touchpoint count per stage
+        tp_counts = db.execute(
+            """SELECT milestone_stage, COUNT(*) as cnt FROM pipeline_touchpoints
+               WHERE candidate_id=? GROUP BY milestone_stage""",
+            (candidate_id,)
+        ).fetchall()
+        tp_map = {r['milestone_stage']: r['cnt'] for r in tp_counts}
+        for t in timeline:
+            t['touchpoint_count'] = tp_map.get(t['stage'], 0)
+        return jsonify({
+            'candidate_id': candidate_id,
+            'candidate_name': f"{cd.get('first_name','')} {cd.get('last_name','')}",
+            'is_licensed': is_licensed,
+            'current_stage': cd.get('milestone_stage', 'screening'),
+            'timeline': timeline,
+            'total_touchpoints': cd.get('touchpoint_count', 0),
+            'last_touchpoint': cd.get('last_touchpoint_at'),
+            'days_since_milestone': cd.get('days_since_milestone', 0)
+        })
+    finally:
+        db.close()
+
+
+# --- Engagement Touchpoints ---
+
+@app.route('/api/candidates/<candidate_id>/touchpoints', methods=['POST'])
+@require_auth
+def api_log_touchpoint_c29c(candidate_id):
+    """Log an engagement touchpoint — call, email, AI contact, note, etc."""
+    db = get_db()
+    try:
+        candidate = db.execute('SELECT id, milestone_stage FROM candidates WHERE id=? AND user_id=?',
+                               (candidate_id, g.user_id)).fetchone()
+        if not candidate:
+            return jsonify({'error': 'Candidate not found'}), 404
+        cd = dict(candidate)
+        data = request.get_json() or {}
+        tp_type = data.get('touchpoint_type', 'note')
+        if tp_type not in ('call', 'email', 'ai_voice', 'ai_email', 'text', 'in_person', 'note', 'milestone_advance'):
+            return jsonify({'error': 'Invalid touchpoint_type'}), 400
+        channel = data.get('channel', 'phone' if tp_type == 'call' else 'email' if tp_type in ('email', 'ai_email') else 'system')
+        now = datetime.utcnow().isoformat()
+        tp_id = str(uuid.uuid4())
+        db.execute("""INSERT INTO pipeline_touchpoints
+            (id, user_id, candidate_id, touchpoint_type, channel, direction, subject, body,
+             status, notes, milestone_stage, scheduled_at, completed_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (tp_id, g.user_id, candidate_id, tp_type, channel,
+             data.get('direction', 'outbound'),
+             data.get('subject', ''), data.get('body', ''),
+             data.get('status', 'completed'),
+             data.get('notes', ''), cd.get('milestone_stage', 'screening'),
+             data.get('scheduled_at'), now))
+        # Update candidate engagement stats
+        db.execute(
+            """UPDATE candidates SET touchpoint_count = COALESCE(touchpoint_count,0) + 1,
+               last_touchpoint_at = ?, updated_at = ? WHERE id = ?""",
+            (now, now, candidate_id))
+        db.commit()
+        return jsonify({'message': 'Touchpoint logged', 'touchpoint_id': tp_id})
+    finally:
+        db.close()
+
+
+@app.route('/api/candidates/<candidate_id>/touchpoints', methods=['GET'])
+@require_auth
+def api_list_touchpoints_c29c(candidate_id):
+    """Get all engagement touchpoints for a candidate, newest first."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            """SELECT * FROM pipeline_touchpoints WHERE candidate_id=? AND user_id=?
+               ORDER BY created_at DESC""",
+            (candidate_id, g.user_id)
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+# --- Engagement Automation Rules ---
+
+@app.route('/api/engagement-rules', methods=['POST'])
+@require_auth
+def api_create_engagement_rule_c29c():
+    """Create an automated engagement rule for a milestone stage."""
+    db = get_db()
+    try:
+        data = request.get_json() or {}
+        rules = data.get('rules', [data] if 'milestone_stage' in data else [])
+        if not rules:
+            return jsonify({'error': 'milestone_stage required'}), 400
+        created = []
+        for rule in rules:
+            rid = str(uuid.uuid4())
+            db.execute("""INSERT INTO engagement_rules
+                (id, user_id, interview_id, milestone_stage, trigger_type, trigger_days,
+                 action_type, email_subject, email_body, ai_voice_script, is_active, sort_order)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (rid, g.user_id, rule.get('interview_id'),
+                 rule['milestone_stage'], rule.get('trigger_type', 'days_in_stage'),
+                 rule.get('trigger_days', 2), rule.get('action_type', 'email'),
+                 rule.get('email_subject', ''), rule.get('email_body', ''),
+                 rule.get('ai_voice_script', ''), 1,
+                 rule.get('sort_order', 0)))
+            created.append(rid)
+        db.commit()
+        return jsonify({'message': f'{len(created)} rule(s) created', 'rule_ids': created})
+    finally:
+        db.close()
+
+
+@app.route('/api/engagement-rules', methods=['GET'])
+@require_auth
+def api_list_engagement_rules_c29c():
+    """List all engagement automation rules."""
+    db = get_db()
+    try:
+        stage = request.args.get('milestone_stage')
+        query = 'SELECT * FROM engagement_rules WHERE user_id=? AND is_active=1'
+        params = [g.user_id]
+        if stage:
+            query += ' AND milestone_stage=?'
+            params.append(stage)
+        query += ' ORDER BY milestone_stage, sort_order'
+        rows = db.execute(query, params).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+@app.route('/api/engagement-rules/<rule_id>', methods=['PUT'])
+@require_auth
+def api_update_engagement_rule_c29c(rule_id):
+    """Update an engagement rule."""
+    db = get_db()
+    try:
+        rule = db.execute('SELECT id FROM engagement_rules WHERE id=? AND user_id=?', (rule_id, g.user_id)).fetchone()
+        if not rule:
+            return jsonify({'error': 'Rule not found'}), 404
+        data = request.get_json() or {}
+        allowed = ['milestone_stage', 'trigger_type', 'trigger_days', 'action_type',
+                    'email_subject', 'email_body', 'ai_voice_script', 'is_active', 'sort_order']
+        updates, values = [], []
+        for f in allowed:
+            if f in data:
+                updates.append(f"{f} = ?")
+                values.append(data[f])
+        if not updates:
+            return jsonify({'error': 'No fields'}), 400
+        values.append(rule_id)
+        db.execute(f"UPDATE engagement_rules SET {', '.join(updates)} WHERE id = ?", values)
+        db.commit()
+        return jsonify({'message': 'Rule updated'})
+    finally:
+        db.close()
+
+
+@app.route('/api/engagement-rules/<rule_id>', methods=['DELETE'])
+@require_auth
+def api_delete_engagement_rule_c29c(rule_id):
+    """Deactivate an engagement rule."""
+    db = get_db()
+    try:
+        db.execute('UPDATE engagement_rules SET is_active=0 WHERE id=? AND user_id=?', (rule_id, g.user_id))
+        db.commit()
+        return jsonify({'message': 'Rule deactivated'})
+    finally:
+        db.close()
+
+
+# --- Automated Engagement Processor ---
+
+@app.route('/api/engagement/process', methods=['POST'])
+@require_auth
+def api_process_engagement_c29c():
+    """Process automated engagement rules. Finds candidates due for outreach and sends it.
+       Call from cron or scheduled task."""
+    db = get_db()
+    try:
+        import json as _json
+        now = datetime.utcnow()
+        now_iso = now.isoformat()
+        rules = db.execute(
+            'SELECT * FROM engagement_rules WHERE user_id=? AND is_active=1 ORDER BY milestone_stage, sort_order',
+            (g.user_id,)
+        ).fetchall()
+        sent = 0
+        skipped = 0
+        for rule in rules:
+            rd = dict(rule)
+            trigger_days = rd['trigger_days'] or 2
+            # Find candidates at this stage who haven't been contacted in trigger_days
+            cutoff = (now - timedelta(days=trigger_days)).isoformat()
+            candidates = db.execute(
+                """SELECT c.*, i.title as interview_title, i.brand_color,
+                          u.agency_name
+                   FROM candidates c
+                   JOIN interviews i ON c.interview_id=i.id
+                   JOIN users u ON c.user_id=u.id
+                   WHERE c.user_id=? AND c.milestone_stage=?
+                   AND c.status NOT IN ('hired','rejected')
+                   AND (c.last_touchpoint_at IS NULL OR c.last_touchpoint_at <= ?)""",
+                (g.user_id, rd['milestone_stage'], cutoff)
+            ).fetchall()
+            for cand in candidates:
+                cd = dict(cand)
+                candidate_name = f"{cd['first_name']} {cd['last_name']}"
+                # Perform the action
+                if rd['action_type'] == 'email':
+                    try:
+                        from email_service import send_email, get_smtp_config, build_branded_email
+                        smtp_config = get_smtp_config(db, g.user_id)
+                        subject = rd['email_subject'] or f"Update: {cd.get('interview_title', 'Your Application')}"
+                        body_text = rd['email_body'] or f"Hi {candidate_name}, just checking in on your progress. We're here to help with anything you need."
+                        link = f"{request.host_url}i/{cd['token']}"
+                        html = build_branded_email(
+                            candidate_name, subject, body_text, link, "View Details",
+                            cd.get('agency_name', ''), cd.get('brand_color', '#0ace0a'))
+                        send_email(smtp_config, cd['email'], subject, html)
+                        # Log touchpoint
+                        tp_id = str(uuid.uuid4())
+                        db.execute("""INSERT INTO pipeline_touchpoints
+                            (id, user_id, candidate_id, touchpoint_type, channel, direction, subject, body,
+                             status, milestone_stage, completed_at)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                            (tp_id, g.user_id, cd['id'], 'ai_email', 'email', 'outbound',
+                             subject, body_text, 'sent', rd['milestone_stage'], now_iso))
+                        db.execute(
+                            "UPDATE candidates SET touchpoint_count=COALESCE(touchpoint_count,0)+1, last_touchpoint_at=? WHERE id=?",
+                            (now_iso, cd['id']))
+                        sent += 1
+                    except Exception as e:
+                        print(f'[Engagement] Email failed for {cd["id"]}: {e}')
+                        skipped += 1
+                elif rd['action_type'] == 'ai_voice':
+                    try:
+                        call_id = str(uuid.uuid4())
+                        db.execute("""INSERT INTO voice_call_schedule
+                            (id, user_id, candidate_id, agent_id, scheduled_time, call_type, status)
+                            VALUES (?,?,?,?,?,?,?)""",
+                            (call_id, g.user_id, cd['id'], '', now_iso, 'engagement_followup', 'pending'))
+                        tp_id = str(uuid.uuid4())
+                        db.execute("""INSERT INTO pipeline_touchpoints
+                            (id, user_id, candidate_id, touchpoint_type, channel, direction, subject,
+                             status, milestone_stage, scheduled_at)
+                            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                            (tp_id, g.user_id, cd['id'], 'ai_voice', 'phone', 'outbound',
+                             f'AI follow-up call at {rd["milestone_stage"]}',
+                             'scheduled', rd['milestone_stage'], now_iso))
+                        db.execute(
+                            "UPDATE candidates SET touchpoint_count=COALESCE(touchpoint_count,0)+1, last_touchpoint_at=? WHERE id=?",
+                            (now_iso, cd['id']))
+                        sent += 1
+                    except Exception as e:
+                        print(f'[Engagement] AI voice failed for {cd["id"]}: {e}')
+                        skipped += 1
+                elif rd['action_type'] == 'reminder':
+                    # Just log a reminder for the recruiter to make a personal call
+                    tp_id = str(uuid.uuid4())
+                    db.execute("""INSERT INTO pipeline_touchpoints
+                        (id, user_id, candidate_id, touchpoint_type, channel, direction, subject,
+                         status, notes, milestone_stage, created_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                        (tp_id, g.user_id, cd['id'], 'note', 'system', 'internal',
+                         f'Personal call reminder: {candidate_name} at {rd["milestone_stage"]}',
+                         'pending', f'Candidate has been at {rd["milestone_stage"]} for {trigger_days}+ days. Consider a personal call.',
+                         rd['milestone_stage'], now_iso))
+                    sent += 1
+        db.commit()
+        return jsonify({'message': f'Processed: {sent} sent, {skipped} skipped', 'sent': sent, 'skipped': skipped})
+    finally:
+        db.close()
+
+
+# --- Pipeline Dashboard ---
+
+@app.route('/api/pipeline/overview', methods=['GET'])
+@require_auth
+def api_pipeline_overview_c29c():
+    """Pipeline overview: count of candidates at each milestone stage."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            """SELECT milestone_stage, COUNT(*) as count,
+                      AVG(JULIANDAY('now') - JULIANDAY(milestone_updated_at)) as avg_days_in_stage
+               FROM candidates WHERE user_id=? AND milestone_stage IS NOT NULL
+               AND status NOT IN ('rejected')
+               GROUP BY milestone_stage""",
+            (g.user_id,)
+        ).fetchall()
+        stages = {}
+        total_active = 0
+        for r in rows:
+            d = dict(r)
+            stages[d['milestone_stage']] = {
+                'count': d['count'],
+                'avg_days': round(d['avg_days_in_stage'] or 0, 1)
+            }
+            total_active += d['count']
+        # Conversion funnel
+        funnel = []
+        for stage in MILESTONE_ORDER_UNLICENSED:
+            s = stages.get(stage, {'count': 0, 'avg_days': 0})
+            funnel.append({'stage': stage, 'count': s['count'], 'avg_days': s['avg_days']})
+        return jsonify({
+            'total_active': total_active,
+            'stages': stages,
+            'funnel': funnel
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/pipeline/stale', methods=['GET'])
+@require_auth
+def api_pipeline_stale_c29c():
+    """Find candidates who've been stuck at a stage too long (stale candidates)."""
+    db = get_db()
+    try:
+        days_threshold = request.args.get('days', 5, type=int)
+        cutoff = (datetime.utcnow() - timedelta(days=days_threshold)).isoformat()
+        rows = db.execute(
+            """SELECT c.id, c.first_name, c.last_name, c.email, c.phone,
+                      c.milestone_stage, c.milestone_updated_at, c.last_touchpoint_at,
+                      c.touchpoint_count, c.is_licensed, i.title as interview_title
+               FROM candidates c JOIN interviews i ON c.interview_id=i.id
+               WHERE c.user_id=? AND c.milestone_stage IS NOT NULL
+               AND c.status NOT IN ('hired','rejected')
+               AND (c.milestone_updated_at IS NULL OR c.milestone_updated_at <= ?)
+               ORDER BY c.milestone_updated_at ASC""",
+            (g.user_id, cutoff)
+        ).fetchall()
+        stale = []
+        for r in rows:
+            d = dict(r)
+            if d['milestone_updated_at']:
+                d['days_stuck'] = round((datetime.utcnow() - datetime.fromisoformat(d['milestone_updated_at'])).total_seconds() / 86400, 1)
+            else:
+                d['days_stuck'] = None
+            stale.append(d)
+        return jsonify({'stale_candidates': stale, 'count': len(stale), 'threshold_days': days_threshold})
     finally:
         db.close()
 

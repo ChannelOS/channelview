@@ -306,3 +306,24 @@ def build_completion_email(candidate_name, interview_title, agency_name, brand_c
       Our team will review your responses carefully. We'll reach out with next steps as soon as possible.
     </p>'''
     return _base_template(brand_color, agency_name, content)
+
+
+def build_branded_email(candidate_name, interview_title, message_text, action_link, button_text, agency_name, brand_color):
+    """Build a generic branded email with a custom message and CTA button. Used by waterfall engine."""
+    content = f'''
+    <h1 style="margin:0 0 8px;font-size:22px;color:#111">{interview_title}</h1>
+    <p style="color:#6b7280;font-size:15px;margin:0 0 24px;line-height:1.5">
+      Hi {candidate_name},<br><br>
+      {message_text}
+    </p>
+    <div style="text-align:center;margin:28px 0">
+      <a href="{action_link}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;
+         font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none;letter-spacing:0.3px">
+        {button_text}
+      </a>
+    </div>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0">
+      If the button doesn't work, copy and paste this link:<br>
+      <a href="{action_link}" style="color:{brand_color};word-break:break-all">{action_link}</a>
+    </p>'''
+    return _base_template(brand_color, agency_name, content)
