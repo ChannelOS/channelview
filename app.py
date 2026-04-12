@@ -48,6 +48,9 @@ os.makedirs(app.config.get('INTRO_FOLDER', os.path.join(os.path.dirname(__file__
 # Initialize storage backend (local or S3 based on config)
 storage = create_storage(app_config)
 
+# ======================== PRODUCTION CONFIG VALIDATION ========================
+# NOTE: validation function defined below after STRIPE_SECRET_KEY is set
+
 # ======================== RATE LIMITING ========================
 # In-memory rate limiter (per-IP, per-endpoint). Use Redis in production.
 _rate_limits = {}  # key: (ip, endpoint) -> [(timestamp, ...)]
@@ -145,6 +148,24 @@ def _stripe_request(method, endpoint, data=None):
     except Exception as e:
         return {'error': str(e)}, 500
 
+# Now validate production config after STRIPE_SECRET_KEY is defined
+def _validate_production_config():
+    """Warn about missing critical config. Hard-fail only for SECRET_KEY (already handled above)."""
+    warnings = []
+    if not STRIPE_SECRET_KEY:
+        warnings.append("STRIPE_SECRET_KEY not set — billing/checkout will return 503")
+    if not STRIPE_PRICE_ID:
+        warnings.append("STRIPE_PRICE_ID not set — checkout will fail")
+    if not os.environ.get('SENDGRID_API_KEY') and not os.environ.get('SMTP_HOST'):
+        warnings.append("No email backend configured — emails will log only (set SENDGRID_API_KEY or SMTP_HOST)")
+    if os.environ.get('FLASK_ENV') == 'production':
+        for w in warnings:
+            print(f"[PRODUCTION WARNING] {w}")
+    elif warnings:
+        for w in warnings:
+            print(f"[CONFIG] {w}")
+
+_validate_production_config()
 
 # ======================== ERROR HANDLERS ========================
 
@@ -247,6 +268,37 @@ def require_fmo_admin(f):
             if request.is_json or request.path.startswith('/api/'):
                 return jsonify({'error': 'FMO admin access required'}), 403
             return redirect('/dashboard')
+        return f(*args, **kwargs)
+    return decorated
+
+def check_trial_status(f):
+    """Decorator to enforce trial expiration. Use after @require_auth.
+    Blocks expired trial accounts from API endpoints, except billing/auth routes."""
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        # Allow all requests to billing and auth routes
+        if request.path.startswith('/api/billing/') or request.path == '/billing':
+            return f(*args, **kwargs)
+        if request.path.startswith('/api/auth/'):
+            return f(*args, **kwargs)
+        # Allow health checks
+        if request.path in ['/health', '/api/health']:
+            return f(*args, **kwargs)
+
+        # Check trial status
+        plan = g.user.get('plan')
+        trial_ends_at = g.user.get('trial_ends_at')
+        if plan == 'trial' and trial_ends_at:
+            try:
+                trial_dt = datetime.fromisoformat(trial_ends_at)
+                if datetime.utcnow() > trial_dt:
+                    return jsonify({
+                        'error': 'Your free trial has expired. Please upgrade to continue.',
+                        'code': 'trial_expired',
+                        'upgrade_url': '/billing'
+                    }), 403
+            except (ValueError, TypeError):
+                pass
         return f(*args, **kwargs)
     return decorated
 
@@ -749,6 +801,20 @@ def stripe_webhook():
                     db.execute("UPDATE users SET subscription_status='past_due', updated_at=CURRENT_TIMESTAMP WHERE id=?",
                                (user['id'],))
                     db.commit()
+
+        elif event_type == 'invoice.paid':
+            sub_id = obj.get('subscription')
+            amount = obj.get('amount_paid', 0)
+            currency = obj.get('currency', 'usd')
+            invoice_id = obj.get('id', '')
+            hosted_invoice_url = obj.get('hosted_invoice_url', '')
+            if sub_id:
+                user = db.execute('SELECT id FROM users WHERE stripe_subscription_id=?', (sub_id,)).fetchone()
+                if user:
+                    db.execute('''INSERT OR IGNORE INTO invoices (id, user_id, stripe_invoice_id, amount, currency,
+                                  status, hosted_invoice_url, created_at) VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)''',
+                               (str(uuid.uuid4()), user['id'], invoice_id, amount, currency, 'paid', hosted_invoice_url))
+                    db.commit()
     finally:
         db.close()
 
@@ -839,6 +905,7 @@ def api_list_interviews():
 
 @app.route('/api/interviews', methods=['POST'])
 @require_auth
+@check_trial_status
 @require_role('admin', 'recruiter')
 def api_create_interview():
     data = request.get_json()
@@ -1125,8 +1192,7 @@ def _try_send_candidate_email(db, user_id, candidate_id, email_type, build_fn, *
     try:
         from email_service import send_email, get_smtp_config
         smtp_config = get_smtp_config(db, user_id)
-        if not smtp_config:
-            return  # SMTP not configured — silently skip
+        # smtp_config may be None — send_email() will fall back to SendGrid or log
 
         subject, html_body = build_fn(smtp_config=smtp_config, **kwargs)
         success, error = send_email(smtp_config, kwargs.get('to_email', ''), subject, html_body)
@@ -1228,6 +1294,7 @@ def api_list_candidates():
 
 @app.route('/api/candidates', methods=['POST'])
 @require_auth
+@check_trial_status
 def api_create_candidate():
     data = request.get_json()
     db = get_db()
@@ -1279,6 +1346,7 @@ def api_create_candidate():
 
 @app.route('/api/candidates/bulk', methods=['POST'])
 @require_auth
+@check_trial_status
 def api_bulk_create_candidates():
     data = request.get_json()
     interview_id = data.get('interview_id')
@@ -3948,6 +4016,50 @@ def readiness_check():
     all_ok = all(v == 'ok' for v in checks.values())
     return jsonify({'ready': all_ok, 'checks': checks}), 200 if all_ok else 503
 
+@app.route('/api/system/monitoring', methods=['GET'])
+@require_auth
+@require_role('admin')
+def api_system_monitoring_c29():
+    """System monitoring dashboard data — admin only."""
+    db = get_db()
+
+    now = datetime.utcnow()
+    day_ago = (now - timedelta(days=1)).isoformat()
+    week_ago = (now - timedelta(days=7)).isoformat()
+
+    stats = {
+        'uptime_seconds': int(time.time() - _app_start_time),
+        'environment': os.environ.get('FLASK_ENV', 'development'),
+        'version': app_config.VERSION,
+        'config': {
+            'stripe_configured': bool(STRIPE_SECRET_KEY),
+            'email_backend': 'sendgrid' if os.environ.get('SENDGRID_API_KEY') else ('smtp' if os.environ.get('SMTP_HOST') else 'log'),
+            'storage_backend': app_config.STORAGE_BACKEND,
+            'cors_origins': os.environ.get('CORS_ORIGINS', '*'),
+        },
+        'usage_24h': {
+            'new_users': db.execute('SELECT COUNT(*) as cnt FROM users WHERE created_at>=?', (day_ago,)).fetchone()['cnt'],
+            'new_candidates': db.execute('SELECT COUNT(*) as cnt FROM candidates WHERE created_at>=?', (day_ago,)).fetchone()['cnt'],
+            'completed_interviews': db.execute("SELECT COUNT(*) as cnt FROM candidates WHERE status='completed' AND completed_at>=?", (day_ago,)).fetchone()['cnt'],
+            'emails_sent': db.execute("SELECT COUNT(*) as cnt FROM email_log WHERE created_at>=? AND status='sent'", (day_ago,)).fetchone()['cnt'] if 'email_log' in [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()] else 0,
+            'emails_failed': db.execute("SELECT COUNT(*) as cnt FROM email_log WHERE created_at>=? AND status='failed'", (day_ago,)).fetchone()['cnt'] if 'email_log' in [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()] else 0,
+        },
+        'usage_7d': {
+            'new_users': db.execute('SELECT COUNT(*) as cnt FROM users WHERE created_at>=?', (week_ago,)).fetchone()['cnt'],
+            'new_candidates': db.execute('SELECT COUNT(*) as cnt FROM candidates WHERE created_at>=?', (week_ago,)).fetchone()['cnt'],
+            'completed_interviews': db.execute("SELECT COUNT(*) as cnt FROM candidates WHERE status='completed' AND completed_at>=?", (week_ago,)).fetchone()['cnt'],
+        },
+        'totals': {
+            'total_users': db.execute('SELECT COUNT(*) as cnt FROM users').fetchone()['cnt'],
+            'total_interviews': db.execute('SELECT COUNT(*) as cnt FROM interviews').fetchone()['cnt'],
+            'total_candidates': db.execute('SELECT COUNT(*) as cnt FROM candidates').fetchone()['cnt'],
+            'active_trials': db.execute("SELECT COUNT(*) as cnt FROM users WHERE subscription_status='trialing'").fetchone()['cnt'],
+            'paid_subscriptions': db.execute("SELECT COUNT(*) as cnt FROM users WHERE subscription_status='active'").fetchone()['cnt'],
+        }
+    }
+
+    db.close()
+    return jsonify(stats)
 
 # ======================== ENHANCED ANALYTICS (Cycle 11) ========================
 
@@ -6130,6 +6242,32 @@ def api_billing_upgrade():
     return jsonify({'success': True, 'plan': new_plan, 'limits': limits})
 
 
+@app.route('/api/billing/invoices', methods=['GET'])
+@require_auth
+def api_billing_invoices():
+    """Get billing history / invoice list for the current user."""
+    db = get_db()
+    limit = request.args.get('limit', 50, type=int)
+    offset = request.args.get('offset', 0, type=int)
+
+    rows = db.execute(
+        'SELECT id, stripe_invoice_id, amount, currency, status, hosted_invoice_url, created_at FROM invoices WHERE user_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        (g.user_id, limit, offset)
+    ).fetchall()
+    total = db.execute(
+        'SELECT COUNT(*) FROM invoices WHERE user_id=?',
+        (g.user_id,)
+    ).fetchone()[0]
+    db.close()
+
+    return jsonify({
+        'invoices': [dict(r) for r in rows],
+        'total': total,
+        'limit': limit,
+        'offset': offset
+    })
+
+
 # ======================== CYCLE 15: ACTIVITY FEED & NOTIFICATIONS ========================
 
 def _log_activity(db, account_id, actor_id, actor_name, action, entity_type=None, entity_id=None, entity_name=None, details=None):
@@ -8260,6 +8398,66 @@ def api_fmo_stats():
         'plan_distribution': plan_dist
     })
 
+@app.route('/api/fmo/dashboard', methods=['GET'])
+@require_auth
+@require_fmo_admin
+def api_fmo_dashboard_c29():
+    """FMO dashboard — overview of all agencies under this FMO."""
+    db = get_db()
+
+    # Get all agencies under this FMO
+    agencies = db.execute('''
+        SELECT id, name, agency_name, email, plan, subscription_status, trial_ends_at,
+               created_at, onboarding_completed
+        FROM users WHERE fmo_parent_id=?
+        ORDER BY created_at DESC
+    ''', (g.user_id,)).fetchall()
+
+    agency_list = []
+    total_candidates = 0
+    total_interviews = 0
+    active_count = 0
+    trial_count = 0
+    paid_count = 0
+
+    for a in agencies:
+        a_dict = dict(a)
+        # Get usage stats for each agency
+        stats = db.execute('''
+            SELECT
+                (SELECT COUNT(*) FROM interviews WHERE user_id=?) as interview_count,
+                (SELECT COUNT(*) FROM candidates WHERE user_id=?) as candidate_count,
+                (SELECT COUNT(*) FROM candidates WHERE user_id=? AND status='completed') as completed_count
+        ''', (a_dict['id'], a_dict['id'], a_dict['id'])).fetchone()
+
+        a_dict['interview_count'] = stats['interview_count']
+        a_dict['candidate_count'] = stats['candidate_count']
+        a_dict['completed_count'] = stats['completed_count']
+
+        total_interviews += stats['interview_count']
+        total_candidates += stats['candidate_count']
+
+        if a_dict.get('subscription_status') == 'active':
+            paid_count += 1
+            active_count += 1
+        elif a_dict.get('subscription_status') == 'trialing':
+            trial_count += 1
+            active_count += 1
+
+        agency_list.append(a_dict)
+
+    db.close()
+    return jsonify({
+        'summary': {
+            'total_agencies': len(agency_list),
+            'active_agencies': active_count,
+            'trial_agencies': trial_count,
+            'paid_agencies': paid_count,
+            'total_interviews': total_interviews,
+            'total_candidates': total_candidates,
+        },
+        'agencies': agency_list
+    })
 
 # ======================== CYCLE 31: JOB BOARDS & PIPELINE POWER-UP ========================
 
@@ -10742,9 +10940,12 @@ def api_upload_video_local(asset_id):
 def api_stream_video(asset_id):
     """Get a streaming/playback URL for a video asset."""
     db = get_db()
+    # Check direct ownership OR team membership
     asset = db.execute("""SELECT va.* FROM video_assets va
                           JOIN candidates c ON va.candidate_id = c.id
-                          WHERE va.id=? AND c.user_id=?""", (asset_id, g.user_id)).fetchone()
+                          WHERE va.id=? AND (c.user_id=? OR c.user_id IN
+                            (SELECT account_id FROM team_members WHERE user_id=? AND status='active'))""",
+                       (asset_id, g.user_id, g.user_id)).fetchone()
     if not asset:
         db.close()
         return jsonify({'error': 'Video not found'}), 404
@@ -10752,10 +10953,10 @@ def api_stream_video(asset_id):
     asset_d = dict(asset)
 
     if asset_d['storage_backend'] == 's3' and app_config.S3_BUCKET:
-        # Generate presigned GET URL
-        key = asset_d.get('transcoded_key') or asset_d['storage_key']
-        stream_url = f"https://{app_config.S3_BUCKET}.s3.{app_config.S3_REGION}.amazonaws.com/{key}"
-        expires_at = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+        # Generate presigned GET URL using storage service
+        s3_key = asset_d.get('transcoded_key') or asset_d['storage_key']
+        stream_url = storage.get_url(s3_key)
+        expires_at = (datetime.utcnow() + timedelta(seconds=app_config.S3_PRESIGN_EXPIRY)).isoformat()
     else:
         stream_url = asset_d['storage_key']  # local relative path
         expires_at = None

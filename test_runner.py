@@ -278,6 +278,43 @@ def run_tests():
         r = api("GET", "/api/system/performance", token=token)
         test("Performance metrics", S, r.status_code == 200, f"Status {r.status_code}")
 
+        # === Section: Billing & Plans ===
+        S = "Billing"
+        print(f"\n\U0001f4cb {S}")
+        r = api("GET", "/api/billing/status", token=token)
+        test("Billing status", S, r.status_code == 200, f"Plan: {r.json().get('plan')}")
+
+        r = api("GET", "/api/billing/plans", token=token)
+        test("Plan list", S, r.status_code == 200, f"Status {r.status_code}")
+
+        r = api("GET", "/api/billing/usage", token=token)
+        test("Usage stats", S, r.status_code == 200, f"Trial: {r.json().get('is_trial')}")
+
+        r = api("POST", "/api/billing/check-feature", token=token, csrf=csrf, json={"feature": "ai_scoring"})
+        test("Feature check", S, r.status_code in (200, 403), f"Status {r.status_code}")
+
+        r = api("GET", "/api/billing/invoices", token=token)
+        test("Invoice history", S, r.status_code == 200, f"Count: {len(r.json().get('invoices', []))}")
+
+        # === Section: Onboarding ===
+        S = "Onboarding"
+        print(f"\n\U0001f4cb {S}")
+        r = api("GET", "/api/onboarding/status", token=token)
+        test("Onboarding status", S, r.status_code == 200, f"Progress: {r.json().get('progress_pct', 0)}%")
+        test("Onboarding steps", S, 'steps' in r.json(), f"Steps: {list(r.json().get('steps', {}).keys())[:3]}")
+
+        r = api("POST", "/api/onboarding/complete", token=token, csrf=csrf)
+        test("Complete onboarding", S, r.status_code == 200, f"Status {r.status_code}")
+
+        # === Section: Monitoring ===
+        S = "Monitoring"
+        print(f"\n\U0001f4cb {S}")
+        r = api("GET", "/api/system/monitoring", token=token)
+        test("System monitoring", S, r.status_code in (200, 403), f"Status {r.status_code}")
+
+        r = api("GET", "/api/health")
+        test("Health check", S, r.status_code == 200, f"Status: {r.json().get('status')}")
+
         # === Section: Pages ===
         S = "Pages"
         print(f"\n\U0001f4cb {S}")
