@@ -96,7 +96,14 @@ class PgConnectionWrapper:
         stmts = [s.strip() for s in sql.split(';') if s.strip() and not s.strip().startswith('--')]
         for stmt in stmts:
             if stmt:
-                cur.execute(self._convert_sql(stmt))
+                try:
+                    cur.execute(self._convert_sql(stmt))
+                except Exception:
+                    # In autocommit mode, each statement is independent.
+                    # In transaction mode, we need a new cursor after failure.
+                    if not self._conn.autocommit:
+                        self._conn.rollback()
+                    cur = self._conn.cursor(cursor_factory=RealDictCursor)
         return PgCursorWrapper(cur)
 
     def commit(self):
@@ -110,11 +117,13 @@ class PgConnectionWrapper:
         return self._conn.cursor(cursor_factory=RealDictCursor)
 
 
-def get_db():
+def get_db(autocommit=False):
     if USE_POSTGRES:
         import psycopg2
         import psycopg2.extras
         conn = psycopg2.connect(DATABASE_URL)
+        if autocommit:
+            conn.autocommit = True
         return PgConnectionWrapper(conn)
     else:
         conn = sqlite3.connect(DB_PATH)
@@ -124,7 +133,7 @@ def get_db():
         return conn
 
 def init_db():
-    conn = get_db()
+    conn = get_db(autocommit=True)
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -2505,7 +2514,10 @@ def init_db():
         except:
             pass
 
-    conn.commit()
+    try:
+        conn.commit()
+    except:
+        pass  # autocommit mode doesn't need explicit commit
     conn.close()
 
 if __name__ == '__main__':
