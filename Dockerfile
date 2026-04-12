@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     curl \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
