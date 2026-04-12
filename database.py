@@ -1391,9 +1391,9 @@ def init_db():
     if existing_plans == 0:
         import uuid as _uuid
         plans = [
-            (_uuid.uuid4().hex, 'Starter', 'starter', 'Perfect for solo agents', 0, 0, 5, 50, 2, 5, '["basic_interviews","email_support"]', 0),
-            (_uuid.uuid4().hex, 'Professional', 'professional', 'For growing agencies', 4900, 47000, 25, 500, 10, 50, '["ai_scoring","white_label","bulk_ops","priority_support"]', 1),
-            (_uuid.uuid4().hex, 'Enterprise', 'enterprise', 'For FMOs and large agencies', 14900, 143000, -1, -1, -1, 500, '["ai_scoring","white_label","bulk_ops","custom_domain","api_access","sso","dedicated_support"]', 2),
+            (_uuid.uuid4().hex, 'Starter', 'starter', 'Essential recruiting tools for individual agencies', 9900, 95000, 5, 50, 3, 5, '["basic_interviews","email_support"]', 0),
+            (_uuid.uuid4().hex, 'Professional', 'professional', 'Full-featured recruiting suite with AI and integrations', 17900, 172000, 30, 250, 15, 50, '["ai_scoring","white_label","bulk_ops","api_access","integrations","advanced_analytics","priority_support"]', 1),
+            (_uuid.uuid4().hex, 'Enterprise', 'enterprise', 'Unlimited recruiting power for large organizations', 29900, 287000, -1, -1, -1, 500, '["ai_scoring","white_label","bulk_ops","api_access","integrations","advanced_analytics","custom_domain","sso","dedicated_support"]', 2),
         ]
         for p in plans:
             conn.execute("""INSERT INTO subscription_plans

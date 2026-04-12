@@ -1360,8 +1360,14 @@ def api_bulk_create_candidates():
     candidates_data = data.get('candidates', [])
     db = get_db()
 
-    # ── Subscription limit check (soft block) ──
+    # Cycle 31: Feature gate — bulk_ops
     user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    bulk_allowed, upgrade = check_feature_access(user, 'bulk_ops')
+    if not bulk_allowed:
+        db.close()
+        return soft_block_response('bulk_ops')
+
+    # ── Subscription limit check (soft block) ──
     month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     count = db.execute('SELECT COUNT(*) as cnt FROM candidates WHERE user_id=? AND created_at >= ?',
                        (g.user_id, month_start)).fetchone()['cnt']
@@ -1723,6 +1729,22 @@ from ai_service import (
 def api_score_candidate(candidate_id):
     """Score a candidate using Claude AI (or realistic mock fallback)."""
     db = get_db()
+    # Cycle 31: Feature gate — ai_scoring + usage quota
+    user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    allowed_feature, upgrade = check_feature_access(user, 'ai_scoring')
+    if not allowed_feature:
+        db.close()
+        return soft_block_response('ai_scoring')
+    # Check AI usage quota
+    ai_allowed, ai_used, ai_limit = track_ai_usage(g.user_id)
+    if not ai_allowed:
+        db.close()
+        return jsonify({
+            'error': 'ai_quota_reached',
+            'message': f'You\'ve used all {ai_limit} AI interactions this month. Upgrade your plan for more.',
+            'used': ai_used, 'limit': ai_limit, 'upgrade_url': '/billing', 'soft_block': True
+        }), 403
+
     candidate = db.execute(
         'SELECT c.*, i.title, i.position FROM candidates c JOIN interviews i ON c.interview_id=i.id WHERE c.id=? AND c.user_id=?',
         (candidate_id, g.user_id)
@@ -1784,6 +1806,8 @@ def api_score_candidate(candidate_id):
                (avg_score, summary, json.dumps(scores_data), 'reviewed', candidate_id))
     db.commit()
     db.close()
+    # Cycle 31: Record AI usage after successful scoring
+    record_ai_interaction(g.user_id, 'ai_scoring')
     return jsonify({
         'success': True,
         'score': avg_score,
@@ -2051,6 +2075,18 @@ def api_add_team_member():
         return jsonify({'error': 'Role must be admin, recruiter, or reviewer'}), 400
 
     db = get_db()
+    # Cycle 31: Team seat limit enforcement
+    user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    team_count = db.execute('SELECT COUNT(*) as cnt FROM team_members WHERE account_id=? AND status=?',
+                            (g.user_id, 'active')).fetchone()['cnt']
+    allowed, limit, remaining = check_plan_limit(user, 'team_seats', team_count + 1)  # +1 for account owner
+    if not allowed:
+        db.close()
+        return jsonify({
+            'error': 'team_seat_limit_reached',
+            'message': f'You\'ve reached your team seat limit ({limit} members). Upgrade your plan to add more team members.',
+            'limit': limit, 'used': team_count + 1, 'upgrade_url': '/billing', 'soft_block': True
+        }), 403
     # Check if user already exists
     user = db.execute('SELECT id FROM users WHERE email=?', (email,)).fetchone()
     if user:
@@ -3123,7 +3159,14 @@ def api_list_webhooks():
 @require_auth
 @require_role('admin')
 def api_create_webhook():
-    """Register a new webhook (persistent DB storage)."""
+    """Register a new webhook (persistent DB storage). Requires Professional+ plan."""
+    # Cycle 31: Feature gate — integrations
+    db_check = get_db()
+    user = dict(db_check.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    db_check.close()
+    allowed, upgrade = check_feature_access(user, 'integrations')
+    if not allowed:
+        return soft_block_response('integrations')
     data = request.get_json()
     url = (data.get('url') or '').strip()
     events = data.get('events', [])
@@ -3941,7 +3984,14 @@ def api_get_branding():
 @require_auth
 @require_role('admin')
 def api_update_branding():
-    """Update white-label branding settings."""
+    """Update white-label branding settings. Requires Professional+ plan."""
+    # Cycle 31: Feature gate — white_label
+    db_check = get_db()
+    user = dict(db_check.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    db_check.close()
+    allowed, upgrade = check_feature_access(user, 'white_label')
+    if not allowed:
+        return soft_block_response('white_label')
     data = request.get_json()
     db = get_db()
     fields = ['brand_color', 'brand_secondary_color', 'brand_accent_color', 'agency_logo_url',
@@ -4323,10 +4373,16 @@ def require_api_key(f):
 @require_auth
 @require_role('admin')
 def api_create_api_key():
-    """Generate a new API key for the current user."""
+    """Generate a new API key for the current user. Requires Professional+ plan."""
+    # Cycle 31: Feature gate — api_access
+    db = get_db()
+    user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    allowed, upgrade = check_feature_access(user, 'api_access')
+    if not allowed:
+        db.close()
+        return soft_block_response('api_access')
     import secrets as _secrets
     api_key = f"cv_{_secrets.token_hex(24)}"
-    db = get_db()
     db.execute("UPDATE users SET api_key=?, api_key_created_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                (api_key, g.user_id))
     db.commit()
@@ -4707,6 +4763,14 @@ def api_delete_integration(integration_id):
 @require_role('admin', 'recruiter')
 def api_bulk_invite_csv():
     """Bulk invite candidates via CSV data. Expects JSON with interview_id and candidates array."""
+    # Cycle 31: Feature gate — bulk_ops
+    db_check = get_db()
+    user_check = dict(db_check.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    db_check.close()
+    bulk_allowed, upgrade = check_feature_access(user_check, 'bulk_ops')
+    if not bulk_allowed:
+        return soft_block_response('bulk_ops')
+
     data = request.get_json()
     interview_id = data.get('interview_id', '')
     candidates_data = data.get('candidates', [])
@@ -4757,7 +4821,18 @@ def api_bulk_invite_csv():
 @require_auth
 @require_role('admin', 'recruiter')
 def api_bulk_score():
-    """Trigger AI scoring for multiple candidates at once."""
+    """Trigger AI scoring for multiple candidates at once. Requires Professional+ and bulk_ops."""
+    # Cycle 31: Feature gates — ai_scoring + bulk_ops
+    db_check = get_db()
+    user_check = dict(db_check.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    db_check.close()
+    ai_ok, _ = check_feature_access(user_check, 'ai_scoring')
+    if not ai_ok:
+        return soft_block_response('ai_scoring')
+    bulk_ok, _ = check_feature_access(user_check, 'bulk_ops')
+    if not bulk_ok:
+        return soft_block_response('bulk_ops')
+
     data = request.get_json()
     candidate_ids = data.get('candidate_ids', [])
     if not candidate_ids:
@@ -6119,36 +6194,110 @@ def page_security():
 
 
 # ======================== CYCLE 15: BILLING ENFORCEMENT & PLAN GATING ========================
+# Updated in Cycle 31: RSC-level pricing ($99/$179/$299), AI quotas, full feature enforcement
 
 PLAN_LIMITS = {
-    'free':         {'candidates_per_month': 5,   'interviews': 1,  'api_access': False, 'white_label': False, 'bulk_ops': False, 'integrations': False, 'video_storage_mb': 500,   'team_seats': 1,  'ai_scoring': False, 'price': 0},
-    'essentials':   {'candidates_per_month': 50,  'interviews': 5,  'api_access': False, 'white_label': False, 'bulk_ops': True,  'integrations': False, 'video_storage_mb': 5000,  'team_seats': 3,  'ai_scoring': False, 'price': 79},
-    'professional': {'candidates_per_month': 200, 'interviews': 25, 'api_access': True,  'white_label': True,  'bulk_ops': True,  'integrations': True,  'video_storage_mb': 25000, 'team_seats': 10, 'ai_scoring': True,  'price': 149},
-    'enterprise':   {'candidates_per_month': -1,  'interviews': -1, 'api_access': True,  'white_label': True,  'bulk_ops': True,  'integrations': True,  'video_storage_mb': -1,    'team_seats': -1, 'ai_scoring': True,  'price': 299},
-    # Legacy plan aliases — map old names to new tiers
-    'starter':      {'candidates_per_month': 50,  'interviews': 5,  'api_access': False, 'white_label': False, 'bulk_ops': True,  'integrations': False, 'video_storage_mb': 5000,  'team_seats': 3,  'ai_scoring': False, 'price': 79},
-    'pro':          {'candidates_per_month': 200, 'interviews': 25, 'api_access': True,  'white_label': True,  'bulk_ops': True,  'integrations': True,  'video_storage_mb': 25000, 'team_seats': 10, 'ai_scoring': True,  'price': 149},
+    'starter':      {'candidates_per_month': 50,  'interviews': 5,  'api_access': False, 'white_label': False, 'bulk_ops': False, 'integrations': False, 'video_storage_mb': 5000,  'team_seats': 3,  'ai_scoring': False, 'ai_interactions_per_month': 0,   'advanced_analytics': False, 'price': 99},
+    'professional': {'candidates_per_month': 250, 'interviews': 30, 'api_access': True,  'white_label': True,  'bulk_ops': True,  'integrations': True,  'video_storage_mb': 50000, 'team_seats': 15, 'ai_scoring': True,  'ai_interactions_per_month': 150, 'advanced_analytics': True,  'price': 179},
+    'enterprise':   {'candidates_per_month': -1,  'interviews': -1, 'api_access': True,  'white_label': True,  'bulk_ops': True,  'integrations': True,  'video_storage_mb': -1,    'team_seats': -1, 'ai_scoring': True,  'ai_interactions_per_month': -1,  'advanced_analytics': True,  'price': 299},
+    # Trial maps to Professional features for 30 days
+    'trial':        {'candidates_per_month': 250, 'interviews': 30, 'api_access': True,  'white_label': True,  'bulk_ops': True,  'integrations': True,  'video_storage_mb': 50000, 'team_seats': 15, 'ai_scoring': True,  'ai_interactions_per_month': 150, 'advanced_analytics': True,  'price': 0},
+    # Legacy aliases — map to closest new tier
+    'free':         {'candidates_per_month': 50,  'interviews': 5,  'api_access': False, 'white_label': False, 'bulk_ops': False, 'integrations': False, 'video_storage_mb': 5000,  'team_seats': 3,  'ai_scoring': False, 'ai_interactions_per_month': 0,   'advanced_analytics': False, 'price': 0},
+    'essentials':   {'candidates_per_month': 50,  'interviews': 5,  'api_access': False, 'white_label': False, 'bulk_ops': False, 'integrations': False, 'video_storage_mb': 5000,  'team_seats': 3,  'ai_scoring': False, 'ai_interactions_per_month': 0,   'advanced_analytics': False, 'price': 99},
+    'pro':          {'candidates_per_month': 250, 'interviews': 30, 'api_access': True,  'white_label': True,  'bulk_ops': True,  'integrations': True,  'video_storage_mb': 50000, 'team_seats': 15, 'ai_scoring': True,  'ai_interactions_per_month': 150, 'advanced_analytics': True,  'price': 179},
+}
+
+# Upgrade recommendation mapping — tells users which plan unlocks the feature they need
+FEATURE_UPGRADE_MAP = {
+    'ai_scoring':          {'min_plan': 'professional', 'label': 'AI Candidate Scoring'},
+    'api_access':          {'min_plan': 'professional', 'label': 'API Access'},
+    'white_label':         {'min_plan': 'professional', 'label': 'White Label Branding'},
+    'bulk_ops':            {'min_plan': 'professional', 'label': 'Bulk Operations'},
+    'integrations':        {'min_plan': 'professional', 'label': 'Webhooks & Integrations'},
+    'advanced_analytics':  {'min_plan': 'professional', 'label': 'Advanced Analytics'},
 }
 
 def check_plan_limit(user_dict, limit_key, current_count):
     """Check if user is within their plan limit. Returns (allowed, limit, remaining).
     limit of -1 means unlimited."""
-    plan = user_dict.get('plan', 'free') or 'free'
+    plan = user_dict.get('plan', 'starter') or 'starter'
     # FMO admins bypass all limits
     if user_dict.get('is_fmo_admin'):
         return True, -1, -1
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['free'])
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['starter'])
     limit = limits.get(limit_key, 0)
     if limit == -1:
         return True, -1, -1
     remaining = max(0, limit - current_count)
     return current_count < limit, limit, remaining
 
+def check_feature_access(user_dict, feature_key):
+    """Check if a boolean feature is enabled on the user's plan.
+    Returns (allowed, upgrade_info). FMO admins always pass."""
+    if user_dict.get('is_fmo_admin'):
+        return True, None
+    plan = user_dict.get('plan', 'starter') or 'starter'
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['starter'])
+    allowed = limits.get(feature_key, False)
+    if allowed:
+        return True, None
+    upgrade = FEATURE_UPGRADE_MAP.get(feature_key, {'min_plan': 'professional', 'label': feature_key})
+    return False, upgrade
+
+def soft_block_response(feature_key, feature_label=None):
+    """Generate a consistent soft-block JSON response for gated features."""
+    upgrade = FEATURE_UPGRADE_MAP.get(feature_key, {'min_plan': 'professional', 'label': feature_label or feature_key})
+    return jsonify({
+        'error': 'feature_not_available',
+        'feature': feature_key,
+        'message': f'{upgrade["label"]} is available on the {upgrade["min_plan"].title()} plan and above. Upgrade to unlock this feature.',
+        'upgrade_plan': upgrade['min_plan'],
+        'upgrade_url': '/billing',
+        'soft_block': True
+    }), 403
+
+def track_ai_usage(user_id, interaction_type='ai_scoring'):
+    """Record an AI interaction and check if user is within monthly quota.
+    Returns (allowed, used, limit). Does not block — caller decides."""
+    db = get_db()
+    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    # Count AI interactions this month
+    row = db.execute(
+        "SELECT COUNT(*) as cnt FROM usage_records WHERE user_id=? AND metric=? AND recorded_at >= ?",
+        (user_id, 'ai_interaction', month_start)
+    ).fetchone()
+    used = row['cnt'] if isinstance(row, dict) else row[0]
+    # Get user plan limit
+    user = db.execute('SELECT plan, is_fmo_admin FROM users WHERE id=?', (user_id,)).fetchone()
+    user_d = dict(user) if user else {}
+    if user_d.get('is_fmo_admin'):
+        db.close()
+        return True, used, -1
+    plan = user_d.get('plan', 'starter') or 'starter'
+    limit = PLAN_LIMITS.get(plan, PLAN_LIMITS['starter']).get('ai_interactions_per_month', 0)
+    if limit == -1:
+        db.close()
+        return True, used, -1
+    db.close()
+    return used < limit, used, limit
+
+def record_ai_interaction(user_id, interaction_type='ai_scoring'):
+    """Record an AI interaction in usage_records."""
+    db = get_db()
+    db.execute(
+        "INSERT INTO usage_records (id, user_id, metric, quantity, recorded_at) VALUES (?, ?, ?, 1, ?)",
+        (str(uuid.uuid4()), user_id, 'ai_interaction', datetime.utcnow().isoformat())
+    )
+    db.commit()
+    db.close()
+
 @app.route('/api/billing/plans', methods=['GET'])
 @require_auth
 def api_billing_plans():
-    """Get available plans and their limits."""
-    return jsonify({'plans': PLAN_LIMITS})
+    """Get available plans and their limits (excludes legacy aliases)."""
+    display_plans = {k: v for k, v in PLAN_LIMITS.items() if k in ('starter', 'professional', 'enterprise')}
+    return jsonify({'plans': display_plans})
 
 
 @app.route('/api/billing/usage', methods=['GET'])
@@ -6157,8 +6306,8 @@ def api_billing_usage():
     """Get current billing usage for the account — candidates, interviews, team, storage, trial."""
     db = get_db()
     user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
-    plan = user.get('plan', 'free') or 'free'
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['free'])
+    plan = user.get('plan', 'starter') or 'starter'
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['starter'])
 
     # Count candidates this month
     month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
@@ -6199,6 +6348,10 @@ def api_billing_usage():
     interview_limit = limits.get('interviews', -1)
     storage_limit = limits.get('video_storage_mb', 500)
     seat_limit = limits.get('team_seats', 1)
+    ai_limit = limits.get('ai_interactions_per_month', 0)
+
+    # Count AI interactions this month
+    ai_allowed, ai_used, ai_lim = track_ai_usage(g.user_id)
 
     return jsonify({
         'plan': plan,
@@ -6216,12 +6369,17 @@ def api_billing_usage():
         'storage_used_mb': storage_used_mb,
         'storage_limit_mb': storage_limit,
         'storage_pct': min(100, round(storage_used_mb / max(storage_limit, 1) * 100)) if storage_limit > 0 else 0,
+        'ai_interactions_used': ai_used,
+        'ai_interactions_limit': ai_lim,
+        'ai_interactions_remaining': max(0, ai_lim - ai_used) if ai_lim > 0 else -1,
+        'ai_interactions_pct': min(100, round(ai_used / max(ai_lim, 1) * 100)) if ai_lim > 0 else 0,
         'features': {
             'ai_scoring': limits.get('ai_scoring', False),
             'api_access': limits.get('api_access', False),
             'white_label': limits.get('white_label', False),
             'bulk_ops': limits.get('bulk_ops', False),
             'integrations': limits.get('integrations', False),
+            'advanced_analytics': limits.get('advanced_analytics', False),
         },
         'is_trial': is_trial,
         'trial_ends_at': trial_ends,
@@ -6240,15 +6398,17 @@ def api_check_feature():
     db = get_db()
     user = db.execute('SELECT plan FROM users WHERE id=?', (g.user_id,)).fetchone()
     db.close()
-    plan = user['plan'] or 'free'
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['free'])
+    plan = user['plan'] or 'starter'
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['starter'])
     allowed = limits.get(feature, True)
+    upgrade_info = FEATURE_UPGRADE_MAP.get(feature, {})
     return jsonify({
         'feature': feature,
         'allowed': bool(allowed),
         'plan': plan,
         'upgrade_required': not allowed,
-        'minimum_plan': next((p for p, l in PLAN_LIMITS.items() if l.get(feature)), 'enterprise')
+        'minimum_plan': upgrade_info.get('min_plan', 'professional'),
+        'upgrade_url': '/billing'
     })
 
 
