@@ -18,6 +18,7 @@ from storage_service import create_storage
 init_db()
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
+_app_start_time = time.time()
 
 # Security: Require SECRET_KEY in production
 _default_secret = 'channelview-dev-secret-change-in-prod'
@@ -11185,7 +11186,7 @@ def api_health_check():
         'environment': os.environ.get('FLASK_ENV', 'development'),
         'database': 'connected' if db_ok else 'disconnected',
         'timestamp': datetime.utcnow().isoformat(),
-        'uptime_seconds': int(time.time() - _app_start_time) if '_app_start_time' in dir() else 0
+        'uptime_seconds': int(time.time() - _app_start_time)
     }), 200 if db_ok else 503
 
 @app.route('/api/system/config', methods=['GET'])
