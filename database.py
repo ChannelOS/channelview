@@ -93,7 +93,14 @@ class PgConnectionWrapper:
     def executescript(self, sql):
         from psycopg2.extras import RealDictCursor
         cur = self._conn.cursor(cursor_factory=RealDictCursor)
-        stmts = [s.strip() for s in sql.split(';') if s.strip() and not s.strip().startswith('--')]
+        # Remove SQL comments before splitting
+        lines = []
+        for line in sql.split('\n'):
+            stripped = line.strip()
+            if not stripped.startswith('--'):
+                lines.append(line)
+        cleaned = '\n'.join(lines)
+        stmts = [s.strip() for s in cleaned.split(';') if s.strip()]
         for stmt in stmts:
             if stmt:
                 try:
@@ -1379,7 +1386,8 @@ def init_db():
             pass
 
     # Seed default subscription plans if none exist
-    existing_plans = conn.execute("SELECT COUNT(*) FROM subscription_plans").fetchone()[0]
+    count_row = conn.execute("SELECT COUNT(*) as cnt FROM subscription_plans").fetchone()
+    existing_plans = count_row['cnt'] if isinstance(count_row, dict) else count_row[0]
     if existing_plans == 0:
         import uuid as _uuid
         plans = [
@@ -1683,7 +1691,8 @@ def init_db():
             pass
 
     # Seed default help articles
-    existing_help = conn.execute("SELECT COUNT(*) FROM help_articles").fetchone()[0]
+    help_row = conn.execute("SELECT COUNT(*) as cnt FROM help_articles").fetchone()
+    existing_help = help_row['cnt'] if isinstance(help_row, dict) else help_row[0]
     if existing_help == 0:
         import uuid
         from datetime import datetime
