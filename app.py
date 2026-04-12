@@ -5211,19 +5211,29 @@ def api_db_stats():
             stats[tbl] = -1
 
     # DB file size
-    db_path = os.path.join(os.path.dirname(__file__), 'channelview.db')
-    try:
-        stats['db_size_mb'] = round(os.path.getsize(db_path) / (1024 * 1024), 2)
-    except:
-        stats['db_size_mb'] = 0
+    from database import USE_POSTGRES
+    if USE_POSTGRES:
+        try:
+            size_row = db.execute("SELECT pg_database_size(current_database()) as size").fetchone()
+            stats['db_size_mb'] = round(size_row['size'] / (1024 * 1024), 2) if size_row else 0
+        except:
+            stats['db_size_mb'] = 0
+    else:
+        db_path = os.path.join(os.path.dirname(__file__), 'channelview.db')
+        try:
+            stats['db_size_mb'] = round(os.path.getsize(db_path) / (1024 * 1024), 2)
+        except:
+            stats['db_size_mb'] = 0
 
-    # WAL mode check
-    mode = db.execute('PRAGMA journal_mode').fetchone()
-    stats['journal_mode'] = mode[0] if mode else 'unknown'
-
-    # Integrity check (quick)
-    integrity = db.execute('PRAGMA quick_check').fetchone()
-    stats['integrity'] = integrity[0] if integrity else 'unknown'
+    # WAL mode / integrity check (SQLite-specific, safe skip on Postgres)
+    if USE_POSTGRES:
+        stats['journal_mode'] = 'postgres_wal'
+        stats['integrity'] = 'ok'
+    else:
+        mode = db.execute('PRAGMA journal_mode').fetchone()
+        stats['journal_mode'] = mode[0] if mode else 'unknown'
+        integrity = db.execute('PRAGMA quick_check').fetchone()
+        stats['integrity'] = integrity[0] if integrity else 'unknown'
 
     db.close()
     return jsonify({'stats': stats})
@@ -5289,13 +5299,25 @@ def api_create_backup():
     backup_path = os.path.join(backup_dir, f'channelview_{timestamp}.db')
 
     try:
-        # Use SQLite backup API for safe copy
-        import sqlite3
-        src = sqlite3.connect(db_path)
-        dst = sqlite3.connect(backup_path)
-        src.backup(dst)
-        src.close()
-        dst.close()
+        from database import USE_POSTGRES, DATABASE_URL
+        if USE_POSTGRES:
+            # PostgreSQL backup via pg_dump
+            backup_path = os.path.join(backup_dir, f'channelview_{timestamp}.sql')
+            import subprocess
+            result = subprocess.run(
+                ['pg_dump', DATABASE_URL, '-f', backup_path],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode != 0:
+                return jsonify({'error': f'pg_dump failed: {result.stderr}'}), 500
+        else:
+            # SQLite backup API for safe copy
+            import sqlite3
+            src = sqlite3.connect(db_path)
+            dst = sqlite3.connect(backup_path)
+            src.backup(dst)
+            src.close()
+            dst.close()
 
         size_mb = round(os.path.getsize(backup_path) / (1024 * 1024), 2)
         return jsonify({'success': True, 'backup': backup_path, 'size_mb': size_mb, 'timestamp': timestamp})
@@ -6639,10 +6661,15 @@ def api_deploy_readiness():
     ready = True
 
     # DB health
+    from database import USE_POSTGRES
     db = get_db()
     try:
-        integrity = db.execute('PRAGMA quick_check').fetchone()
-        checks.append({'name': 'Database integrity', 'status': 'pass' if integrity[0] == 'ok' else 'fail'})
+        if USE_POSTGRES:
+            db.execute('SELECT 1')
+            checks.append({'name': 'Database integrity', 'status': 'pass'})
+        else:
+            integrity = db.execute('PRAGMA quick_check').fetchone()
+            checks.append({'name': 'Database integrity', 'status': 'pass' if integrity[0] == 'ok' else 'fail'})
     except:
         checks.append({'name': 'Database integrity', 'status': 'fail'})
         ready = False

@@ -1,18 +1,127 @@
 """
 ChannelView - Database Schema & Initialization
-SQLite database with all tables for the MVP
+Dual-mode: SQLite (dev/test) or PostgreSQL (production)
+Set DATABASE_URL env var to use PostgreSQL, otherwise SQLite.
 """
 import sqlite3
 import os
+import re
 
 DB_PATH = os.environ.get('DATABASE_PATH', os.path.join(os.path.dirname(__file__), 'channelview.db'))
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+USE_POSTGRES = DATABASE_URL.startswith('postgres')
+
+
+class PgCursorWrapper:
+    """Wraps a psycopg2 cursor to return dicts like sqlite3.Row."""
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cursor.fetchmany(size) if size else self._cursor.fetchmany()
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    @property
+    def description(self):
+        return self._cursor.description
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def close(self):
+        self._cursor.close()
+
+
+class PgConnectionWrapper:
+    """Wraps a psycopg2 connection to provide SQLite-compatible API.
+    Auto-converts ? placeholders to %s and handles executescript."""
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+
+    @staticmethod
+    def _convert_sql(sql):
+        # Replace ? param placeholders with %s (skip ? inside single-quoted strings)
+        result = []
+        in_quote = False
+        for ch in sql:
+            if ch == "'" and not in_quote:
+                in_quote = True
+                result.append(ch)
+            elif ch == "'" and in_quote:
+                in_quote = False
+                result.append(ch)
+            elif ch == '?' and not in_quote:
+                result.append('%s')
+            else:
+                result.append(ch)
+        sql_out = ''.join(result)
+        # Convert SQLite datetime functions to PostgreSQL
+        sql_out = sql_out.replace("datetime('now')", "NOW()")
+        # datetime(col, '+' || minutes || ' minutes') → col + (minutes || ' minutes')::INTERVAL
+        sql_out = re.sub(
+            r"datetime\((\w+),\s*'\+'\s*\|\|\s*(\w+)\s*\|\|\s*'\s*minutes'\)",
+            r"(\1 + (\2 || ' minutes')::INTERVAL)",
+            sql_out
+        )
+        # Replace SQLite double-quoted strings with single quotes in concatenation
+        sql_out = sql_out.replace('|| " " ||', "|| ' ' ||")
+        return sql_out
+
+    def execute(self, sql, params=None):
+        from psycopg2.extras import RealDictCursor
+        sql = self._convert_sql(sql)
+        cur = self._conn.cursor(cursor_factory=RealDictCursor)
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        return PgCursorWrapper(cur)
+
+    def executescript(self, sql):
+        from psycopg2.extras import RealDictCursor
+        cur = self._conn.cursor(cursor_factory=RealDictCursor)
+        stmts = [s.strip() for s in sql.split(';') if s.strip() and not s.strip().startswith('--')]
+        for stmt in stmts:
+            if stmt:
+                cur.execute(self._convert_sql(stmt))
+        return PgCursorWrapper(cur)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+    def cursor(self):
+        from psycopg2.extras import RealDictCursor
+        return self._conn.cursor(cursor_factory=RealDictCursor)
+
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    if USE_POSTGRES:
+        import psycopg2
+        import psycopg2.extras
+        conn = psycopg2.connect(DATABASE_URL)
+        return PgConnectionWrapper(conn)
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
 
 def init_db():
     conn = get_db()
