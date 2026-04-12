@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  channelview:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - FLASK_ENV=production
+      - CHANNELVIEW_ENV=production
+    volumes:
+      - app_data:/app/data
+      - video_uploads:/app/static/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ssl_certs:/etc/nginx/ssl:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      channelview:
+        condition: service_healthy
+
+  # Certbot for auto-renewing Let's Encrypt certs
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ssl_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  app_data:
+  video_uploads:
+  ssl_certs:
+  certbot_www:
