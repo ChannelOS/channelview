@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ candidate.title }} - Video Interview</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--brand:{{ candidate.brand_color or '#0ace0a' }}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;min-height:100vh;display:flex;flex-direction:column}
+
+/* ===== HEADER ===== */
+.header{padding:12px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222;background:#0a0a0a}
+.header-left{display:flex;align-items:center;gap:14px}
+.header-logo{font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px}
+.header-logo span{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--brand);color:#000;border-radius:6px;font-weight:900}
+.header-divider{width:1px;height:24px;background:#333}
+.header-info{display:flex;flex-direction:column}
+.header-title{font-size:14px;font-weight:600;color:#fff}
+.header-meta{font-size:11px;color:#888}
+.header-right{display:flex;align-items:center;gap:10px}
+.step-pills{display:flex;gap:3px}
+.step-pill{width:28px;height:3px;border-radius:2px;background:#333;transition:background .3s}
+.step-pill.done{background:var(--brand)}
+.step-pill.active{background:var(--brand);opacity:.5}
+.badge-sm{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:rgba(255,255,255,.07);color:#999}
+
+/* ===== PROGRESS ===== */
+.progress-bar{height:3px;background:#1a1a1a;width:100%}
+.progress-fill{height:100%;background:var(--brand);transition:width .4s ease}
+
+.content{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto}
+.step{display:none;width:100%;max-width:940px}
+.step.active{display:block;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== BUTTONS ===== */
+.btn{padding:11px 24px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+.btn-brand{background:var(--brand);color:#000}
+.btn-brand:hover{filter:brightness(1.1)}
+.btn-outline{background:transparent;border:2px solid #333;color:#fff}
+.btn-outline:hover{border-color:#666}
+.btn-danger{background:#ef4444;color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-lg{padding:14px 36px;font-size:16px}
+.controls{display:flex;gap:10px;margin-top:16px;align-items:center;justify-content:center}
+
+/* ===== WELCOME ===== */
+.welcome{text-align:center}
+.welcome h1{font-size:38px;margin-bottom:6px}
+.welcome .job-badge{display:inline-block;padding:5px 16px;border-radius:16px;background:rgba(10,206,10,.08);border:1px solid rgba(10,206,10,.25);color:var(--brand);font-weight:600;font-size:13px;margin-bottom:16px}
+.welcome .candidate-info{color:#aaa;font-size:14px;margin-bottom:6px}
+.welcome p.desc{color:#888;font-size:16px;line-height:1.6;margin-bottom:24px;max-width:540px;margin-left:auto;margin-right:auto}
+.welcome .details{display:inline-flex;gap:20px;margin-bottom:28px;background:#1a1a1a;padding:14px 28px;border-radius:12px}
+.welcome .detail{text-align:center}
+.welcome .detail .val{font-size:18px;font-weight:700;color:var(--brand)}
+.welcome .detail .lbl{font-size:11px;color:#888;margin-top:3px}
+
+/* ===== SETUP STEP ===== */
+.setup-layout{display:flex;gap:28px;align-items:start}
+.setup-preview{flex:1.3;position:relative}
+.setup-preview .cam-box{width:100%;aspect-ratio:16/10;border-radius:14px;overflow:hidden;background:#000;border:2px solid #333;position:relative}
+.setup-preview .cam-box video,.setup-preview .cam-box canvas{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);position:absolute;top:0;left:0}
+.setup-preview .cam-box canvas{z-index:1}
+.setup-panel{flex:1;display:flex;flex-direction:column;gap:16px}
+.setup-card{background:#1a1a1a;border-radius:12px;padding:16px}
+.setup-card h4{font-size:13px;font-weight:600;color:#ccc;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.setup-card select{width:100%;padding:9px 12px;background:#222;border:1px solid #333;color:#fff;border-radius:8px;font-size:13px;font-family:inherit}
+.setup-card select:focus{outline:none;border-color:var(--brand)}
+
+/* Background picker */
+.bg-options{display:flex;gap:12px;flex-wrap:wrap}
+.bg-option{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+.bg-option:hover .bg-thumb{border-color:#666}
+.bg-option.active .bg-thumb{border-color:var(--brand)}
+.bg-thumb{width:56px;height:40px;border-radius:8px;border:2px solid transparent;overflow:hidden;transition:border-color .15s;display:flex;align-items:center;justify-content:center}
+.bg-option img{width:100%;height:100%;object-fit:cover}
+.bg-label{font-size:10px;color:#aaa;font-weight:500;text-align:center;white-space:nowrap}
+
+/* System checks */
+.checks{display:flex;flex-direction:column;gap:6px}
+.check-row{display:flex;align-items:center;gap:8px;font-size:13px}
+.check-icon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.check-icon.pass{background:rgba(10,206,10,.15);color:var(--brand)}
+.check-icon.fail{background:rgba(239,68,68,.15);color:#ef4444}
+.check-icon.loading{background:rgba(255,255,255,.08);color:#888;animation:spin .8s linear infinite}
+
+/* ===== RECORDING ===== */
+.question-step{display:flex;flex-direction:column;align-items:center;text-align:center}
+.question-num{font-size:12px;color:var(--brand);font-weight:600;margin-bottom:6px;letter-spacing:.5px;text-transform:uppercase}
+.question-text{font-size:21px;font-weight:600;margin-bottom:12px;line-height:1.4;max-width:620px}
+.rec-area{position:relative;width:600px;height:420px;border-radius:14px;overflow:hidden;background:#000;margin:6px 0;border:2px solid #333;transition:border-color .3s}
+.rec-area video,.rec-area canvas{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);position:absolute;top:0;left:0}
+.rec-area canvas{z-index:1}
+.rec-area.recording{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.12)}
+.rec-indicator{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.7);padding:5px 12px;border-radius:16px;font-size:12px;font-weight:600;backdrop-filter:blur(4px);z-index:5}
+.rec-dot{width:9px;height:9px;border-radius:50%;background:#ef4444;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.countdown-timer{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);padding:6px 14px;border-radius:16px;font-size:15px;font-weight:700;display:none;align-items:center;gap:5px;backdrop-filter:blur(4px);z-index:5}
+.countdown-timer.warning{color:#f59e0b}
+.countdown-timer.danger{color:#ef4444}
+.timer-bar{position:absolute;bottom:0;left:0;height:3px;background:var(--brand);transition:width .1s linear;z-index:5}
+.timer-bar.warning{background:#f59e0b}
+.timer-bar.danger{background:#ef4444}
+.thinking-overlay{position:absolute;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10}
+.thinking-timer{font-size:68px;font-weight:800;color:var(--brand)}
+.thinking-label{font-size:16px;color:#aaa;margin-top:6px}
+.thinking-sub{font-size:12px;color:#666;margin-top:3px}
+.uploading-overlay{position:absolute;inset:0;background:rgba(0,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10}
+.spinner{width:36px;height:36px;border:3px solid #333;border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== POST-RECORDING REVIEW ===== */
+.review-split{display:flex;gap:24px;align-items:start;width:100%}
+.review-video{flex:1.4}
+.review-video video{width:100%;border-radius:12px;background:#000;aspect-ratio:16/10}
+.review-panel{flex:1;text-align:left}
+.review-panel h3{font-size:13px;color:var(--brand);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.review-panel .q-label{font-size:18px;font-weight:600;margin-bottom:14px;line-height:1.4}
+.review-meta{background:#1a1a1a;border-radius:10px;padding:14px;margin-bottom:14px}
+.review-meta-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}
+.review-meta-row .label{color:#888}
+.review-meta-row .value{font-weight:600}
+.retake-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:14px}
+.retake-badge.avail{background:rgba(10,206,10,.1);color:var(--brand)}
+.retake-badge.none{background:rgba(255,255,255,.05);color:#888}
+.review-actions{display:flex;flex-direction:column;gap:8px}
+.review-actions .btn{width:100%;justify-content:center}
+
+/* ===== FINAL REVIEW ===== */
+.final-review{text-align:center}
+.final-review h2{font-size:26px;margin-bottom:4px}
+.final-review .subtitle{color:#aaa;font-size:14px;margin-bottom:24px}
+.answer-cards{display:flex;flex-direction:column;gap:10px;max-width:680px;margin:0 auto 24px}
+.answer-card{display:flex;gap:14px;background:#1a1a1a;border-radius:10px;padding:12px;text-align:left;align-items:center;cursor:pointer;transition:background .15s;border:1px solid #222}
+.answer-card:hover{background:#222}
+.answer-card .thumb{width:110px;height:72px;border-radius:8px;background:#000;overflow:hidden;flex-shrink:0;position:relative}
+.answer-card .thumb video{width:100%;height:100%;object-fit:cover}
+.answer-card .thumb .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);font-size:22px;opacity:0;transition:opacity .2s}
+.answer-card:hover .thumb .play{opacity:1}
+.answer-card .info{flex:1}
+.answer-card .info .qn{font-size:10px;color:var(--brand);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.answer-card .info .qt{font-size:13px;font-weight:500;margin-top:2px;color:#ddd;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.answer-card .info .qm{font-size:11px;color:#888;margin-top:3px}
+.answer-card .check{width:26px;height:26px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:13px;color:#000;font-weight:700;flex-shrink:0}
+
+/* Video modal */
+.vmodal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:100;display:none;align-items:center;justify-content:center;flex-direction:column}
+.vmodal.show{display:flex}
+.vmodal video{max-width:700px;width:90%;border-radius:12px}
+.vmodal .close{position:absolute;top:16px;right:20px;background:none;border:none;color:#fff;font-size:26px;cursor:pointer}
+.vmodal .modal-q{color:#aaa;font-size:13px;margin-bottom:10px;max-width:580px;text-align:center}
+
+/* ===== THANK YOU ===== */
+.thank-you{max-width:540px;margin:0 auto;text-align:center}
+.thank-you .checkmark{width:88px;height:88px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:44px;margin:0 auto 24px;color:#000;box-shadow:0 0 0 6px rgba(10,206,10,.12)}
+.thank-you h1{font-size:36px;margin-bottom:10px}
+.thank-you .tmsg{color:#aaa;font-size:16px;line-height:1.6;margin-bottom:28px}
+.thank-you .scard{background:#1a1a1a;border-radius:12px;padding:20px;text-align:left;margin-bottom:20px}
+.thank-you .scard h3{font-size:12px;color:var(--brand);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.thank-you .srow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #222;font-size:13px}
+.thank-you .srow:last-child{border-bottom:none}
+.thank-you .srow .sl{color:#888}
+.thank-you .srow .sv{color:#fff;font-weight:600}
+.thank-you .powered{color:#555;font-size:11px;margin-top:20px}
+.thank-you .powered a{color:#777;text-decoration:none}
+
+/* ===== ERROR BANNER ===== */
+.error-banner{position:fixed;top:0;left:0;right:0;background:#ef4444;color:#fff;padding:10px 20px;font-size:13px;font-weight:600;text-align:center;z-index:200;display:none;animation:slideDown .3s ease}
+.error-banner.show{display:block}
+.error-banner .dismiss{background:none;border:none;color:#fff;font-size:18px;cursor:pointer;position:absolute;right:12px;top:50%;transform:translateY(-50%)}
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+
+/* ===== CAMERA PERMISSION OVERLAY ===== */
+.perm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:150;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px}
+.perm-overlay.show{display:flex}
+.perm-icon{font-size:56px;margin-bottom:16px}
+.perm-overlay h2{font-size:24px;margin-bottom:8px}
+.perm-overlay p{color:#aaa;font-size:14px;max-width:420px;line-height:1.5;margin-bottom:20px}
+
+/* ===== RESPONSIVE: TABLET ===== */
+@media(max-width:900px){
+  .setup-layout{flex-direction:column}
+  .setup-preview,.setup-panel{flex:1;width:100%}
+  .rec-area{width:100%;height:auto;aspect-ratio:16/10}
+  .review-split{flex-direction:column}
+  .review-video,.review-panel{flex:1;width:100%}
+  .welcome h1{font-size:28px}
+  .welcome .details{flex-wrap:wrap;gap:12px}
+}
+
+/* ===== RESPONSIVE: MOBILE ===== */
+@media(max-width:600px){
+  .header{padding:8px 14px}
+  .header-logo{font-size:15px}
+  .header-logo span{width:22px;height:22px;font-size:12px}
+  .header-divider{display:none}
+  .header-info .header-title{font-size:12px}
+  .header-info .header-meta{font-size:10px}
+  .step-pills{display:none}
+  .content{padding:14px}
+  .welcome h1{font-size:24px}
+  .welcome .desc{font-size:14px}
+  .welcome .details{padding:10px 16px;gap:10px}
+  .welcome .detail .val{font-size:15px}
+  .welcome .detail .lbl{font-size:10px}
+  .btn-lg{padding:12px 24px;font-size:14px}
+  .rec-area{width:100%;height:auto;aspect-ratio:4/3;border-radius:10px}
+  .question-text{font-size:17px}
+  .question-num{font-size:11px}
+  .setup-card h4{font-size:12px}
+  .setup-card select{font-size:12px;padding:7px 10px}
+  .bg-options{gap:8px}
+  .bg-thumb{width:44px;height:32px}
+  .review-split{flex-direction:column;gap:14px}
+  .review-video video{aspect-ratio:16/10}
+  .review-meta-row{font-size:12px}
+  .answer-card .thumb{width:80px;height:54px}
+  .answer-card .info .qt{font-size:12px}
+  .final-review h2{font-size:22px}
+  .thank-you h1{font-size:26px}
+  .thank-you .checkmark{width:64px;height:64px;font-size:32px}
+  .vmodal video{width:95%;border-radius:8px}
+  .controls{flex-wrap:wrap}
+  .controls .btn{flex:1;min-width:120px;justify-content:center}
+}
+
+/* ===== RESPONSIVE: SMALL MOBILE ===== */
+@media(max-width:380px){
+  .welcome h1{font-size:20px}
+  .rec-area{aspect-ratio:1/1}
+  .btn{padding:9px 16px;font-size:13px}
+}
+
+/* ===== LANDSCAPE MOBILE (short viewport) ===== */
+@media(max-height:500px) and (orientation:landscape){
+  .content{padding:8px}
+  .welcome h1{font-size:20px;margin-bottom:4px}
+  .welcome .details{margin-bottom:12px;padding:8px 16px}
+  .rec-area{height:60vh;width:auto;aspect-ratio:auto}
+  .thinking-timer{font-size:48px}
+}
+</style>
+</head>
+<body>
+
+<!-- ERROR BANNER -->
+<div class="error-banner" id="error-banner">
+  <span id="error-msg"></span>
+  <button class="dismiss" onclick="dismissError()">&times;</button>
+</div>
+
+<!-- CAMERA PERMISSION OVERLAY -->
+<div class="perm-overlay" id="perm-overlay">
+  <div class="perm-icon">&#128247;</div>
+  <h2>Camera & Microphone Access</h2>
+  <p id="perm-msg">ChannelView needs access to your camera and microphone to record your video interview. Please allow access when prompted by your browser.</p>
+  <button class="btn btn-brand btn-lg" id="perm-btn" onclick="retryPermissions()">Allow Access</button>
+  <p style="color:#666;font-size:12px;margin-top:12px" id="perm-help"></p>
+</div>
+
+<!-- HEADER — no insurance/agency language -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo"><span>C</span> ChannelView</div>
+    <div class="header-divider"></div>
+    <div class="header-info">
+      <div class="header-title">{{ candidate.title }}</div>
+      <div class="header-meta">Video Interview · {{ candidate.first_name }} {{ candidate.last_name }}</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="step-pills" id="step-pills"></div>
+    <div class="badge-sm" id="step-badge">Welcome</div>
+  </div>
+</div>
+<div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
+
+<div class="content">
+
+  <!-- ===== STEP 1: WELCOME ===== -->
+  <div class="step active" id="step-welcome">
+    <div class="welcome">
+      <div class="job-badge">{{ candidate.title }}</div>
+      <h1>Hi {{ candidate.first_name }}!</h1>
+      <div class="candidate-info">{{ candidate.email }}</div>
+      {% if candidate.description %}<p class="desc">{{ candidate.description }}</p>{% endif %}
+      {% if candidate.intro_video_path %}
+      <div style="max-width:520px;margin:0 auto 24px;border-radius:14px;overflow:hidden;background:#000;border:2px solid #222">
+        <video id="intro-vid" controls playsinline style="width:100%;display:block;aspect-ratio:16/9;object-fit:cover"
+               src="{{ candidate.intro_video_path }}" poster="">
+        </video>
+        <div style="padding:10px 14px;background:#1a1a1a;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">👋</span>
+          <span style="font-size:13px;color:#aaa">A message from <strong style="color:#fff">{{ candidate.interviewer_name or 'the hiring team' }}</strong></span>
+        </div>
+      </div>
+      {% endif %}
+      <div class="details">
+        <div class="detail"><div class="val" id="q-count">—</div><div class="lbl">Questions</div></div>
+        <div class="detail"><div class="val">{{ candidate.max_answer_time }}s</div><div class="lbl">Max / answer</div></div>
+        <div class="detail"><div class="val">{{ candidate.thinking_time }}s</div><div class="lbl">Prep time</div></div>
+        <div class="detail"><div class="val">{{ candidate.max_retakes }}</div><div class="lbl">Retakes</div></div>
+      </div>
+      <div>
+        {% if candidate.status == 'in_progress' %}
+        <button class="btn btn-brand btn-lg" onclick="startInterview()">Continue Interview →</button>
+        <p style="font-size:12px;color:#888;margin-top:8px">Your previous answers have been saved</p>
+        {% else %}
+        <button class="btn btn-brand btn-lg" onclick="startInterview()">Begin Interview →</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== STEP 2: SETUP (devices, bg, checks) ===== -->
+  <div class="step" id="step-setup">
+    <div class="setup-layout">
+      <div class="setup-preview">
+        <div class="cam-box">
+          <video id="preview-video" autoplay muted playsinline></video>
+          <canvas id="preview-canvas" style="display:none"></canvas>
+        </div>
+      </div>
+      <div class="setup-panel">
+        <!-- Device selectors -->
+        <div class="setup-card">
+          <h4>📷 Camera</h4>
+          <select id="sel-camera" onchange="switchCamera()"></select>
+        </div>
+        <div class="setup-card">
+          <h4>🎙 Microphone</h4>
+          <select id="sel-mic" onchange="switchMic()"></select>
+          <div style="margin-top:8px;height:6px;background:#222;border-radius:3px;overflow:hidden"><div id="mic-level" style="height:100%;width:0;background:var(--brand);transition:width .1s;border-radius:3px"></div></div>
+        </div>
+        <!-- Virtual background -->
+        <div class="setup-card">
+          <h4>🖼 Background</h4>
+          <div class="bg-options" id="bg-options">
+            <div class="bg-option active" onclick="setBg('none',this)">
+              <div class="bg-thumb" style="background:#222;font-size:16px">🚫</div>
+              <div class="bg-label">None</div>
+            </div>
+            <div class="bg-option" onclick="setBg('blur-light',this)">
+              <div class="bg-thumb" style="background:linear-gradient(135deg,#667eea,#764ba2)"></div>
+              <div class="bg-label">Light Blur</div>
+            </div>
+            <div class="bg-option" onclick="setBg('blur-heavy',this)">
+              <div class="bg-thumb" style="background:linear-gradient(135deg,#f093fb,#f5576c)"></div>
+              <div class="bg-label">Heavy Blur</div>
+            </div>
+            <label class="bg-option">
+              <div class="bg-thumb" style="background:#1a1a1a;font-size:16px" id="custom-bg-thumb">📷</div>
+              <div class="bg-label">Your Image</div>
+              <input type="file" accept="image/*" onchange="uploadCustomBg(this)" style="display:none">
+            </label>
+          </div>
+          <div style="margin-top:2px;min-height:16px">
+            <span style="font-size:11px;color:#555" id="custom-bg-name"></span>
+          </div>
+          <div style="font-size:11px;color:#666;margin-top:6px" id="bg-status">Background effects require a supported browser</div>
+        </div>
+        <!-- System checks -->
+        <div class="setup-card">
+          <h4>✅ System Check</h4>
+          <div class="checks" id="checks">
+            <div class="check-row"><div class="check-icon loading" id="chk-browser">⟳</div><span>Browser compatible</span></div>
+            <div class="check-row"><div class="check-icon loading" id="chk-camera">⟳</div><span>Camera access</span></div>
+            <div class="check-row"><div class="check-icon loading" id="chk-mic">⟳</div><span>Microphone access</span></div>
+            <div class="check-row"><div class="check-icon loading" id="chk-speed">⟳</div><span>Internet connection</span></div>
+          </div>
+        </div>
+        <button class="btn btn-brand" id="btn-start-recording" style="width:100%;justify-content:center" disabled onclick="startQuestions()">
+          {% if candidate.status == 'in_progress' %}Continue Recording →{% else %}Start Recording →{% endif %}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== STEP 3: RECORDING ===== -->
+  <div class="step" id="step-question">
+    <div class="question-step">
+      <div class="question-num" id="q-num">Question 1 of 5</div>
+      <div class="question-text" id="q-text">Loading question...</div>
+      <div class="rec-area" id="rec-area">
+        <video id="rec-video" autoplay muted playsinline></video>
+        <canvas id="rec-canvas" style="display:none"></canvas>
+        <div class="rec-indicator" id="rec-indicator" style="display:none"><div class="rec-dot"></div><span id="rec-time">0:00</span></div>
+        <div class="countdown-timer" id="countdown-timer"><span>⏱</span> <span id="countdown-value">2:00</span></div>
+        <div class="timer-bar" id="timer-bar" style="width:0"></div>
+        <div class="thinking-overlay" id="thinking-overlay" style="display:none">
+          <div class="thinking-timer" id="thinking-timer">30</div>
+          <div class="thinking-label">seconds to prepare</div>
+          <div class="thinking-sub" id="thinking-sub">Recording will start automatically</div>
+          <button class="btn btn-brand" style="margin-top:12px;padding:8px 20px;font-size:13px" onclick="skipThinking()">I'm Ready — Start Now</button>
+        </div>
+        <div class="uploading-overlay" id="uploading-overlay">
+          <div class="spinner"></div>
+          <div style="font-size:14px;font-weight:600">Saving response...</div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="btn btn-brand" id="btn-record" onclick="startRecording()">⏺ Start Recording</button>
+        <button class="btn btn-danger" id="btn-stop" style="display:none" onclick="stopRecording()">⏹ Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== STEP 4: REVIEW ANSWER (split) ===== -->
+  <div class="step" id="step-review-answer">
+    <div class="review-split">
+      <div class="review-video"><video id="review-playback" controls></video></div>
+      <div class="review-panel">
+        <h3 id="rv-qnum">Question 1 of 5</h3>
+        <div class="q-label" id="rv-qtext">Question</div>
+        <div class="review-meta">
+          <div class="review-meta-row"><span class="label">Duration</span><span class="value" id="rv-dur">—</span></div>
+          <div class="review-meta-row"><span class="label">Take</span><span class="value" id="rv-take">1</span></div>
+        </div>
+        <div id="rv-retake-badge" class="retake-badge avail"><span id="rv-retake-txt">2 retakes left</span></div>
+        <div class="review-actions">
+          <button class="btn btn-brand" id="btn-save" onclick="saveAndContinue()">Save & Continue →</button>
+          <button class="btn btn-outline" id="btn-redo" onclick="reRecord()">↻ Re-record</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== STEP 5: FINAL REVIEW ===== -->
+  <div class="step" id="step-final-review">
+    <div class="final-review">
+      <h2>Review Your Answers</h2>
+      <p class="subtitle">Click any answer to replay. Submit when you're ready.</p>
+      <div class="answer-cards" id="answer-cards"></div>
+      <div class="controls"><button class="btn btn-brand btn-lg" onclick="submitInterview()" id="btn-submit">Submit Interview</button></div>
+    </div>
+  </div>
+
+  <!-- ===== STEP 6: DONE ===== -->
+  <div class="step" id="step-done">
+    <div class="thank-you">
+      <div class="checkmark">✓</div>
+      <h1>Interview Submitted!</h1>
+      <p class="tmsg">{{ candidate.thank_you_msg }}</p>
+      <div class="scard">
+        <h3>Summary</h3>
+        <div class="srow"><span class="sl">Position</span><span class="sv">{{ candidate.title }}</span></div>
+        <div class="srow"><span class="sl">Candidate</span><span class="sv">{{ candidate.first_name }} {{ candidate.last_name }}</span></div>
+        <div class="srow"><span class="sl">Firm</span><span class="sv">{{ candidate.agency_name or 'ChannelView' }}</span></div>
+        <div class="srow"><span class="sl">Questions</span><span class="sv" id="done-qc">—</span></div>
+        <div class="srow"><span class="sl">Recording Time</span><span class="sv" id="done-dur">—</span></div>
+      </div>
+      <p style="color:#888;font-size:13px">You can close this window. The hiring team will review your responses and follow up.</p>
+      <div class="powered">Powered by <a href="/">ChannelView</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- Video playback modal -->
+<div class="vmodal" id="vmodal" onclick="if(event.target===this)closeModal()">
+  <button class="close" onclick="closeModal()">×</button>
+  <div class="modal-q" id="modal-q"></div>
+  <video id="modal-vid" controls></video>
+</div>
+
+<!-- Fix WebM duration metadata (MediaRecorder doesn't write it) -->
+<script src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.6/fix-webm-duration.js"></script>
+<!-- MediaPipe for virtual backgrounds -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/selfie_segmentation.js" crossorigin="anonymous" onerror="mpFailed=true"></script>
+
+<script>
+const TOKEN = "{{ token }}";
+// mpFailed may already be set to true by MediaPipe script onerror handler
+let mpFailed = window.mpFailed || false;
+
+// ==================== ERROR HANDLING ====================
+function showError(msg, persistent) {
+  const banner = document.getElementById('error-banner');
+  document.getElementById('error-msg').textContent = msg;
+  banner.classList.add('show');
+  if (!persistent) setTimeout(() => banner.classList.remove('show'), 8000);
+}
+function dismissError() { document.getElementById('error-banner').classList.remove('show'); }
+
+function showPermOverlay(msg, helpText) {
+  document.getElementById('perm-msg').textContent = msg || 'ChannelView needs access to your camera and microphone to record your video interview.';
+  document.getElementById('perm-help').textContent = helpText || '';
+  document.getElementById('perm-overlay').classList.add('show');
+}
+function hidePermOverlay() { document.getElementById('perm-overlay').classList.remove('show'); }
+
+async function retryPermissions() {
+  document.getElementById('perm-btn').textContent = 'Requesting...';
+  document.getElementById('perm-btn').disabled = true;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ width:1280, height:720 }, audio:true });
+    hidePermOverlay();
+    document.getElementById('preview-video').srcObject = stream;
+    document.getElementById('rec-video').srcObject = stream;
+    await populateDevices();
+    setupAudioMeter();
+    initSegmentation();
+    runChecks();
+  } catch(e) {
+    const name = e.name || '';
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      showPermOverlay(
+        'Camera access was denied. Please enable camera and microphone permissions in your browser settings.',
+        'Tip: Click the camera icon in your browser\'s address bar, then select "Allow" and refresh.'
+      );
+    } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      showPermOverlay(
+        'No camera or microphone found. Please connect a camera and microphone, then try again.',
+        'If you\'re on a desktop, make sure your webcam is plugged in.'
+      );
+    } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+      showPermOverlay(
+        'Your camera is being used by another application. Please close other apps using the camera and try again.',
+        'Close video calls (Zoom, Teams, Meet) or other browser tabs using the camera.'
+      );
+    } else {
+      showPermOverlay('Could not access camera: ' + (e.message || name), 'Try refreshing the page or using a different browser.');
+    }
+  }
+  document.getElementById('perm-btn').textContent = 'Allow Access';
+  document.getElementById('perm-btn').disabled = false;
+}
+
+// ==================== STATE ====================
+let stream = null, audioCtx = null, analyser = null;
+let mediaRecorder = null, recordedChunks = [];
+let questions = [], currentQ = 0, defaults = {};
+let retakesUsed = 0, timerInterval = null, recordingStartTime = 0, totalRecTime = 0;
+let answerBlobs = {}, answerDurs = {}, lastBlob = null, lastDur = 0;
+let bgMode = 'none', segmenter = null, bgReady = false, rafId = null;
+// Smoothing buffers for high-quality virtual backgrounds
+let prevMaskCanvas = null, prevMaskCtx = null;
+let maskSmoothCanvas = null, maskSmoothCtx = null;
+const TEMPORAL_ALPHA = 0.65; // Blend factor: higher = more responsive, lower = smoother
+const EDGE_FEATHER = 3; // Gaussian blur radius on mask edges (px)
+
+// ==================== NAVIGATION ====================
+function goTo(name) {
+  // Stop any playing videos (intro video, review playback, etc.)
+  const introVid = document.getElementById('intro-vid');
+  if (introVid) { introVid.pause(); introVid.currentTime = 0; }
+  const reviewVid = document.getElementById('review-playback');
+  if (reviewVid) { reviewVid.pause(); reviewVid.currentTime = 0; }
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('step-' + name);
+  el.classList.add('active');
+  el.style.animation = 'none'; el.offsetHeight; el.style.animation = '';
+  const pMap = { welcome:0, setup:8, question:15, 'review-answer':15, 'final-review':90, done:100 };
+  if (pMap[name] !== undefined) document.getElementById('progress').style.width = pMap[name] + '%';
+  const bMap = { welcome:'Welcome', setup:'Setup', question:'Recording', 'review-answer':'Review', 'final-review':'Final Review', done:'Complete ✓' };
+  document.getElementById('step-badge').textContent = bMap[name] || '';
+
+  // Keep virtual background running on recording page
+  if (name === 'question' && bgMode !== 'none' && bgReady) {
+    const recCanvas = document.getElementById('rec-canvas');
+    const recVideo = document.getElementById('rec-video');
+    recCanvas.style.display = 'block';
+    // Hide raw video so candidate sees the canvas with background effect
+    recVideo.style.opacity = '0';
+    recCanvas.style.zIndex = '2';
+    if (!rafId) processFrame();
+  } else if (name === 'question') {
+    // No bg selected — show raw video, hide canvas
+    const recCanvas = document.getElementById('rec-canvas');
+    const recVideo = document.getElementById('rec-video');
+    recCanvas.style.display = 'none';
+    recVideo.style.opacity = '1';
+  }
+}
+function updateProgress() { document.getElementById('progress').style.width = (15 + ((currentQ+1)/questions.length)*75) + '%'; }
+function updatePills() {
+  document.getElementById('step-pills').innerHTML = questions.map((q,i) =>
+    `<div class="step-pill${answerBlobs[q.id]?' done':i===currentQ?' active':''}"></div>`
+  ).join('');
+}
+function fmt(s) { return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'); }
+
+// ==================== START ====================
+let answeredMap = {};
+let isResuming = false;
+
+async function startInterview() {
+  try {
+    const res = await fetch(`/api/interview/${TOKEN}/start`, { method:'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    questions = data.questions; defaults = data.defaults;
+    answeredMap = data.answered || {};
+    // Restore previously saved answers so review/pills work correctly
+    const answeredIds = Object.keys(answeredMap);
+    answeredIds.forEach(id => {
+      const info = answeredMap[id];
+      if (info.video_url) answerBlobs[id] = info.video_url;
+      if (info.duration) { answerDurs[id] = info.duration; totalRecTime += info.duration; }
+    });
+    isResuming = answeredIds.length > 0;
+    document.getElementById('q-count').textContent = questions.length;
+    goTo('setup');
+    await setupDevices();
+    runChecks();
+  } catch(e) { alert('Failed to start: ' + e.message); }
+}
+
+// ==================== DEVICE SETUP ====================
+async function setupDevices() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ width:1280, height:720 }, audio:true });
+    document.getElementById('preview-video').srcObject = stream;
+    document.getElementById('rec-video').srcObject = stream;
+    await populateDevices();
+    setupAudioMeter();
+    initSegmentation();
+  } catch(e) {
+    console.error('Device setup failed:', e);
+    const name = e.name || '';
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      showPermOverlay(
+        'Camera access was denied. Please allow camera and microphone access to continue.',
+        'Click the camera icon in your browser\'s address bar to change permissions.'
+      );
+    } else if (name === 'NotFoundError') {
+      showPermOverlay(
+        'No camera or microphone detected. Please connect a camera and microphone.',
+        'If you\'re on mobile, make sure you\'ve granted the browser permission in your device settings.'
+      );
+    } else if (name === 'NotReadableError') {
+      showPermOverlay(
+        'Your camera is in use by another application. Close other video apps and try again.',
+        ''
+      );
+    } else {
+      showError('Camera setup failed: ' + (e.message || 'Unknown error. Try refreshing.'));
+    }
+  }
+}
+
+async function populateDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const camSel = document.getElementById('sel-camera');
+  const micSel = document.getElementById('sel-mic');
+  camSel.innerHTML = ''; micSel.innerHTML = '';
+  devices.filter(d => d.kind === 'videoinput').forEach((d, i) => {
+    camSel.innerHTML += `<option value="${d.deviceId}">${d.label || 'Camera ' + (i+1)}</option>`;
+  });
+  devices.filter(d => d.kind === 'audioinput').forEach((d, i) => {
+    micSel.innerHTML += `<option value="${d.deviceId}">${d.label || 'Microphone ' + (i+1)}</option>`;
+  });
+  // Set current device
+  const vTrack = stream.getVideoTracks()[0];
+  const aTrack = stream.getAudioTracks()[0];
+  if (vTrack) camSel.value = vTrack.getSettings().deviceId || '';
+  if (aTrack) micSel.value = aTrack.getSettings().deviceId || '';
+}
+
+async function switchCamera() {
+  const id = document.getElementById('sel-camera').value;
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact:id }, width:1280, height:720 }, audio:{ deviceId:{ exact: document.getElementById('sel-mic').value } } });
+    stream.getTracks().forEach(t => t.stop());
+    stream = newStream;
+    document.getElementById('preview-video').srcObject = stream;
+    document.getElementById('rec-video').srcObject = stream;
+    setupAudioMeter();
+  } catch(e) { console.error(e); }
+}
+
+async function switchMic() {
+  const id = document.getElementById('sel-mic').value;
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{ exact: document.getElementById('sel-camera').value }, width:1280, height:720 }, audio:{ deviceId:{ exact:id } } });
+    stream.getTracks().forEach(t => t.stop());
+    stream = newStream;
+    document.getElementById('preview-video').srcObject = stream;
+    document.getElementById('rec-video').srcObject = stream;
+    setupAudioMeter();
+  } catch(e) { console.error(e); }
+}
+
+function setupAudioMeter() {
+  if (audioCtx) audioCtx.close();
+  audioCtx = new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  const src = audioCtx.createMediaStreamSource(stream);
+  src.connect(analyser);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  function tick() {
+    analyser.getByteFrequencyData(data);
+    const avg = data.reduce((a,b) => a+b, 0) / data.length;
+    document.getElementById('mic-level').style.width = Math.min(avg / 128 * 100, 100) + '%';
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// ==================== VIRTUAL BACKGROUND ====================
+async function initSegmentation() {
+  if (mpFailed || typeof SelfieSegmentation === 'undefined') {
+    document.getElementById('bg-status').textContent = 'Background effects unavailable in this browser';
+    document.querySelectorAll('.bg-option').forEach((o, i) => { if (i > 0) o.style.opacity = '0.4'; });
+    return;
+  }
+  try {
+    document.getElementById('bg-status').textContent = 'Loading background effects...';
+    segmenter = new SelfieSegmentation({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${f}` });
+    // modelSelection 0 = general model (better edges for close-up webcam)
+    segmenter.setOptions({ modelSelection: 0, selfieMode: true });
+    segmenter.onResults(onSegResults);
+    // Create offscreen canvases for mask smoothing
+    prevMaskCanvas = document.createElement('canvas');
+    prevMaskCtx = prevMaskCanvas.getContext('2d');
+    maskSmoothCanvas = document.createElement('canvas');
+    maskSmoothCtx = maskSmoothCanvas.getContext('2d');
+    // Warm up the model with a test frame to verify it actually loads
+    const testCanvas = document.createElement('canvas');
+    testCanvas.width = 64; testCanvas.height = 64;
+    const testCtx = testCanvas.getContext('2d');
+    testCtx.fillStyle = '#000'; testCtx.fillRect(0, 0, 64, 64);
+    await segmenter.send({ image: testCanvas });
+    bgReady = true;
+    document.getElementById('bg-status').textContent = 'Background effects ready';
+    console.log('MediaPipe SelfieSegmentation initialized and verified');
+  } catch(e) {
+    console.error('Background effects init failed:', e);
+    bgReady = false;
+    segmenter = null;
+    document.getElementById('bg-status').textContent = 'Background effects unavailable';
+    document.querySelectorAll('.bg-option').forEach((o, i) => { if (i > 0) o.style.opacity = '0.4'; });
+  }
+}
+
+let bgImage = null;
+
+function setBg(mode, el) {
+  if (mode !== 'none' && !bgReady) {
+    showError('Background effects are not available. Please use "None" or try refreshing the page.');
+    return;
+  }
+  document.querySelectorAll('.bg-option').forEach(o => o.classList.remove('active'));
+  el.classList.add('active');
+  bgMode = mode;
+  bgImage = null;
+  const previewCanvas = document.getElementById('preview-canvas');
+  const recCanvas = document.getElementById('rec-canvas');
+  if (mode === 'none') {
+    previewCanvas.style.display = 'none';
+    recCanvas.style.display = 'none';
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    // Reset smoothing buffers
+    if (prevMaskCanvas) { prevMaskCanvas.width = 0; prevMaskCanvas.height = 0; }
+  } else if (bgReady) {
+    previewCanvas.style.display = 'block';
+    recCanvas.style.display = 'block';
+    if (!rafId) processFrame();
+  }
+}
+
+function setBgImage(url, el) {
+  if (!bgReady) {
+    showError('Background effects are not available. Please use "None" or try refreshing the page.');
+    return;
+  }
+  document.querySelectorAll('.bg-option').forEach(o => o.classList.remove('active'));
+  el.classList.add('active');
+  bgMode = 'image';
+  bgImage = new Image();
+  bgImage.crossOrigin = 'anonymous';
+  bgImage.src = url;
+  const previewCanvas = document.getElementById('preview-canvas');
+  const recCanvas = document.getElementById('rec-canvas');
+  if (bgReady) {
+    previewCanvas.style.display = 'block';
+    recCanvas.style.display = 'block';
+    if (!rafId) processFrame();
+  }
+}
+
+function uploadCustomBg(input) {
+  const file = input.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    // Show thumbnail preview in the upload tile
+    const thumb = document.getElementById('custom-bg-thumb');
+    if (thumb) {
+      thumb.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
+    }
+    const uploadTile = input.closest('.bg-option');
+    setBgImage(e.target.result, uploadTile || input.parentElement);
+    document.getElementById('custom-bg-name').textContent = file.name;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function processFrame() {
+  if (bgMode === 'none' || !bgReady || !stream) return;
+  try {
+    // Use whichever video element is currently visible as the segmenter source
+    const previewVid = document.getElementById('preview-video');
+    const recVid = document.getElementById('rec-video');
+    const video = (recVid && recVid.offsetParent !== null) ? recVid : previewVid;
+    if (video.readyState >= 2) {
+      await segmenter.send({ image: video });
+    }
+  } catch(e) {
+    console.error('Background processing failed:', e);
+    // Disable virtual background and fall back to raw video
+    bgReady = false;
+    bgMode = 'none';
+    rafId = null;
+    document.querySelectorAll('.bg-option').forEach((o, i) => { o.classList.remove('active'); if (i === 0) o.classList.add('active'); });
+    const previewCanvas = document.getElementById('preview-canvas');
+    const recCanvas = document.getElementById('rec-canvas');
+    const recVideo = document.getElementById('rec-video');
+    if (previewCanvas) previewCanvas.style.display = 'none';
+    if (recCanvas) recCanvas.style.display = 'none';
+    if (recVideo) recVideo.style.opacity = '1';
+    document.getElementById('bg-status').textContent = 'Background effects failed — using camera directly';
+    showError('Virtual background failed to load. Recording will use your regular camera.');
+    return;
+  }
+  rafId = requestAnimationFrame(processFrame);
+}
+
+function onSegResults(results) {
+  const w = results.image.width, h = results.image.height;
+
+  // === Step 1: Temporal smoothing — blend current mask with previous frame ===
+  maskSmoothCanvas.width = w; maskSmoothCanvas.height = h;
+  maskSmoothCtx.clearRect(0, 0, w, h);
+  // Draw current raw mask
+  maskSmoothCtx.drawImage(results.segmentationMask, 0, 0, w, h);
+
+  if (prevMaskCanvas.width === w && prevMaskCanvas.height === h) {
+    // Blend: draw previous mask at reduced opacity on top
+    maskSmoothCtx.globalAlpha = 1 - TEMPORAL_ALPHA;
+    maskSmoothCtx.drawImage(prevMaskCanvas, 0, 0);
+    maskSmoothCtx.globalAlpha = 1;
+  }
+
+  // === Step 2: Edge feathering — blur the mask for soft edges ===
+  maskSmoothCtx.filter = `blur(${EDGE_FEATHER}px)`;
+  maskSmoothCtx.drawImage(maskSmoothCanvas, 0, 0);
+  maskSmoothCtx.filter = 'none';
+
+  // Save smoothed mask for next frame's temporal blend
+  prevMaskCanvas.width = w; prevMaskCanvas.height = h;
+  prevMaskCtx.clearRect(0, 0, w, h);
+  prevMaskCtx.drawImage(maskSmoothCanvas, 0, 0);
+
+  // === Step 3: Composite onto visible canvases ===
+  const canvases = [document.getElementById('preview-canvas'), document.getElementById('rec-canvas')];
+  canvases.forEach(canvas => {
+    if (!canvas || canvas.style.display === 'none') return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = w; canvas.height = h;
+    ctx.save();
+    ctx.clearRect(0, 0, w, h);
+    // Use the smoothed + feathered mask
+    ctx.drawImage(maskSmoothCanvas, 0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.drawImage(results.image, 0, 0, w, h);
+    ctx.globalCompositeOperation = 'destination-over';
+    if (bgMode.startsWith('blur')) {
+      const blur = bgMode === 'blur-light' ? 10 : 20;
+      ctx.filter = `blur(${blur}px)`;
+      ctx.drawImage(results.image, 0, 0, w, h);
+      ctx.filter = 'none';
+    } else if (bgMode === 'image' && bgImage && bgImage.complete) {
+      const imgRatio = bgImage.width / bgImage.height;
+      const canRatio = w / h;
+      let sx=0, sy=0, sw=bgImage.width, sh=bgImage.height;
+      if (imgRatio > canRatio) { sw = bgImage.height * canRatio; sx = (bgImage.width - sw) / 2; }
+      else { sh = bgImage.width / canRatio; sy = (bgImage.height - sh) / 2; }
+      ctx.drawImage(bgImage, sx, sy, sw, sh, 0, 0, w, h);
+    } else {
+      ctx.fillStyle = '#222';
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.restore();
+  });
+}
+
+// ==================== SYSTEM CHECKS ====================
+async function runChecks() {
+  // Browser check
+  const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent);
+  const isFirefox = /Firefox/.test(navigator.userAgent);
+  const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+  const isEdge = /Edg/.test(navigator.userAgent);
+  const browserOk = isChrome || isFirefox || isSafari || isEdge;
+  setCheck('chk-browser', browserOk);
+
+  // Camera check
+  const hasVideo = stream && stream.getVideoTracks().length > 0;
+  setCheck('chk-camera', hasVideo);
+
+  // Mic check
+  const hasAudio = stream && stream.getAudioTracks().length > 0;
+  setCheck('chk-mic', hasAudio);
+
+  // Internet speed (simple test)
+  const t0 = performance.now();
+  try {
+    await fetch('/api/auth/me', { method:'GET' });
+    const latency = performance.now() - t0;
+    setCheck('chk-speed', latency < 3000);
+  } catch { setCheck('chk-speed', false); }
+
+  // Enable start button if core checks pass
+  if (hasVideo && hasAudio && browserOk) {
+    document.getElementById('btn-start-recording').disabled = false;
+  }
+}
+
+function setCheck(id, ok) {
+  const el = document.getElementById(id);
+  el.className = 'check-icon ' + (ok ? 'pass' : 'fail');
+  el.textContent = ok ? '✓' : '✗';
+}
+
+// ==================== QUESTIONS ====================
+function startQuestions() {
+  // Resume: skip to first unanswered question
+  if (isResuming) {
+    const answeredIds = Object.keys(answeredMap);
+    const firstUnanswered = questions.findIndex(q => !answeredIds.includes(q.id));
+    if (firstUnanswered === -1) {
+      // All questions answered — go to final review
+      currentQ = questions.length - 1;
+      showFinalReview();
+      return;
+    }
+    currentQ = firstUnanswered;
+  } else {
+    currentQ = 0;
+    totalRecTime = 0;
+  }
+  loadQuestion();
+}
+
+function loadQuestion(isRetake) {
+  const q = questions[currentQ];
+  document.getElementById('q-num').textContent = `Question ${currentQ+1} of ${questions.length}`;
+  document.getElementById('q-text').textContent = q.question_text;
+  document.getElementById('step-badge').textContent = `Q${currentQ+1} of ${questions.length}`;
+  updateProgress(); updatePills();
+  // Reset UI
+  document.getElementById('btn-record').style.display = 'none';
+  document.getElementById('btn-stop').style.display = 'none';
+  document.getElementById('rec-indicator').style.display = 'none';
+  document.getElementById('countdown-timer').style.display = 'none';
+  document.getElementById('uploading-overlay').style.display = 'none';
+  document.getElementById('rec-area').classList.remove('recording');
+  document.getElementById('timer-bar').style.width = '0';
+  document.getElementById('timer-bar').className = 'timer-bar';
+  // Only reset retake count for new questions, not when re-recording
+  if (!isRetake) {
+    retakesUsed = answerBlobs[q.id] ? 1 : 0;
+  }
+  goTo('question');
+  startThinking(q.thinking_time || defaults.thinking_time || 30);
+}
+
+function startThinking(secs) {
+  const ov = document.getElementById('thinking-overlay');
+  const disp = document.getElementById('thinking-timer');
+  const sub = document.getElementById('thinking-sub');
+  ov.style.display = 'flex';
+  let rem = secs; disp.textContent = rem;
+  sub.textContent = 'Recording will start automatically';
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    rem--; disp.textContent = rem;
+    if (rem <= 3 && rem > 0) { sub.textContent = `Starting in ${rem}...`; }
+    if (rem <= 0) {
+      clearInterval(timerInterval);
+      ov.style.display = 'none';
+      startRecording();
+    }
+  }, 1000);
+}
+
+function skipThinking() {
+  clearInterval(timerInterval);
+  document.getElementById('thinking-overlay').style.display = 'none';
+  startRecording();
+}
+
+// ==================== LIVE TRANSCRIPTION ====================
+let speechRecognition = null;
+let liveTranscript = '';
+
+function startTranscription() {
+  liveTranscript = '';
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.log('Web Speech API not supported — transcript will be empty');
+    return;
+  }
+  try {
+    speechRecognition = new SpeechRecognition();
+    speechRecognition.continuous = true;
+    speechRecognition.interimResults = false;
+    speechRecognition.lang = 'en-US';
+    speechRecognition.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          liveTranscript += e.results[i][0].transcript + ' ';
+        }
+      }
+    };
+    speechRecognition.onerror = (e) => { console.log('Speech recognition error:', e.error); };
+    speechRecognition.onend = () => {
+      // Restart if still recording (Chrome stops after ~60s)
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        try { speechRecognition.start(); } catch(e) {}
+      }
+    };
+    speechRecognition.start();
+    console.log('Live transcription started');
+  } catch(e) {
+    console.log('Could not start transcription:', e);
+  }
+}
+
+function stopTranscription() {
+  if (speechRecognition) {
+    try { speechRecognition.stop(); } catch(e) {}
+    speechRecognition = null;
+  }
+  return liveTranscript.trim();
+}
+
+// ==================== RECORDING ====================
+function startRecording() {
+  if (!stream || stream.getTracks().every(t => t.readyState === 'ended')) {
+    alert('Camera is not available. Please check your device and refresh the page.');
+    document.getElementById('btn-record').style.display = 'inline-flex';
+    return;
+  }
+  recordedChunks = [];
+  let opts = { mimeType:'video/webm;codecs=vp9,opus' };
+  if (!MediaRecorder.isTypeSupported(opts.mimeType)) { opts.mimeType='video/webm;codecs=vp8,opus'; if (!MediaRecorder.isTypeSupported(opts.mimeType)) opts.mimeType='video/webm'; }
+
+  // Use canvas stream if virtual bg is active AND canvas has actual content, otherwise camera stream
+  let recStream;
+  const recCanvas = document.getElementById('rec-canvas');
+  let useCanvas = false;
+  if (bgMode !== 'none' && bgReady && recCanvas.style.display !== 'none') {
+    // Verify canvas has actual pixel content (not just blank)
+    try {
+      const checkCtx = recCanvas.getContext('2d');
+      const sample = checkCtx.getImageData(0, 0, Math.min(recCanvas.width, 10), Math.min(recCanvas.height, 10));
+      const hasContent = sample.data.some(v => v > 0);
+      if (hasContent && recCanvas.width > 0 && recCanvas.height > 0) {
+        useCanvas = true;
+      } else {
+        console.warn('Canvas appears empty, falling back to camera stream');
+      }
+    } catch(e) {
+      console.warn('Canvas check failed, falling back to camera stream:', e);
+    }
+  }
+  if (useCanvas) {
+    const canvasStream = recCanvas.captureStream(30);
+    // Add audio from camera stream
+    stream.getAudioTracks().forEach(t => canvasStream.addTrack(t));
+    recStream = canvasStream;
+    console.log('Recording from canvas stream (virtual background active)');
+  } else {
+    recStream = stream;
+    // If bg was selected but canvas failed, reset bg mode to avoid confusion
+    if (bgMode !== 'none') {
+      console.warn('Virtual background active but canvas unusable — recording raw camera');
+      const recVideo = document.getElementById('rec-video');
+      if (recVideo) recVideo.style.opacity = '1';
+      recCanvas.style.display = 'none';
+    }
+    console.log('Recording from camera stream directly');
+  }
+
+  try {
+    mediaRecorder = new MediaRecorder(recStream, opts);
+  } catch(e) {
+    console.error('MediaRecorder failed:', e);
+    alert('Recording could not start. Please refresh and try again.');
+    document.getElementById('btn-record').style.display = 'inline-flex';
+    return;
+  }
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = onStopped;
+  mediaRecorder.onerror = e => { console.error('Recording error:', e); stopRecording(); };
+  mediaRecorder.start(1000); // 1-second chunks for balanced file structure
+  recordingStartTime = Date.now();
+  startTranscription(); // Begin live speech-to-text
+  const maxT = questions[currentQ].max_answer_time || defaults.max_answer_time || 120;
+  document.getElementById('btn-record').style.display='none';
+  document.getElementById('btn-stop').style.display='inline-flex';
+  document.getElementById('rec-indicator').style.display='flex';
+  document.getElementById('countdown-timer').style.display='flex';
+  document.getElementById('rec-area').classList.add('recording');
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    const el = (Date.now()-recordingStartTime)/1000;
+    const rem = Math.max(maxT-el, 0);
+    document.getElementById('rec-time').textContent = fmt(el);
+    document.getElementById('countdown-value').textContent = fmt(rem);
+    const ct = document.getElementById('countdown-timer');
+    const tb = document.getElementById('timer-bar');
+    ct.className='countdown-timer'; tb.className='timer-bar';
+    if (rem<=10){ct.classList.add('danger');tb.classList.add('danger')}
+    else if(rem<=30){ct.classList.add('warning');tb.classList.add('warning')}
+    tb.style.width = Math.min(el/maxT*100,100)+'%';
+    if (el>=maxT) stopRecording();
+  }, 100);
+}
+
+function stopRecording() {
+  const transcript = stopTranscription();
+  // Store transcript for this question
+  if (transcript) {
+    window._lastTranscript = transcript;
+    console.log('Transcript captured:', transcript.substring(0, 100) + '...');
+  } else {
+    window._lastTranscript = '';
+  }
+  if (mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
+  clearInterval(timerInterval);
+  document.getElementById('btn-stop').style.display='none';
+  document.getElementById('rec-area').classList.remove('recording');
+  document.getElementById('countdown-timer').style.display='none';
+  document.getElementById('uploading-overlay').style.display='flex';
+}
+
+async function onStopped() {
+  const rawBlob = new Blob(recordedChunks, {type:'video/webm'});
+  const durationMs = Date.now() - recordingStartTime;
+  lastDur = Math.round(durationMs / 1000);
+  console.log(`Recording complete: ${recordedChunks.length} chunks, ${rawBlob.size} bytes, ${lastDur}s`);
+  if (rawBlob.size < 1000) {
+    document.getElementById('uploading-overlay').style.display='none';
+    alert('Recording appears to be empty. Please try again.');
+    document.getElementById('btn-record').style.display='inline-flex';
+    return;
+  }
+
+  // Fix WebM duration metadata so video plays back correctly
+  // (MediaRecorder doesn't write duration, causing seek/playback issues)
+  let fixedBlob = rawBlob;
+  try {
+    if (typeof fixWebmDuration === 'function') {
+      fixedBlob = await new Promise((resolve) => {
+        fixWebmDuration(rawBlob, durationMs, (fixed) => resolve(fixed));
+      });
+      console.log('WebM duration fixed:', durationMs + 'ms');
+    }
+  } catch(e) {
+    console.warn('Could not fix WebM duration, using raw blob:', e);
+  }
+  lastBlob = fixedBlob;
+
+  // Upload the fixed blob to server
+  const fd = new FormData();
+  fd.append('video', fixedBlob, 'response.webm');
+  fd.append('question_id', questions[currentQ].id);
+  fd.append('duration', lastDur);
+  if (window._lastTranscript) {
+    fd.append('transcript', window._lastTranscript);
+  }
+  // Upload with retry
+  const maxRetries = 2;
+  let uploaded = false;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(`/api/interview/${TOKEN}/respond`, {method:'POST', body:fd});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const url = URL.createObjectURL(fixedBlob);
+      answerBlobs[questions[currentQ].id] = url;
+      answerDurs[questions[currentQ].id] = lastDur;
+      totalRecTime += lastDur;
+      document.getElementById('uploading-overlay').style.display='none';
+      showAnswerReview();
+      uploaded = true;
+      break;
+    } catch(e) {
+      if (attempt < maxRetries) {
+        console.warn(`Upload attempt ${attempt+1} failed, retrying...`, e);
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+      } else {
+        document.getElementById('uploading-overlay').style.display='none';
+        showError('Upload failed: ' + e.message + '. Your recording is saved locally — try submitting again.');
+        document.getElementById('btn-record').style.display='inline-flex';
+      }
+    }
+  }
+}
+
+// ==================== ANSWER REVIEW ====================
+function showAnswerReview() {
+  const q = questions[currentQ];
+  const maxR = defaults.max_retakes || 1;
+  const rem = maxR - retakesUsed;
+  document.getElementById('rv-qnum').textContent = `Question ${currentQ+1} of ${questions.length}`;
+  document.getElementById('rv-qtext').textContent = q.question_text;
+  document.getElementById('rv-dur').textContent = fmt(lastDur);
+  document.getElementById('rv-take').textContent = `Take ${retakesUsed+1}`;
+  const vid = document.getElementById('review-playback');
+  vid.src = answerBlobs[q.id];
+  vid.load();
+  vid.play().catch(() => {}); // Auto-play so candidate immediately sees their answer
+  const badge = document.getElementById('rv-retake-badge');
+  const redo = document.getElementById('btn-redo');
+  if (rem > 0) { badge.className='retake-badge avail'; document.getElementById('rv-retake-txt').textContent=`${rem} retake${rem!==1?'s':''} left`; redo.style.display='inline-flex'; }
+  else { badge.className='retake-badge none'; document.getElementById('rv-retake-txt').textContent='No retakes left'; redo.style.display='none'; }
+  document.getElementById('btn-save').textContent = currentQ < questions.length-1 ? 'Save & Continue →' : 'Review All Answers →';
+  updatePills();
+  goTo('review-answer');
+  document.getElementById('step-badge').textContent = `Review Q${currentQ+1}`;
+}
+
+function reRecord() {
+  retakesUsed++;
+  // Stop playback before leaving
+  document.getElementById('review-playback').pause();
+  if (answerBlobs[questions[currentQ].id]) {
+    // Only revoke blob URLs (not server paths from resume)
+    if (answerBlobs[questions[currentQ].id].startsWith('blob:')) {
+      URL.revokeObjectURL(answerBlobs[questions[currentQ].id]);
+    }
+    delete answerBlobs[questions[currentQ].id];
+    totalRecTime -= (answerDurs[questions[currentQ].id]||0);
+    delete answerDurs[questions[currentQ].id];
+  }
+  loadQuestion(true); // true = retake, don't reset retakesUsed
+}
+
+function saveAndContinue() {
+  // *** FIX: Stop playback immediately ***
+  document.getElementById('review-playback').pause();
+  document.getElementById('review-playback').currentTime = 0;
+
+  if (currentQ < questions.length-1) {
+    currentQ++;
+    loadQuestion();
+  } else {
+    showFinalReview();
+  }
+}
+
+// ==================== FINAL REVIEW ====================
+function showFinalReview() {
+  document.getElementById('answer-cards').innerHTML = questions.map((q,i) => {
+    const url = answerBlobs[q.id];
+    const dur = answerDurs[q.id];
+    return `<div class="answer-card" onclick="openModal(${i})">
+      <div class="thumb"><video src="${url||''}" muted preload="metadata"></video><div class="play">▶</div></div>
+      <div class="info"><div class="qn">Question ${i+1}</div><div class="qt">${q.question_text}</div><div class="qm">${dur?fmt(dur):'—'}</div></div>
+      <div class="check">✓</div>
+    </div>`;
+  }).join('');
+  goTo('final-review');
+}
+
+function openModal(i) {
+  const q = questions[i];
+  document.getElementById('modal-q').textContent = `Question ${i+1}: ${q.question_text}`;
+  const v = document.getElementById('modal-vid');
+  v.src = answerBlobs[q.id]||''; v.load(); v.play();
+  document.getElementById('vmodal').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('vmodal').classList.remove('show');
+  document.getElementById('modal-vid').pause();
+}
+
+// ==================== SUBMIT ====================
+async function submitInterview() {
+  const btn = document.getElementById('btn-submit');
+  btn.disabled=true; btn.textContent='Submitting...';
+  try { await fetch(`/api/interview/${TOKEN}/complete`, {method:'POST'}); } catch(e){}
+  document.getElementById('done-qc').textContent = questions.length;
+  document.getElementById('done-dur').textContent = fmt(totalRecTime);
+  goTo('done');
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (audioCtx) audioCtx.close();
+  if (rafId) cancelAnimationFrame(rafId);
+}
+</script>
+</body>
+</html>

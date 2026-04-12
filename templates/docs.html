@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ChannelView - Documentation</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;color:#111}
+.header{background:#111;padding:20px 32px;display:flex;align-items:center;gap:12px}
+.header .logo{color:#0ace0a;font-size:22px;font-weight:800}
+.header .title{color:#fff;font-size:18px;font-weight:700}
+.header .subtitle{color:#999;font-size:14px;margin-left:12px}
+.container{max-width:900px;margin:0 auto;padding:32px 24px}
+h2{font-size:22px;margin:32px 0 16px;color:#111;border-bottom:2px solid #0ace0a;padding-bottom:8px}
+h3{font-size:17px;margin:24px 0 8px;color:#333}
+p{color:#555;line-height:1.6;margin-bottom:12px}
+.endpoint{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin-bottom:12px}
+.method{display:inline-block;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:700;margin-right:8px}
+.method.get{background:#dbeafe;color:#1d4ed8}
+.method.post{background:#dcfce7;color:#166534}
+.method.put{background:#fef3c7;color:#92400e}
+.method.delete{background:#fee2e2;color:#991b1b}
+.path{font-family:monospace;font-size:14px;font-weight:600}
+.desc{color:#666;font-size:14px;margin-top:6px}
+code{background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:13px}
+pre{background:#111;color:#f0f0f0;padding:16px;border-radius:8px;margin:12px 0;overflow-x:auto;font-size:13px;line-height:1.5}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:20px}
+.badge{display:inline-block;background:#e6fce6;color:#0ace0a;font-size:12px;font-weight:600;padding:2px 8px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="header">
+  <span class="logo">C</span>
+  <span class="title">ChannelView</span>
+  <span class="subtitle">API Documentation & Setup Guide</span>
+</div>
+<div class="container">
+  <div class="card">
+    <h3>Quick Start</h3>
+    <p>ChannelView is a one-way async video interview platform built for insurance agencies. Use the REST API to integrate with your ATS, CRM, or internal tools.</p>
+    <p><span class="badge">v1.0</span> All endpoints require authentication via API key or session cookie.</p>
+  </div>
+
+  <h2>Authentication</h2>
+  <p>Generate an API key from <strong>Settings &gt; API</strong> in your dashboard. Include it in every request:</p>
+  <pre>curl -H "X-API-Key: cv_your_key_here" https://your-domain.com/api/v1/interviews</pre>
+
+  <h2>REST API Endpoints</h2>
+
+  <div class="endpoint">
+    <span class="method get">GET</span>
+    <span class="path">/api/v1/interviews</span>
+    <div class="desc">List all interviews in your account.</div>
+  </div>
+
+  <div class="endpoint">
+    <span class="method get">GET</span>
+    <span class="path">/api/v1/interviews/:id/candidates</span>
+    <div class="desc">List all candidates for a specific interview.</div>
+  </div>
+
+  <div class="endpoint">
+    <span class="method get">GET</span>
+    <span class="path">/api/v1/candidates/:id</span>
+    <div class="desc">Get detailed candidate info including responses and scores.</div>
+  </div>
+
+  <div class="endpoint">
+    <span class="method post">POST</span>
+    <span class="path">/api/v1/candidates</span>
+    <div class="desc">Create and invite a new candidate. Body: <code>{"interview_id", "first_name", "last_name", "email"}</code></div>
+  </div>
+
+  <h2>Webhooks & Events</h2>
+  <p>Configure webhooks from <strong>Settings &gt; Integrations</strong> or connect via Zapier. Events are emitted in real-time:</p>
+  <div class="card">
+    <p><code>candidate.invited</code> &mdash; Candidate was sent an interview invitation</p>
+    <p><code>candidate.started</code> &mdash; Candidate opened and started their interview</p>
+    <p><code>candidate.completed</code> &mdash; Candidate submitted all responses</p>
+    <p><code>candidate.scored</code> &mdash; AI or manual scoring was applied</p>
+    <p><code>candidate.hired</code> / <code>candidate.rejected</code> &mdash; Status changed</p>
+    <p><code>interview.created</code> / <code>interview.closed</code> &mdash; Interview lifecycle</p>
+  </div>
+  <p>Webhook payloads include a JSON body with <code>event</code>, <code>timestamp</code>, and <code>data</code> fields. If a secret is configured, an <code>X-Webhook-Signature</code> header is included (HMAC-SHA256).</p>
+
+  <h2>Zapier Integration</h2>
+  <p>Paste your Zapier webhook URL in <strong>Integrations</strong> to connect ChannelView to 5,000+ apps. Events are automatically forwarded in Zapier-compatible format.</p>
+
+  <h2>FMO Setup Guide</h2>
+  <div class="card">
+    <h3>For FMO Administrators</h3>
+    <p>As an FMO admin, you have access to the <strong>Admin Panel</strong> with platform-wide statistics, account listings, and the ability to manage agencies under your umbrella.</p>
+    <p><strong>Onboarding new agencies:</strong> Each agency goes through a 4-step wizard (profile, branding, first interview, completion). They can customize their brand colors, logo, and candidate-facing name.</p>
+    <p><strong>White-label:</strong> Agencies can enable white-label mode to show their own branding to candidates instead of the ChannelView brand.</p>
+    <p><strong>Billing:</strong> ChannelView Pro is $99/month per agency. Agencies manage their own subscriptions via Stripe.</p>
+  </div>
+
+  <h2>Agency Setup Checklist</h2>
+  <div class="card">
+    <p>1. Complete the 4-step onboarding wizard</p>
+    <p>2. Configure SMTP or SendGrid for email delivery</p>
+    <p>3. Upload your agency logo and set brand colors</p>
+    <p>4. Create your first interview template with questions</p>
+    <p>5. Invite candidates individually or via CSV bulk import</p>
+    <p>6. Set up automation rules (auto-score, advance/reject thresholds)</p>
+    <p>7. Configure webhook integrations or Zapier connection</p>
+    <p>8. Review compliance settings and data retention policies</p>
+  </div>
+
+  <div style="text-align:center;margin-top:48px;padding:24px;color:#999;font-size:13px">
+    <p>Channel One Strategies &mdash; ChannelView</p>
+  </div>
+</div>
+</body>
+</html>

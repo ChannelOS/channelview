@@ -1,0 +1,36 @@
+# Diagnostics and reports (not needed in production)
+diagnostic_*.py
+generate_report_*.js
+c*_results.json
+ChannelView_Cycle*_Diagnostic.docx
+ChannelView_Diagnostic_Report.docx
+test_runner.py
+fix_backticks.py
+
+# Database files (use volume mount)
+*.db
+*.db-wal
+*.db-shm
+
+# Dev files
+.env
+.env.example
+docker-compose.yml
+docker-compose.prod.yml
+README.md
+backups/
+__pycache__/
+*.pyc
+.github/
+cookies.txt
+
+# Uploads (use volume mount)
+static/uploads/videos/*
+static/uploads/intros/*
+
+# Node modules (if any from report generation)
+node_modules/
+
+# Git
+.git
+.gitignore

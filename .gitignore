@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+*.env.local
+
+# Database
+*.db
+*.db-wal
+*.db-journal
+*.sqlite
+instance/
+data/
+
+# Uploads (user content)
+static/uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+.fuse_hidden*
+
+# Test artifacts
+test_results*.json
+
+# Cycle diagnostics & reports (dev only)
+diagnostic_c*.py
+generate_report_c*.js
+
+# Node
+node_modules/
