@@ -1,0 +1,124 @@
+name: ChannelView CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: '3.11'
+  FLASK_ENV: development
+  CHANNELVIEW_ENV: development
+
+jobs:
+  lint:
+    name: Lint & Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: pip install -r requirements.txt flake8
+      - name: Python syntax check
+        run: python -m py_compile app.py && python -m py_compile database.py && python -m py_compile config.py && python -m py_compile email_service.py && python -m py_compile voice_service.py
+      - name: Flake8 lint (errors only)
+        run: flake8 app.py database.py config.py email_service.py voice_service.py --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: JavaScript syntax check
+        run: node --check static/js/app.js
+
+  test:
+    name: Diagnostic Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: pip install -r requirements.txt requests
+      - name: Run test suite
+        run: python test_runner.py
+        timeout-minutes: 5
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test_results.json
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install safety
+        run: pip install safety
+      - name: Check dependencies for vulnerabilities
+        run: safety check -r requirements.txt || true
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t channelview:${{ github.sha }} .
+      - name: Test container health
+        run: |
+          docker run -d --name cv-test -p 5000:5000 -e FLASK_ENV=development channelview:${{ github.sha }}
+          sleep 5
+          curl -f http://localhost:5000/health || exit 1
+          docker stop cv-test
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            echo "=== ChannelView Auto-Deploy ==="
+            echo "Triggered by commit: ${{ github.sha }}"
+            echo ""
+            echo "--- Pulling latest code ---"
+            cd /opt/channelview-repo && git pull origin main
+            echo "--- Copying files to container ---"
+            docker cp /opt/channelview-repo/database.py channelview-app:/app/database.py
+            docker cp /opt/channelview-repo/app.py channelview-app:/app/app.py
+            docker cp /opt/channelview-repo/voice_service.py channelview-app:/app/voice_service.py
+            docker cp /opt/channelview-repo/static/js/app.js channelview-app:/app/static/js/app.js
+            docker cp /opt/channelview-repo/templates/app.html channelview-app:/app/templates/app.html
+            echo "--- Restarting containers ---"
+            cd /opt/channelview && docker compose -f docker-compose.prod.yml restart
+            sleep 8
+            echo "--- Verifying deployment ---"
+            docker exec channelview-app wc -c /app/app.py /app/static/js/app.js /app/templates/app.html /app/database.py /app/voice_service.py
+            echo "--- Health check ---"
+            curl -f http://localhost:5000/health && echo " OK" || echo " FAILED"
+            echo ""
+            echo "=== Deploy complete ==="
+
+      - name: Verify site is live
+        run: |
+          sleep 5
+          curl -f https://mychannelview.com/health || echo "Warning: External health check failed"
