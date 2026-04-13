@@ -33,6 +33,88 @@ async function api(methodOrUrl, urlOrOpts = {}, body) {
 }
 const apiFetch = api;
 
+// ==================== PLAN GATING & UPGRADE PROMPTS ====================
+
+// Cache billing/usage data so we only fetch once per session
+let _planCache = null;
+async function getPlanData() {
+  if (_planCache) return _planCache;
+  try {
+    _planCache = await api('GET', '/api/billing/usage');
+  } catch(e) {
+    // Fallback — assume free plan if billing endpoint fails
+    _planCache = { plan: 'free', features: {}, is_trial: false };
+  }
+  return _planCache;
+}
+// Invalidate cache when plan changes (e.g. after upgrade)
+function clearPlanCache() { _planCache = null; }
+
+// Map pages to the feature flag they require (only gated pages listed here)
+const PAGE_FEATURE_GATE = {
+  'ai':              { feature: 'ai_scoring',         label: 'AI Insights',          icon: '🧠', desc: 'Get AI-powered candidate scoring, interview analysis, and smart recommendations to hire faster.' },
+  'ai-insights':     { feature: 'ai_scoring',         label: 'AI Insights',          icon: '🧠', desc: 'Get AI-powered candidate scoring, interview analysis, and smart recommendations to hire faster.' },
+  'ai-scoring':      { feature: 'ai_scoring',         label: 'AI Candidate Scoring',  icon: '🤖', desc: 'Automatically score and rank candidates with AI analysis of their video responses.' },
+  'analytics':       { feature: 'advanced_analytics', label: 'Advanced Analytics',    icon: '📊', desc: 'Deep dive into hiring metrics, funnel analysis, time-to-hire trends, and team performance.' },
+  'analytics-dashboard': { feature: 'advanced_analytics', label: 'Analytics Dashboard', icon: '📊', desc: 'Interactive dashboards with real-time recruiting metrics and trend analysis.' },
+  'admin-analytics': { feature: 'advanced_analytics', label: 'Admin Analytics',      icon: '📈', desc: 'Organization-wide analytics across all interviews, candidates, and team members.' },
+  'reports':         { feature: 'advanced_analytics', label: 'Reports',             icon: '📋', desc: 'Generate detailed hiring reports, export data, and track KPIs over time.' },
+  'report-hub':      { feature: 'advanced_analytics', label: 'Report Hub',          icon: '📋', desc: 'Central hub for all your recruiting reports, exports, and scheduled report delivery.' },
+  'pipeline-funnel': { feature: 'advanced_analytics', label: 'Pipeline Funnel',     icon: '🔄', desc: 'Visualize your recruiting pipeline from sourcing to hire with conversion metrics.' },
+  'white-label':     { feature: 'white_label',        label: 'White Label Branding',  icon: '🎨', desc: 'Customize ChannelView with your agency branding — logo, colors, and custom domain.' },
+  'branding':        { feature: 'white_label',        label: 'Branding',             icon: '🎨', desc: 'Customize the candidate experience with your own branding, logo, and colors.' },
+  'bulk-ops':        { feature: 'bulk_ops',            label: 'Bulk Operations',      icon: '⚡', desc: 'Send bulk invitations, update candidate statuses in batch, and manage candidates at scale.' },
+  'integrations':    { feature: 'integrations',        label: 'Integrations',         icon: '🔌', desc: 'Connect ChannelView with your AMS, CRM, email, and other tools via webhooks and native integrations.' },
+  'integrations-hub':{ feature: 'integrations',        label: 'Integrations Hub',     icon: '🔌', desc: 'Browse and configure all available integrations, webhooks, and connected services.' },
+  'ams-integrations':{ feature: 'integrations',        label: 'AMS Integrations',     icon: '🔗', desc: 'Sync candidate data with your Agency Management System automatically.' },
+  'api_docs':        { feature: 'api_access',          label: 'API Documentation',    icon: '🛠️', desc: 'Full REST API access to build custom workflows and integrate with your systems.' },
+  'api-management':  { feature: 'api_access',          label: 'API Management',       icon: '🔑', desc: 'Manage API keys, monitor usage, and configure rate limits for your integrations.' },
+  'voice-agent':     { feature: 'integrations',        label: 'Voice Agent',          icon: '🎙️', desc: 'AI-powered voice screening that pre-qualifies candidates before video interviews.' },
+  'automation':      { feature: 'integrations',        label: 'Automation',           icon: '⚙️', desc: 'Automate repetitive recruiting tasks — auto-invites, follow-ups, stage transitions, and more.' },
+  'auto-rules':      { feature: 'integrations',        label: 'Automation Rules',     icon: '⚙️', desc: 'Set up rules to automatically move candidates, send emails, and trigger actions.' },
+};
+
+/**
+ * Check if current plan has access to a page. If not, render an upgrade overlay.
+ * Returns true if page is BLOCKED (caller should stop rendering), false if allowed.
+ */
+async function checkPageGate(pageKey) {
+  const gate = PAGE_FEATURE_GATE[pageKey];
+  if (!gate) return false; // Not gated — allow
+
+  const data = await getPlanData();
+  const features = data.features || {};
+
+  // If feature is enabled, allow
+  if (features[gate.feature]) return false;
+
+  // Feature is locked — render upgrade overlay
+  const el = document.getElementById('page-content');
+  const planName = data.plan || 'free';
+  const minPlan = gate.feature === 'api_access' ? 'Professional' : 'Professional';
+
+  el.innerHTML = `
+    <div style="max-width:560px;margin:60px auto;text-align:center">
+      <div style="font-size:56px;margin-bottom:16px;opacity:0.9">${gate.icon}</div>
+      <h1 style="font-size:26px;margin:0 0 8px;color:#111">${gate.label}</h1>
+      <p style="color:#666;font-size:15px;margin:0 0 24px;line-height:1.6">${gate.desc}</p>
+
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-bottom:24px">
+        <div style="font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Your Current Plan</div>
+        <div style="font-size:20px;font-weight:700;color:#111;margin-bottom:4px">${planName.charAt(0).toUpperCase() + planName.slice(1)}</div>
+        <div style="font-size:13px;color:#999">${gate.label} requires the <strong style="color:#0ace0a">${minPlan}</strong> plan or higher</div>
+      </div>
+
+      <button class="btn btn-primary" onclick="APP_PAGE='billing';loadPage()" style="font-size:15px;padding:14px 32px;min-width:220px">
+        View Plans & Upgrade
+      </button>
+      <p style="margin-top:12px;font-size:12px;color:#999">Upgrade anytime — no long-term commitment required</p>
+    </div>
+  `;
+
+  return true; // Blocked
+}
+
 function toast(msg, type = '') {
   const c = document.getElementById('toast-container');
   const t = document.createElement('div');
@@ -209,6 +291,10 @@ async function loadPage() {
   } catch(e) { /* proceed normally if onboarding check fails */ }
 
   if (pages[APP_PAGE]) {
+    // Check plan gating before rendering page
+    const blocked = await checkPageGate(APP_PAGE);
+    if (blocked) return; // Upgrade prompt shown — don't render page
+
     try { await pages[APP_PAGE](); }
     catch (err) { content.innerHTML = `<div class="empty-state"><h3>Error loading page</h3><p>${err.message}</p></div>`; }
   }
@@ -5463,7 +5549,7 @@ async function upgradeToPlan(planId) {
     if (!confirm('Downgrade to Free? You will lose access to paid features at the end of your billing period.')) return;
     try {
       const res = await api('POST', '/api/billing/upgrade', { plan: planId });
-      if (res.success) { toast('Plan changed to Free', 'success'); renderBilling(); }
+      if (res.success) { clearPlanCache(); toast('Plan changed to Free', 'success'); renderBilling(); }
       else toast(res.error || 'Failed', 'error');
     } catch(e) { toast(e.message, 'error'); }
     return;
@@ -5476,14 +5562,14 @@ async function upgradeToPlan(planId) {
     } else {
       // No Stripe — do direct plan upgrade
       const up = await api('POST', '/api/billing/upgrade', { plan: planId });
-      if (up.success) { toast('Upgraded to ' + planId + '!', 'success'); renderBilling(); }
+      if (up.success) { clearPlanCache(); toast('Upgraded to ' + planId + '!', 'success'); renderBilling(); }
       else toast(up.error || 'Upgrade failed', 'error');
     }
   } catch(e) {
     // Stripe not configured — try direct upgrade
     try {
       const up = await api('POST', '/api/billing/upgrade', { plan: planId });
-      if (up.success) { toast('Upgraded to ' + planId + '!', 'success'); renderBilling(); }
+      if (up.success) { clearPlanCache(); toast('Upgraded to ' + planId + '!', 'success'); renderBilling(); }
       else toast(up.error || 'Upgrade failed', 'error');
     } catch(e2) { toast(e2.message || 'Upgrade failed', 'error'); }
   }
