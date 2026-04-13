@@ -10035,14 +10035,12 @@ def api_send_welcome_email_c30():
 def _send_agency_welcome_email(agency_email, agency_name, contact_name, temp_password):
     """Internal helper to send welcome email after FMO creates an agency."""
     try:
-        from email_service import send_email, get_smtp_config, _base_template
-        smtp_config = get_smtp_config()
+        from email_service import send_email, _base_template
         base_url = os.environ.get('BASE_URL', 'https://mychannelview.com')
-        html = _base_template(f'''
+        html = _base_template('#0ace0a', 'ChannelView', f'''
           <h2 style="color:#111;margin:0 0 8px">Welcome to ChannelView!</h2>
           <p style="color:#555;font-size:16px;margin:0 0 24px">
             Hi {contact_name or "there"}, your agency <strong>{agency_name}</strong> has been set up on ChannelView.
-            You have a <strong>30-day free Professional trial</strong> to explore everything.
           </p>
           <div style="background:#f3f4f6;border-radius:8px;padding:20px;margin:0 0 24px">
             <p style="margin:0 0 8px;font-weight:600;color:#111">Your Login Credentials</p>
@@ -10050,16 +10048,13 @@ def _send_agency_welcome_email(agency_email, agency_name, contact_name, temp_pas
             <p style="margin:4px 0 0;color:#555">Temporary Password: <strong>{temp_password}</strong></p>
             <p style="margin:8px 0 0;font-size:13px;color:#888">You will be asked to change this on your first login.</p>
           </div>
-          <a href="{base_url}" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;
+          <a href="{base_url}/login" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;
              padding:14px 32px;border-radius:8px;text-decoration:none;font-size:16px">
             Sign In to ChannelView
           </a>
-          <p style="color:#999;font-size:13px;margin:24px 0 0">
-            Your 30-day Professional trial includes up to 200 candidates/month, 25 interviews,
-            10 team seats, AI scoring, and more. No credit card required.
-          </p>
         ''')
-        send_email(smtp_config, agency_email, 'Welcome to ChannelView — Your Agency is Ready!', html)
+        # smtp_config=None — send_email will use SendGrid if configured, or SMTP fallback
+        send_email(None, agency_email, 'Welcome to ChannelView — Your Agency is Ready!', html)
     except Exception as e:
         print(f'[WELCOME EMAIL] Failed to send to {agency_email}: {e}')
 
