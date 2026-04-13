@@ -1102,19 +1102,37 @@ function removeIntroVideo() {
 let introFromLibraryPath = null;
 
 async function openIntroLibrary() {
-  const modal = document.getElementById('modal-intro-library');
+  // Create modal dynamically on document.body to avoid CSS stacking/overflow issues
+  let modal = document.getElementById('modal-intro-library');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-intro-library';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center';
+    modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:12px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;margin:20px">
+        <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
+          <h3 style="margin:0">My Video Library</h3>
+          <button onclick="document.getElementById('modal-intro-library').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+        </div>
+        <div id="intro-library-list" style="overflow-y:auto;flex:1;padding:16px 20px"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
   modal.style.display = 'flex';
   const list = document.getElementById('intro-library-list');
   list.innerHTML = '<div style="text-align:center;padding:20px;color:#999">Loading...</div>';
   try {
     const [videos, templates] = await Promise.all([
-      api('/api/intro-videos'),
+      api('/api/intro-videos').catch(() => []),
       api('/api/intro-templates').catch(() => [])
     ]);
     let html = '';
-    // Show system templates first
+    // Show system intro templates first
     if (templates.length > 0) {
-      html += '<div style="font-weight:700;font-size:13px;color:#0ace0a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-top:4px">Intro Templates</div>';
+      html += '<div style="font-weight:700;font-size:13px;color:#0ace0a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-top:4px">Click-Through Intro Templates</div>';
       html += templates.map(t => `
         <div style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3f4f6">
           <div style="width:120px;height:68px;border-radius:8px;overflow:hidden;background:#111;flex-shrink:0;display:flex;align-items:center;justify-content:center">
@@ -1125,7 +1143,8 @@ async function openIntroLibrary() {
             <div style="font-size:12px;color:#999;margin-top:2px">${t.description || ''}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
-            <button class="btn btn-sm btn-primary" onclick="previewIntroTemplate('${t.html_path}')" style="font-size:12px">Preview</button>
+            <button class="btn btn-sm btn-primary" onclick="useIntroTemplate('${t.id}','${t.html_path}')" style="font-size:12px">Use This</button>
+            <button class="btn btn-sm btn-outline" onclick="previewIntroTemplate('${t.html_path}')" style="font-size:12px">Preview</button>
           </div>
         </div>
       `).join('');
@@ -1144,16 +1163,17 @@ async function openIntroLibrary() {
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="btn btn-sm btn-primary" onclick="useLibraryIntro('${v.video_path}')" style="font-size:12px">Use This</button>
-            <button class="btn btn-sm btn-outline" onclick="deleteLibraryIntro('${v.id}')" style="font-size:12px;color:#dc2626;border-color:#dc2626" title="Delete">×</button>
+            <button class="btn btn-sm btn-outline" onclick="deleteLibraryIntro('${v.id}')" style="font-size:12px;color:#dc2626;border-color:#dc2626" title="Delete">&times;</button>
           </div>
         </div>
       `).join('');
     }
     if (!html) {
-      html = '<div style="text-align:center;padding:32px;color:#999"><div style="font-size:28px;margin-bottom:8px">📚</div><p>No saved intro videos yet.</p><p style="font-size:13px;margin-top:4px">Record or upload an intro video, then click "Save to Library" to reuse it.</p></div>';
+      html = '<div style="text-align:center;padding:32px;color:#999"><div style="font-size:28px;margin-bottom:8px">📚</div><p>No saved intro videos or templates yet.</p><p style="font-size:13px;margin-top:4px">Record or upload an intro video, then click "Save to Library" to reuse it.</p></div>';
     }
     list.innerHTML = html;
   } catch (err) {
+    console.error('Library load error:', err);
     list.innerHTML = '<div style="text-align:center;padding:20px;color:#dc2626">Failed to load library</div>';
   }
 }
@@ -1162,11 +1182,34 @@ function useLibraryIntro(path) {
   introBlob = null;
   introFromLibraryPath = path;
   showIntroPreview(path);
-  document.getElementById('modal-intro-library').style.display = 'none';
+  const modal = document.getElementById('modal-intro-library');
+  if (modal) modal.style.display = 'none';
   // Hide the save-to-library button since it's already in the library
   const saveBtn = document.getElementById('btn-save-to-lib');
   if (saveBtn) saveBtn.style.display = 'none';
   toast('Intro video selected from library!', 'success');
+}
+
+// Use a click-through intro template for this interview
+let selectedIntroTemplateId = null;
+let selectedIntroTemplatePath = null;
+function useIntroTemplate(templateId, htmlPath) {
+  selectedIntroTemplateId = templateId;
+  selectedIntroTemplatePath = htmlPath;
+  introBlob = null;
+  introFromLibraryPath = null;
+  // Show the template as selected in the intro area
+  const emptyEl = document.getElementById('intro-video-empty');
+  const savedEl = document.getElementById('intro-video-saved');
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (savedEl) {
+    savedEl.style.display = 'block';
+    const playback = document.getElementById('intro-playback');
+    if (playback) playback.parentElement.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;border-radius:12px;aspect-ratio:16/9;margin-bottom:12px"><div style="text-align:center;color:#fff"><div style="font-size:48px;margin-bottom:8px">📄</div><div style="font-size:14px;font-weight:600">Click-Through Template Selected</div><div style="font-size:12px;color:#999;margin-top:4px">Candidates will see an interactive intro presentation</div></div></div>';
+  }
+  const modal = document.getElementById('modal-intro-library');
+  if (modal) modal.style.display = 'none';
+  toast('Intro template selected!', 'success');
 }
 
 async function saveIntroToLibrary() {
@@ -1295,16 +1338,7 @@ async function renderInterviewBuilder() {
                   <button type="button" class="btn btn-outline" onclick="removeIntroVideo()" style="font-size:13px;color:#dc2626;border-color:#dc2626">Remove</button>
                 </div>
               </div>
-              <!-- Intro Video Library Modal -->
-              <div class="modal-overlay" id="modal-intro-library" onclick="if(event.target===this)this.classList.remove('show')" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:none;align-items:center;justify-content:center">
-                <div style="background:#fff;border-radius:12px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
-                  <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
-                    <h3 style="margin:0">My Intro Videos</h3>
-                    <button onclick="document.getElementById('modal-intro-library').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
-                  </div>
-                  <div id="intro-library-list" style="overflow-y:auto;flex:1;padding:16px 20px"></div>
-                </div>
-              </div>
+              <!-- Intro Video Library Modal is created dynamically by openIntroLibrary() -->
             </div>
           </div>
           <div class="card">
@@ -1420,6 +1454,8 @@ async function submitInterview(e) {
       await fetch(`/api/interviews/${res.id}/intro-video`, { method: 'POST', body: fd });
     } else if (introFromLibraryPath) {
       await api(`/api/interviews/${res.id}`, { method: 'PUT', body: JSON.stringify({ intro_video_path: introFromLibraryPath }) });
+    } else if (selectedIntroTemplateId) {
+      await api(`/api/interviews/${res.id}/intro-template`, { method: 'PUT', body: JSON.stringify({ template_id: selectedIntroTemplateId }) });
     }
     toast('Interview created!', 'success');
     window.location.href = '/interviews/' + res.id;
