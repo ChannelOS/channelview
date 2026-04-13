@@ -310,8 +310,9 @@ def check_trial_status(f):
 
         # Check trial status
         plan = g.user.get('plan')
+        sub_status = g.user.get('subscription_status')
         trial_ends_at = g.user.get('trial_ends_at')
-        if plan == 'trial' and trial_ends_at:
+        if (plan == 'trial' or sub_status == 'trialing') and trial_ends_at:
             try:
                 trial_dt = datetime.fromisoformat(trial_ends_at)
                 if datetime.utcnow() > trial_dt:
@@ -514,10 +515,10 @@ def api_register():
 
     user_id = str(uuid.uuid4())
     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    trial_end = (datetime.utcnow() + timedelta(days=14)).isoformat()
+    trial_end = (datetime.utcnow() + timedelta(days=30)).isoformat()
     db.execute(
         'INSERT INTO users (id, email, password_hash, name, agency_name, plan, subscription_status, trial_ends_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        (user_id, email, pw_hash, name, agency, 'trial', 'trialing', trial_end)
+        (user_id, email, pw_hash, name, agency, 'professional', 'trialing', trial_end)
     )
     db.commit()
 
@@ -690,8 +691,11 @@ def api_billing_status():
     user = db.execute('SELECT plan, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_ends_at FROM users WHERE id=?',
                       (g.user_id,)).fetchone()
     db.close()
+    raw_plan = user['plan'] or 'free'
+    # Normalize legacy 'trial' plan to 'professional' (trial = Professional features)
+    display_plan = 'professional' if raw_plan == 'trial' else raw_plan
     return jsonify({
-        'plan': user['plan'] or 'free',
+        'plan': display_plan,
         'subscription_status': user['subscription_status'] or 'none',
         'subscription_ends_at': user['subscription_ends_at'],
         'stripe_configured': bool(STRIPE_SECRET_KEY),
@@ -6352,6 +6356,9 @@ def api_billing_usage():
     db = get_db()
     user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
     plan = user.get('plan', 'starter') or 'starter'
+    # Legacy 'trial' plan → treat as professional (trial plans get Professional features)
+    if plan == 'trial':
+        plan = 'professional'
     limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['starter'])
 
     # Count candidates this month

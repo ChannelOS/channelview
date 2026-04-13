@@ -5310,11 +5310,13 @@ async function renderBilling() {
     ]);
   } catch(e) { usage = {}; status = {}; }
 
-  const plan = usage.plan || status.plan || 'free';
-  const planLabel = usage.plan_label || plan.charAt(0).toUpperCase() + plan.slice(1);
-  const price = usage.price || 0;
+  const rawPlan = usage.plan || status.plan || 'free';
   const isTrial = usage.is_trial;
   const trialDays = usage.trial_days_remaining || 0;
+  // Trial users get Professional features — map for display
+  const plan = (rawPlan === 'trial' || (isTrial && rawPlan === 'professional')) ? 'professional' : rawPlan;
+  const planLabel = isTrial ? 'Professional Trial' : (plan === 'professional' ? 'Professional' : plan.charAt(0).toUpperCase() + plan.slice(1));
+  const price = usage.price || 0;
   const subStatus = usage.subscription_status || status.subscription_status || 'none';
 
   const plans = [
@@ -5350,7 +5352,7 @@ async function renderBilling() {
         <div>
           <div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#0ace0a;font-weight:600">Current Plan</div>
           <div style="font-size:28px;font-weight:700;margin:4px 0">${planLabel} ${price > 0 ? '<span style="font-size:16px;color:#999;font-weight:400">$'+price+'/mo</span>' : ''}</div>
-          <div style="color:#999">${isTrial ? 'Professional Trial' : subStatus === 'active' ? 'Active subscription' : 'Free tier'}</div>
+          <div style="color:#999">${isTrial ? '30-day Professional Trial · No card required' : subStatus === 'active' ? 'Active subscription' : 'Free tier'}</div>
           ${isTrial ? `<div style="color:#f59e0b;margin-top:4px;font-size:14px">⏱ Trial ends in ${trialDays} day${trialDays!==1?'s':''}</div>` : ''}
         </div>
         <div style="display:flex;gap:8px">
@@ -5382,7 +5384,7 @@ async function renderBilling() {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:32px">
       ${plans.map(p => `
         <div class="card" style="border:${p.id===plan ? '2px solid #0ace0a' : p.popular ? '2px solid #111' : '1px solid #e5e7eb'};position:relative;display:flex;flex-direction:column">
-          ${p.id===plan ? '<div style="position:absolute;top:-1px;right:12px;background:#0ace0a;color:#000;font-size:10px;font-weight:700;padding:2px 8px;border-radius:0 0 6px 6px">CURRENT</div>' : ''}
+          ${p.id===plan ? `<div style="position:absolute;top:-1px;right:12px;background:#0ace0a;color:#000;font-size:10px;font-weight:700;padding:2px 8px;border-radius:0 0 6px 6px">${isTrial && p.id==='professional' ? 'TRIAL' : 'CURRENT'}</div>` : ''}
           ${p.popular && p.id!==plan ? '<div style="position:absolute;top:-1px;right:12px;background:#111;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:0 0 6px 6px">POPULAR</div>' : ''}
           <div style="font-size:18px;font-weight:700;margin-bottom:4px">${p.name}</div>
           <div style="color:#666;font-size:13px;margin-bottom:12px">${p.desc}</div>
