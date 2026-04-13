@@ -14822,6 +14822,7 @@ def api_send_payment_failed_c26():
 
 def _build_welcome_email(name, agency_name, trial_ends_at):
     from email_service import _base_template
+    base_url = os.environ.get('BASE_URL', 'https://mychannelview.com')
     trial_msg = ''
     if trial_ends_at:
         try:
@@ -14846,7 +14847,7 @@ def _build_welcome_email(name, agency_name, trial_ends_at):
       </ol>
     </div>
     <div style="text-align:center;margin:28px 0">
-      <a href="{{BASE_URL}}/dashboard" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;
+      <a href="{base_url}/dashboard" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;
          font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none">
         Go to Your Dashboard
       </a>
@@ -14856,6 +14857,7 @@ def _build_welcome_email(name, agency_name, trial_ends_at):
 
 def _build_trial_expiring_email(name, agency_name, days_left):
     from email_service import _base_template
+    base_url = os.environ.get('BASE_URL', 'https://mychannelview.com')
     content = f'''
     <h1 style="margin:0 0 8px;font-size:22px;color:#111">Your trial ends in {days_left} day{"s" if days_left != 1 else ""}</h1>
     <p style="color:#6b7280;font-size:15px;margin:0 0 20px;line-height:1.5">
@@ -14863,7 +14865,7 @@ def _build_trial_expiring_email(name, agency_name, days_left):
       Just a heads up — your ChannelView free trial is ending soon. After your trial expires, you'll lose access to premium features like unlimited interviews, AI scoring, and video storage.
     </p>
     <div style="text-align:center;margin:28px 0">
-      <a href="{{BASE_URL}}/billing" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;
+      <a href="{base_url}/billing" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;
          font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none">
         Upgrade Now
       </a>
@@ -14874,6 +14876,7 @@ def _build_trial_expiring_email(name, agency_name, days_left):
 
 def _build_payment_failed_email(name, agency_name):
     from email_service import _base_template
+    base_url = os.environ.get('BASE_URL', 'https://mychannelview.com')
     content = f'''
     <h1 style="margin:0 0 8px;font-size:22px;color:#111">Payment Failed</h1>
     <p style="color:#6b7280;font-size:15px;margin:0 0 20px;line-height:1.5">
@@ -14881,7 +14884,7 @@ def _build_payment_failed_email(name, agency_name):
       We were unable to process your payment for ChannelView. Please update your payment method to keep your account active and avoid any interruption in service.
     </p>
     <div style="text-align:center;margin:28px 0">
-      <a href="{{BASE_URL}}/billing" style="display:inline-block;background:#ef4444;color:#fff;font-weight:700;
+      <a href="{base_url}/billing" style="display:inline-block;background:#ef4444;color:#fff;font-weight:700;
          font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none">
         Update Payment Method
       </a>

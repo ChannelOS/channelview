@@ -4725,8 +4725,8 @@ async function renderFmoPortal() {
       'enterprise': '#7c3aed', 'starter': '#0ace0a', 'pro': '#2563eb'
     };
     const planLabels = {
-      'free': 'Free', 'essentials': 'Essentials $79', 'professional': 'Professional $149',
-      'enterprise': 'Enterprise $299', 'starter': 'Essentials', 'pro': 'Professional'
+      'free': 'Free', 'starter': 'Starter $99', 'professional': 'Professional $179',
+      'enterprise': 'Enterprise $299', 'essentials': 'Starter $99', 'pro': 'Professional $179'
     };
 
     content.innerHTML = `
@@ -4798,8 +4798,8 @@ async function renderFmoPortal() {
                   <span style="font-size:11px;padding:3px 8px;border-radius:4px;background:${statusColor};font-weight:500">${statusLabel}</span>
                   <select onchange="changePlan('${a.id}', this.value)" style="font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;cursor:pointer"${a.is_self ? ' disabled' : ''}>
                     <option value="free" ${plan==='free'?'selected':''}>Free</option>
-                    <option value="essentials" ${plan==='essentials'||plan==='starter'?'selected':''}>Essentials $79</option>
-                    <option value="professional" ${plan==='professional'||plan==='pro'?'selected':''}>Professional $149</option>
+                    <option value="starter" ${plan==='starter'||plan==='essentials'?'selected':''}>Starter $99</option>
+                    <option value="professional" ${plan==='professional'||plan==='pro'?'selected':''}>Professional $179</option>
                     <option value="enterprise" ${plan==='enterprise'?'selected':''}>Enterprise $299</option>
                   </select>
                 </div>
@@ -4820,8 +4820,8 @@ async function renderFmoPortal() {
           <input id="agency-name-input" class="form-input" placeholder="e.g. Smith Insurance Group" style="margin-bottom:12px">
           <label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px">Starting Plan</label>
           <select id="agency-plan" class="form-input" style="margin-bottom:16px">
-            <option value="professional" selected>Professional $149/mo (30-day free trial)</option>
-            <option value="essentials">Essentials $79/mo</option>
+            <option value="professional" selected>Professional $179/mo (30-day free trial)</option>
+            <option value="starter">Starter $99/mo</option>
             <option value="enterprise">Enterprise $299/mo</option>
             <option value="free">Free</option>
           </select>
@@ -5320,9 +5320,9 @@ async function renderBilling() {
   const plans = [
     {id:'free', name:'Free', price:0, desc:'Get started with basics', candidates:5, interviews:1, seats:1, storage:'500MB',
      features:['Basic pipeline','1 interview template','Email support'], cta:'Current' },
-    {id:'essentials', name:'Essentials', price:79, desc:'For growing agencies', candidates:50, interviews:5, seats:3, storage:'5GB',
+    {id:'starter', name:'Starter', price:99, desc:'For growing agencies', candidates:50, interviews:5, seats:3, storage:'5GB',
      features:['Team collaboration','Multiple pipelines','Email templates','Priority support'], cta:'Upgrade', popular:false },
-    {id:'professional', name:'Professional', price:149, desc:'Full recruiting power', candidates:200, interviews:25, seats:10, storage:'25GB',
+    {id:'professional', name:'Professional', price:179, desc:'Full recruiting power', candidates:200, interviews:25, seats:10, storage:'25GB',
      features:['AI candidate scoring','Advanced analytics','Bulk operations','API access','Integrations'], cta:'Upgrade', popular:true },
     {id:'enterprise', name:'Enterprise', price:299, desc:'Unlimited everything', candidates:-1, interviews:-1, seats:-1, storage:'Unlimited',
      features:['Unlimited everything','White-label branding','Custom workflows','Dedicated support','SLA guarantee'], cta:'Upgrade' },
