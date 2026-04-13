@@ -8531,15 +8531,25 @@ def api_fmo_create_agency():
     temp_password = _secrets.token_urlsafe(12)
     password_hash = bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt()).decode()
 
-    # Set trial period (30 days Professional trial)
-    trial_end = (datetime.utcnow() + timedelta(days=30)).isoformat()
+    # Set trial period only for paid plans (not free/starter)
+    if plan in ('professional', 'enterprise'):
+        trial_end = (datetime.utcnow() + timedelta(days=30)).isoformat()
+        sub_status = 'trialing'
+    elif plan == 'starter':
+        trial_end = None
+        sub_status = 'active'
+    else:
+        # Free plan — no trial, no expiration
+        trial_end = None
+        sub_status = 'active'
+        plan = 'free'
 
     db.execute('''
         INSERT INTO users (id, email, password_hash, name, agency_name, plan, fmo_parent_id,
                            is_fmo, trial_ends_at, subscription_status, onboarding_completed, password_changed,
                            created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 'trialing', 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    ''', (user_id, email, password_hash, name, agency_name, 'professional', g.user_id, trial_end))
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ''', (user_id, email, password_hash, name, agency_name, plan, g.user_id, trial_end, sub_status))
     db.commit()
     db.close()
 
@@ -8553,7 +8563,7 @@ def api_fmo_create_agency():
             'email': email,
             'name': name,
             'agency_name': agency_name,
-            'plan': 'professional',
+            'plan': plan,
             'trial_ends_at': trial_end,
             'temp_password': temp_password
         }

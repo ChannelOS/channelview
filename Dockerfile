@@ -19,9 +19,6 @@ COPY . .
 # Create non-root user and upload/data directories
 RUN useradd -m -r appuser && mkdir -p static/uploads/videos static/uploads/intros data && chown -R appuser:appuser /app
 
-# Switch to non-root user
-USER appuser
-
 # Expose port
 EXPOSE 5000
 
@@ -29,5 +26,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Run with gunicorn in production
-CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]
+# Entrypoint: fix volume permissions (as root) then drop to appuser for gunicorn
+CMD ["sh", "-c", "chown -R appuser:appuser /app/static/uploads /app/data 2>/dev/null; chmod -R 755 /app/static/uploads /app/data 2>/dev/null; exec su -s /bin/sh appuser -c 'gunicorn -c gunicorn.conf.py app:app'"]
