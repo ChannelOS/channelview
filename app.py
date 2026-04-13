@@ -16406,6 +16406,24 @@ def api_list_booking_slots_c29(interview_id):
         db.close()
 
 
+@app.route('/api/booking-slots/<slot_id>', methods=['DELETE'])
+@require_auth
+def api_delete_booking_slot_c29(slot_id):
+    """Delete a booking slot (only if not booked)."""
+    db = get_db()
+    try:
+        slot = db.execute('SELECT id, is_booked FROM booking_slots WHERE id=? AND user_id=?', (slot_id, g.user_id)).fetchone()
+        if not slot:
+            return jsonify({'error': 'Slot not found'}), 404
+        if dict(slot).get('is_booked'):
+            return jsonify({'error': 'Cannot delete a booked slot'}), 400
+        db.execute("DELETE FROM booking_slots WHERE id=?", (slot_id,))
+        db.commit()
+        return jsonify({'message': 'Slot deleted'})
+    finally:
+        db.close()
+
+
 # --- Candidate-Facing: Format Choice + RSVP (No auth) ---
 
 @app.route('/i/<token>/choose')

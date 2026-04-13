@@ -1107,26 +1107,52 @@ async function openIntroLibrary() {
   const list = document.getElementById('intro-library-list');
   list.innerHTML = '<div style="text-align:center;padding:20px;color:#999">Loading...</div>';
   try {
-    const videos = await api('/api/intro-videos');
-    if (videos.length === 0) {
-      list.innerHTML = '<div style="text-align:center;padding:32px;color:#999"><div style="font-size:28px;margin-bottom:8px">📚</div><p>No saved intro videos yet.</p><p style="font-size:13px;margin-top:4px">Record or upload an intro video, then click "Save to Library" to reuse it.</p></div>';
-      return;
+    const [videos, templates] = await Promise.all([
+      api('/api/intro-videos'),
+      api('/api/intro-templates').catch(() => [])
+    ]);
+    let html = '';
+    // Show system templates first
+    if (templates.length > 0) {
+      html += '<div style="font-weight:700;font-size:13px;color:#0ace0a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-top:4px">Intro Templates</div>';
+      html += templates.map(t => `
+        <div style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3f4f6">
+          <div style="width:120px;height:68px;border-radius:8px;overflow:hidden;background:#111;flex-shrink:0;display:flex;align-items:center;justify-content:center">
+            <span style="font-size:36px">${t.thumbnail_emoji || '📄'}</span>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${t.name}</div>
+            <div style="font-size:12px;color:#999;margin-top:2px">${t.description || ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm btn-primary" onclick="previewIntroTemplate('${t.html_path}')" style="font-size:12px">Preview</button>
+          </div>
+        </div>
+      `).join('');
     }
-    list.innerHTML = videos.map(v => `
-      <div style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3f4f6">
-        <div style="width:120px;height:68px;border-radius:8px;overflow:hidden;background:#000;flex-shrink:0">
-          <video src="${v.video_path}" style="width:100%;height:100%;object-fit:cover" preload="metadata"></video>
+    // Then show user-saved videos
+    if (videos.length > 0) {
+      html += '<div style="font-weight:700;font-size:13px;color:#666;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px;padding-top:4px;border-top:2px solid #e5e7eb">Your Saved Videos</div>';
+      html += videos.map(v => `
+        <div style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f3f4f6">
+          <div style="width:120px;height:68px;border-radius:8px;overflow:hidden;background:#000;flex-shrink:0">
+            <video src="${v.video_path}" style="width:100%;height:100%;object-fit:cover" preload="metadata"></video>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${v.name}</div>
+            <div style="font-size:12px;color:#999;margin-top:2px">${formatDate(v.created_at)}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm btn-primary" onclick="useLibraryIntro('${v.video_path}')" style="font-size:12px">Use This</button>
+            <button class="btn btn-sm btn-outline" onclick="deleteLibraryIntro('${v.id}')" style="font-size:12px;color:#dc2626;border-color:#dc2626" title="Delete">×</button>
+          </div>
         </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:14px">${v.name}</div>
-          <div style="font-size:12px;color:#999;margin-top:2px">${formatDate(v.created_at)}</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-sm btn-primary" onclick="useLibraryIntro('${v.video_path}')" style="font-size:12px">Use This</button>
-          <button class="btn btn-sm btn-outline" onclick="deleteLibraryIntro('${v.id}')" style="font-size:12px;color:#dc2626;border-color:#dc2626" title="Delete">×</button>
-        </div>
-      </div>
-    `).join('');
+      `).join('');
+    }
+    if (!html) {
+      html = '<div style="text-align:center;padding:32px;color:#999"><div style="font-size:28px;margin-bottom:8px">📚</div><p>No saved intro videos yet.</p><p style="font-size:13px;margin-top:4px">Record or upload an intro video, then click "Save to Library" to reuse it.</p></div>';
+    }
+    list.innerHTML = html;
   } catch (err) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:#dc2626">Failed to load library</div>';
   }
@@ -1435,16 +1461,22 @@ async function renderInterviewDetail() {
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
       <div class="card">
         <div class="card-header"><h3>Candidates</h3></div>
-        ${iv.candidates.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Score</th><th>Interest</th><th>Link</th><th></th></tr></thead><tbody>
-          ${iv.candidates.map(c => `<tr>
+        ${iv.candidates.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Format</th><th>Score</th><th>Interest</th><th>Link</th><th></th></tr></thead><tbody>
+          ${iv.candidates.map(c => {
+            const fmt = c.interview_format || 'video';
+            const fmtLabel = fmt === 'group_session' ? '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(124,58,237,.1);color:#7c3aed;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">👥 Group</span>'
+              : fmt === 'one_on_one' ? '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(37,99,235,.1);color:#2563eb;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">📞 1-on-1</span>'
+              : '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(10,206,10,.1);color:#0ace0a;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">🎥 Video</span>';
+            return `<tr>
             <td><strong>${c.first_name} ${c.last_name}</strong></td>
             <td style="font-size:13px">${c.email}</td>
             <td>${statusBadge(c.status)}</td>
+            <td>${fmtLabel}</td>
             <td>${c.ai_score ? scoreRing(c.ai_score, 36) : '—'}</td>
             <td>${c.interest_rating ? `<span style="display:inline-flex;align-items:center;background:${c.interest_rating>=8?'rgba(10,206,10,.1)':c.interest_rating>=5?'rgba(255,165,0,.1)':'rgba(220,38,38,.1)'};color:${c.interest_rating>=8?'#0ace0a':c.interest_rating>=5?'#f59e0b':'#dc2626'};padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${c.interest_rating}/10</span>` : '—'}</td>
             <td><button class="btn btn-sm btn-outline" onclick="copyLink('${baseUrl}/i/${c.token}')" title="Copy interview link">Copy Link</button></td>
             <td><a href="/review/${c.id}" class="btn btn-sm btn-outline">Review</a></td>
-          </tr>`).join('')}
+          </tr>`}).join('')}
         </tbody></table>` : '<div class="empty-state"><p>No candidates added yet.</p><button class="btn btn-primary btn-sm" onclick="showAddCandidateModal(\''+iv.id+'\')">+ Add Candidate</button></div>'}
       </div>
       <div>
@@ -1514,6 +1546,104 @@ async function renderInterviewDetail() {
           </div>
           <p style="color:#aaa;font-size:12px;text-align:center;margin-top:6px">Preview of what candidates see</p>
         </div>
+        <div class="card" id="format-options-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <h3>Format Options</h3>
+            <span style="font-size:11px;color:#888" id="format-save-status"></span>
+          </div>
+          <p style="color:#888;font-size:13px;margin-bottom:14px">Choose which interview formats candidates can pick from. Video is always included.</p>
+          <div id="format-options-loading" style="text-align:center;padding:12px;color:#999;font-size:13px">Loading format settings...</div>
+          <div id="format-options-body" style="display:none">
+            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+              <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:default;background:#f9fafb">
+                <input type="checkbox" checked disabled> <span style="font-size:20px">🎥</span>
+                <div><div style="font-weight:600;font-size:13px">Async Video Interview</div><div style="font-size:11px;color:#888">Candidates record video answers on their own time</div></div>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-group-label">
+                <input type="checkbox" id="fmt-group" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:20px">👥</span>
+                <div><div style="font-weight:600;font-size:13px">Group Info Session</div><div style="font-size:11px;color:#888">Virtual or in-person group presentation</div></div>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-ono-label">
+                <input type="checkbox" id="fmt-ono" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:20px">📞</span>
+                <div><div style="font-weight:600;font-size:13px">1-on-1 Meeting</div><div style="font-size:11px;color:#888">Phone call, virtual meeting, or in-person</div></div>
+              </label>
+            </div>
+            <div id="fmt-group-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">👥 Group Session Details</div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="font-size:12px;font-weight:500">Description shown to candidates</label>
+                <textarea id="fmt-group-desc" class="form-control" rows="2" placeholder="e.g. Join our weekly info session to learn about the opportunity and meet the team" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+                <span style="font-size:12px;color:#888">Manage sessions below after saving</span>
+                <button class="btn btn-sm btn-outline" onclick="showGroupSessionModal('${iv.id}')">+ Add Session</button>
+              </div>
+              <div id="fmt-group-sessions-list" style="margin-top:8px"></div>
+            </div>
+            <div id="fmt-ono-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">📞 1-on-1 Meeting Details</div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="font-size:12px;font-weight:500">Meeting type</label>
+                <select id="fmt-ono-type" class="form-control" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')">
+                  <option value="recruiter_call">Phone / Video Call</option>
+                  <option value="in_person">In-Person Meeting</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="font-size:12px;font-weight:500">Description shown to candidates</label>
+                <textarea id="fmt-ono-desc" class="form-control" rows="2" placeholder="e.g. Schedule a quick call to discuss next steps and answer your questions" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+                <span style="font-size:12px;color:#888">Add time slots for candidates to book</span>
+                <button class="btn btn-sm btn-outline" onclick="showBookingSlotModal('${iv.id}')">+ Add Slot</button>
+              </div>
+              <div id="fmt-ono-slots-list" style="margin-top:8px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Group Session Modal -->
+    <div class="modal-overlay" id="modal-group-session" onclick="if(event.target===this)this.classList.remove('show')">
+      <div class="modal">
+        <div class="modal-header"><h2>Add Group Session</h2><button class="modal-close" onclick="document.getElementById('modal-group-session').classList.remove('show')">×</button></div>
+        <div class="form-group"><label>Session Title</label><input id="gs-title" class="form-control" placeholder="e.g. Weekly Info Session"></div>
+        <div class="form-row" style="display:flex;gap:12px">
+          <div class="form-group" style="flex:1"><label>Type</label>
+            <select id="gs-type" class="form-control" onchange="document.getElementById('gs-location-row').style.display=this.value==='in_person'?'':'none';document.getElementById('gs-url-row').style.display=this.value==='virtual'?'':'none'">
+              <option value="virtual">Virtual (Zoom, Teams, etc.)</option>
+              <option value="in_person">In-Person</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1"><label>Capacity (0 = unlimited)</label><input id="gs-capacity" type="number" class="form-control" value="0" min="0"></div>
+        </div>
+        <div class="form-group" id="gs-url-row"><label>Meeting URL</label><input id="gs-url" class="form-control" placeholder="https://zoom.us/j/..."></div>
+        <div class="form-group" id="gs-location-row" style="display:none"><label>Location / Address</label><input id="gs-location" class="form-control" placeholder="123 Main St, Suite 200"></div>
+        <div class="form-row" style="display:flex;gap:12px">
+          <div class="form-group" style="flex:1"><label>Date & Time</label><input id="gs-date" type="datetime-local" class="form-control"></div>
+          <div class="form-group" style="flex:1"><label>Duration (minutes)</label><input id="gs-duration" type="number" class="form-control" value="60" min="15" step="15"></div>
+        </div>
+        <div class="form-group"><label>Notes (optional)</label><textarea id="gs-notes" class="form-control" rows="2" placeholder="Any additional details for your records"></textarea></div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="document.getElementById('modal-group-session').classList.remove('show')">Cancel</button>
+          <button class="btn btn-primary" onclick="createGroupSession('${iv.id}')">Create Session</button>
+        </div>
+      </div>
+    </div>
+    <!-- Booking Slot Modal -->
+    <div class="modal-overlay" id="modal-booking-slot" onclick="if(event.target===this)this.classList.remove('show')">
+      <div class="modal">
+        <div class="modal-header"><h2>Add Time Slot</h2><button class="modal-close" onclick="document.getElementById('modal-booking-slot').classList.remove('show')">×</button></div>
+        <div class="form-row" style="display:flex;gap:12px">
+          <div class="form-group" style="flex:1"><label>Date & Time</label><input id="bs-date" type="datetime-local" class="form-control"></div>
+          <div class="form-group" style="flex:1"><label>Duration (minutes)</label><input id="bs-duration" type="number" class="form-control" value="30" min="15" step="15"></div>
+        </div>
+        <div class="form-group"><label>Meeting URL (for virtual)</label><input id="bs-url" class="form-control" placeholder="https://zoom.us/j/..."></div>
+        <div class="form-group"><label>Phone Number (for calls)</label><input id="bs-phone" class="form-control" placeholder="(555) 123-4567"></div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="document.getElementById('modal-booking-slot').classList.remove('show')">Cancel</button>
+          <button class="btn btn-primary" onclick="createBookingSlot('${iv.id}')">Add Slot</button>
+        </div>
       </div>
     </div>
     <!-- Add Candidate Modal -->
@@ -1539,6 +1669,8 @@ async function renderInterviewDetail() {
   loadDeadlineStatus(iv.id);
   // Auto-load intro templates grid
   loadIntroTemplates(iv.id);
+  // Load format options
+  loadFormatOptions(iv.id);
 }
 
 function showAddCandidateModal() {
@@ -1662,6 +1794,192 @@ async function toggleInterviewStatus(id, current) {
 
 function copyLink(url) {
   navigator.clipboard.writeText(url).then(() => toast('Link copied!', 'success')).catch(() => toast('Failed to copy', 'error'));
+}
+
+// ==================== FORMAT OPTIONS ====================
+
+async function loadFormatOptions(interviewId) {
+  try {
+    const cfg = await api(`/api/interviews/${interviewId}/formats`);
+    const body = document.getElementById('format-options-body');
+    const loading = document.getElementById('format-options-loading');
+    if (!body) return;
+    loading.style.display = 'none';
+    body.style.display = 'block';
+    const fmts = cfg.formats_enabled || ['video'];
+    document.getElementById('fmt-group').checked = fmts.includes('group_session');
+    document.getElementById('fmt-ono').checked = fmts.includes('one_on_one');
+    document.getElementById('fmt-group-settings').style.display = fmts.includes('group_session') ? 'block' : 'none';
+    document.getElementById('fmt-ono-settings').style.display = fmts.includes('one_on_one') ? 'block' : 'none';
+    document.getElementById('fmt-group-desc').value = cfg.group_session_description || '';
+    document.getElementById('fmt-ono-desc').value = cfg.one_on_one_description || '';
+    document.getElementById('fmt-ono-type').value = cfg.one_on_one_type || 'recruiter_call';
+    // Highlight checked labels
+    document.getElementById('fmt-group-label').style.borderColor = fmts.includes('group_session') ? 'var(--primary)' : '#e5e7eb';
+    document.getElementById('fmt-group-label').style.background = fmts.includes('group_session') ? '#f0fdf0' : '#fff';
+    document.getElementById('fmt-ono-label').style.borderColor = fmts.includes('one_on_one') ? 'var(--primary)' : '#e5e7eb';
+    document.getElementById('fmt-ono-label').style.background = fmts.includes('one_on_one') ? '#f0fdf0' : '#fff';
+    // Load group sessions list
+    if (fmts.includes('group_session')) loadGroupSessions(interviewId);
+    if (fmts.includes('one_on_one')) loadBookingSlots(interviewId);
+  } catch (e) {
+    const loading = document.getElementById('format-options-loading');
+    if (loading) loading.textContent = 'Could not load format settings';
+  }
+}
+
+let _fmtSaveTimer = null;
+async function saveFormatOptions(interviewId) {
+  const groupOn = document.getElementById('fmt-group').checked;
+  const onoOn = document.getElementById('fmt-ono').checked;
+  document.getElementById('fmt-group-settings').style.display = groupOn ? 'block' : 'none';
+  document.getElementById('fmt-ono-settings').style.display = onoOn ? 'block' : 'none';
+  document.getElementById('fmt-group-label').style.borderColor = groupOn ? 'var(--primary)' : '#e5e7eb';
+  document.getElementById('fmt-group-label').style.background = groupOn ? '#f0fdf0' : '#fff';
+  document.getElementById('fmt-ono-label').style.borderColor = onoOn ? 'var(--primary)' : '#e5e7eb';
+  document.getElementById('fmt-ono-label').style.background = onoOn ? '#f0fdf0' : '#fff';
+  clearTimeout(_fmtSaveTimer);
+  _fmtSaveTimer = setTimeout(async () => {
+    const fmts = ['video'];
+    if (groupOn) fmts.push('group_session');
+    if (onoOn) fmts.push('one_on_one');
+    const status = document.getElementById('format-save-status');
+    status.textContent = 'Saving...';
+    try {
+      await api(`/api/interviews/${interviewId}/formats`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          formats_enabled: fmts,
+          group_session_description: document.getElementById('fmt-group-desc').value,
+          one_on_one_description: document.getElementById('fmt-ono-desc').value,
+          one_on_one_type: document.getElementById('fmt-ono-type').value
+        })
+      });
+      status.textContent = 'Saved';
+      status.style.color = '#0ace0a';
+      setTimeout(() => { status.textContent = ''; }, 2000);
+      if (groupOn) loadGroupSessions(interviewId);
+      if (onoOn) loadBookingSlots(interviewId);
+    } catch (e) {
+      status.textContent = 'Error saving';
+      status.style.color = '#dc2626';
+    }
+  }, 600);
+}
+
+function showGroupSessionModal() { document.getElementById('modal-group-session').classList.add('show'); }
+function showBookingSlotModal() { document.getElementById('modal-booking-slot').classList.add('show'); }
+
+async function createGroupSession(interviewId) {
+  const title = document.getElementById('gs-title').value.trim();
+  const sDate = document.getElementById('gs-date').value;
+  if (!sDate) { toast('Please select a date and time', 'error'); return; }
+  try {
+    await api('POST', `/api/interviews/${interviewId}/group-sessions`, {
+      title: title || 'Info Session',
+      session_type: document.getElementById('gs-type').value,
+      meeting_url: document.getElementById('gs-url').value,
+      location: document.getElementById('gs-location').value,
+      session_date: sDate,
+      duration_minutes: parseInt(document.getElementById('gs-duration').value) || 60,
+      capacity: parseInt(document.getElementById('gs-capacity').value) || 0,
+      notes: document.getElementById('gs-notes').value
+    });
+    document.getElementById('modal-group-session').classList.remove('show');
+    toast('Group session created!', 'success');
+    loadGroupSessions(interviewId);
+  } catch (e) { toast(e.message || 'Failed to create session', 'error'); }
+}
+
+async function loadGroupSessions(interviewId) {
+  const el = document.getElementById('fmt-group-sessions-list');
+  if (!el) return;
+  try {
+    const res = await api(`/api/interviews/${interviewId}/group-sessions`);
+    const sessions = Array.isArray(res) ? res : (res.sessions || []);
+    if (!sessions.length) {
+      el.innerHTML = '<div style="font-size:12px;color:#999;padding:6px 0">No sessions scheduled yet</div>';
+      return;
+    }
+    el.innerHTML = sessions.map(s => {
+      const d = new Date(s.session_date);
+      const dateStr = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+      const timeStr = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+      const spots = s.capacity > 0 ? `${s.capacity - (s.rsvp_count||0)}/${s.capacity} spots` : 'Unlimited';
+      const icon = s.session_type === 'virtual' ? '💻' : '📍';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px;font-size:12px">
+        <div>${icon} <strong>${s.title || 'Info Session'}</strong> — ${dateStr} at ${timeStr} (${s.duration_minutes}min)</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:#888">${spots}</span>
+          <button class="btn btn-sm btn-outline" style="font-size:11px;padding:2px 6px;color:#dc2626;border-color:#dc2626" onclick="deleteGroupSession('${interviewId}','${s.id}')">×</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { el.innerHTML = '<div style="font-size:12px;color:#dc2626">Error loading sessions</div>'; }
+}
+
+async function deleteGroupSession(interviewId, sessionId) {
+  if (!confirm('Delete this group session?')) return;
+  try {
+    await api(`/api/group-sessions/${sessionId}`, { method: 'DELETE' });
+    toast('Session deleted', 'success');
+    loadGroupSessions(interviewId);
+  } catch (e) { toast('Failed to delete', 'error'); }
+}
+
+async function createBookingSlot(interviewId) {
+  const sDate = document.getElementById('bs-date').value;
+  if (!sDate) { toast('Please select a date and time', 'error'); return; }
+  try {
+    await api('POST', `/api/interviews/${interviewId}/booking-slots`, {
+      slots: [{
+        date: sDate,
+        duration_minutes: parseInt(document.getElementById('bs-duration').value) || 30,
+        meeting_url: document.getElementById('bs-url').value,
+        phone_number: document.getElementById('bs-phone').value,
+        slot_type: document.getElementById('fmt-ono-type').value || 'recruiter_call'
+      }]
+    });
+    document.getElementById('modal-booking-slot').classList.remove('show');
+    toast('Time slot added!', 'success');
+    loadBookingSlots(interviewId);
+  } catch (e) { toast(e.message || 'Failed to add slot', 'error'); }
+}
+
+async function loadBookingSlots(interviewId) {
+  const el = document.getElementById('fmt-ono-slots-list');
+  if (!el) return;
+  try {
+    const res = await api(`/api/interviews/${interviewId}/booking-slots`);
+    const slots = Array.isArray(res) ? res : (res.slots || []);
+    if (!slots.length) {
+      el.innerHTML = '<div style="font-size:12px;color:#999;padding:6px 0">No time slots added yet</div>';
+      return;
+    }
+    el.innerHTML = slots.map(s => {
+      const d = new Date(s.slot_date);
+      const dateStr = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+      const timeStr = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+      const booked = s.is_booked ? '<span style="color:#0ace0a;font-weight:600">Booked</span>' : '<span style="color:#888">Open</span>';
+      const typeIcon = s.slot_type === 'in_person' ? '📍' : '📞';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px;font-size:12px">
+        <div>${typeIcon} ${dateStr} at ${timeStr} (${s.duration_minutes}min)</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${booked}
+          ${!s.is_booked ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:2px 6px;color:#dc2626;border-color:#dc2626" onclick="deleteBookingSlot('${interviewId}','${s.id}')">×</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { el.innerHTML = '<div style="font-size:12px;color:#dc2626">Error loading slots</div>'; }
+}
+
+async function deleteBookingSlot(interviewId, slotId) {
+  if (!confirm('Delete this time slot?')) return;
+  try {
+    await api(`/api/booking-slots/${slotId}`, { method: 'DELETE' });
+    toast('Slot deleted', 'success');
+    loadBookingSlots(interviewId);
+  } catch (e) { toast('Failed to delete', 'error'); }
 }
 
 async function cloneInterview(id) {
@@ -3255,8 +3573,10 @@ async function renderOnboarding() {
 async function renderAdmin() {
   content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading admin panel...</div>';
   try {
+    let introTemplates = [];
     const [stats, accounts] = await Promise.all([api('/api/admin/stats'), api('/api/admin/accounts')]);
     const accts = accounts.accounts || [];
+    try { introTemplates = await api('/api/intro-templates'); } catch(e) { introTemplates = []; }
 
     content.innerHTML = `
       <div class="page-header">
@@ -3300,6 +3620,22 @@ async function renderAdmin() {
             </div>
           `).join('') : '<div class="empty-state"><p>No recent activity</p></div>'}
         </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <h3>Intro Templates</h3>
+          <span style="font-size:13px;color:#666">${introTemplates.length} template${introTemplates.length !== 1 ? 's' : ''} available to all agencies</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:16px 0">
+          ${introTemplates.map(t => `<div style="border:1px solid #e5e7eb;border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.boxShadow='0 2px 12px rgba(10,206,10,.15)'" onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'" onclick="previewIntroTemplate('${t.html_path}')">
+            <div style="font-size:40px;margin-bottom:8px">${t.thumbnail_emoji || ''}</div>
+            <div style="font-weight:600;font-size:15px;margin-bottom:4px">${t.name}</div>
+            <div style="font-size:12px;color:#888;margin-bottom:8px">${t.description || ''}</div>
+            <div style="font-size:11px;color:#0ace0a;font-weight:600">Click to preview</div>
+          </div>`).join('')}
+        </div>
+        ${introTemplates.length === 0 ? '<div class="empty-state"><p>No intro templates configured</p></div>' : ''}
       </div>`;
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Access Denied</h3><p>${err.message || 'FMO admin access required.'}</p></div>`;
@@ -4922,12 +5258,14 @@ async function renderFmoPortal() {
   const content = document.getElementById('page-content');
   content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading...</div>';
   try {
+    let introTemplates = [];
     const [agenciesRes, statsRes] = await Promise.all([
       api('GET', '/api/fmo/agencies'),
       api('GET', '/api/fmo/stats')
     ]);
     const agencies = agenciesRes.agencies || [];
     const stats = statsRes || {};
+    try { introTemplates = await api('/api/intro-templates'); } catch(e) { introTemplates = []; }
 
     const planColors = {
       'free': '#94a3b8', 'essentials': '#0ace0a', 'professional': '#2563eb',
@@ -5017,6 +5355,22 @@ async function renderFmoPortal() {
             </div>`;
           }).join('')}
         </div>`}
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <h3 style="margin:0">Intro Templates</h3>
+          <span style="font-size:13px;color:#666">${introTemplates.length} template${introTemplates.length !== 1 ? 's' : ''} available to all agencies</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:16px 0">
+          ${introTemplates.map(t => `<div style="border:1px solid #e5e7eb;border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.boxShadow='0 2px 12px rgba(10,206,10,.15)'" onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'" onclick="previewIntroTemplate('${t.html_path}')">
+            <div style="font-size:40px;margin-bottom:8px">${t.thumbnail_emoji || ''}</div>
+            <div style="font-weight:600;font-size:15px;margin-bottom:4px">${t.name}</div>
+            <div style="font-size:12px;color:#888;margin-bottom:8px">${t.description || ''}</div>
+            <div style="font-size:11px;color:#0ace0a;font-weight:600">Click to preview</div>
+          </div>`).join('')}
+        </div>
+        ${introTemplates.length === 0 ? '<div class="empty-state"><p>No intro templates configured</p></div>' : ''}
       </div>
 
       <div id="agency-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;align-items:center;justify-content:center">
@@ -5698,13 +6052,14 @@ async function renderVideoLibrary() {
   const el = document.getElementById('page-content');
   el.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading video library...</div>';
 
-  let assets = {}, stats = {};
+  let assets = {}, stats = {}, introTemplates = [];
   try {
     [assets, stats] = await Promise.all([
       api('GET', '/api/videos'),
       api('GET', '/api/storage/stats')
     ]);
   } catch(e) { assets = {assets:[]}; stats = {}; }
+  try { introTemplates = await api('/api/intro-templates'); } catch(e) { introTemplates = []; }
 
   const videos = assets.assets || [];
 
@@ -5716,6 +6071,23 @@ async function renderVideoLibrary() {
         <span class="badge badge-gray">${stats.total_mb||0} MB used</span>
       </div>
     </div>
+
+    <!-- Intro Templates Section -->
+    ${introTemplates.length ? `
+    <div style="margin-bottom:28px">
+      <h2 style="margin:0 0 6px;font-size:18px">Intro Templates</h2>
+      <p style="color:#888;font-size:13px;margin-bottom:14px">Click-through presentations that play before the first interview question. Assign one to any interview from its detail page.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">
+        ${introTemplates.map(t => `
+          <div class="card" style="padding:20px;text-align:center;cursor:pointer;border:1px solid #e5e7eb;transition:border-color .2s,box-shadow .2s" onclick="previewIntroTemplate('${t.html_path}')" onmouseover="this.style.borderColor='#0ace0a';this.style.boxShadow='0 0 0 1px #0ace0a'" onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'">
+            <div style="font-size:40px;margin-bottom:10px">${t.thumbnail_emoji || '📄'}</div>
+            <div style="font-size:15px;font-weight:700;margin-bottom:6px">${t.name}</div>
+            <div style="font-size:12px;color:#888;line-height:1.5;margin-bottom:10px">${t.description || ''}</div>
+            <span class="badge badge-primary" style="font-size:11px">~${t.duration_seconds||30}s • Click to Preview</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
 
     <!-- Storage Stats -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px">
