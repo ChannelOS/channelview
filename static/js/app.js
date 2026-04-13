@@ -481,7 +481,7 @@ async function renderInterviews() {
   const interviews = await api('/api/interviews');
   content.innerHTML = `
     <div class="page-header">
-      <div><h1>Interviews</h1><p class="subtitle">Manage your interview templates</p></div>
+      <div><h1>Interviews</h1><p class="subtitle">Your interview templates</p></div>
       <div class="page-actions"><a href="/interviews/new" class="btn btn-primary">+ New Interview</a></div>
     </div>
     ${interviews.length ? `<div class="card" style="padding:0;overflow:hidden">
@@ -1177,7 +1177,7 @@ async function renderInterviewBuilder() {
   introFromLibraryPath = null;
   content.innerHTML = `
     <div class="page-header">
-      <div><h1>Create Interview</h1><p class="subtitle">Set up questions and recording parameters</p></div>
+      <div><h1>Create Interview</h1><p class="subtitle">Add your questions and choose recording settings</p></div>
     </div>
     <form id="interviewForm" onsubmit="submitInterview(event)">
       <div style="display:grid;grid-template-columns:5fr 4fr;gap:24px">
@@ -1665,7 +1665,7 @@ async function renderCandidates() {
 
   content.innerHTML = `
     <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
-      <div><h1>Candidate Pipeline</h1><p class="subtitle">${total} total candidates</p></div>
+      <div><h1>My Candidates</h1><p class="subtitle">${total} total candidates</p></div>
       <div style="position:absolute;left:50%;transform:translateX(-50%);display:flex;gap:4px;background:#f3f4f6;padding:4px;border-radius:8px">
         <button class="btn btn-sm ${candidateViewMode==='table'?'btn-primary':'btn-outline'}" style="min-width:80px;border-radius:6px" onclick="candidateViewMode='table';renderCandidates()">📋 List</button>
         <button class="btn btn-sm ${candidateViewMode==='kanban'?'btn-primary':'btn-outline'}" style="min-width:80px;border-radius:6px" onclick="candidateViewMode='kanban';renderCandidates()">📊 Board</button>
@@ -2401,7 +2401,7 @@ async function renderSettings() {
   try { profile = await api('/api/me'); } catch(e) { /* fallback to APP_USER */ }
 
   content.innerHTML = `
-    <div class="page-header"><div><h1>Settings</h1><p class="subtitle">Agency configuration</p></div></div>
+    <div class="page-header"><div><h1>Settings</h1><p class="subtitle">Your agency settings and preferences</p></div></div>
     <div style="max-width:600px">
       <div class="card">
         <h3 style="margin-bottom:16px">Agency Profile</h3>
@@ -2841,7 +2841,7 @@ async function renderAnalytics() {
 
     content.innerHTML = `
       <div class="page-header">
-        <div><h1>Analytics</h1><p class="subtitle">Performance metrics and activity</p></div>
+        <div><h1>Numbers &amp; Trends</h1><p class="subtitle">How your recruiting is going</p></div>
         <div class="page-actions">
           <a href="/api/analytics/export" class="btn btn-outline" download>📥 Export CSV</a>
         </div>
@@ -2914,7 +2914,7 @@ async function renderAiInsights() {
 
     content.innerHTML = `
       <div class="page-header">
-        <div><h1>AI Insights</h1><p class="subtitle">Scoring analytics and candidate intelligence</p></div>
+        <div><h1>AI Scoring</h1><p class="subtitle">See how AI rated your candidates</p></div>
       </div>
 
       <!-- Summary Stats -->
@@ -3208,7 +3208,7 @@ async function renderBranding() {
 
     content.innerHTML = `
       <div class="page-header">
-        <div><h1>Branding</h1><p class="subtitle">Customize your agency's candidate-facing experience</p></div>
+        <div><h1>My Branding</h1><p class="subtitle">Make it look like yours — logo, colors, and style</p></div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -3229,9 +3229,9 @@ async function renderBranding() {
         </div>
 
         <div class="card">
-          <h3 style="margin-bottom:16px">White-Label Settings</h3>
+          <h3 style="margin-bottom:16px">Custom Branding Settings</h3>
           <div class="form-group">
-            <label><input type="checkbox" id="br-wl-enabled" ${b.white_label_enabled ? 'checked' : ''}> Enable White-Label Branding</label>
+            <label><input type="checkbox" id="br-wl-enabled" ${b.white_label_enabled ? 'checked' : ''}> Use My Own Branding</label>
             <p style="font-size:13px;color:#666;margin-top:4px">When enabled, candidates see your brand name and logo instead of ChannelView.</p>
           </div>
           <div class="form-group"><label>Candidate-Facing Brand Name</label>
@@ -3327,7 +3327,7 @@ async function renderAutomation() {
 
     content.innerHTML = `
       <div class="page-header">
-        <div><h1>Workflow Automation</h1><p class="subtitle">Automate scoring, candidate advancement, and reminder sequences</p></div>
+        <div><h1>Auto-Pilot</h1><p class="subtitle">Set up automatic scoring, candidate follow-ups, and reminders</p></div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -3412,9 +3412,9 @@ async function renderApiDocs() {
 
     content.innerHTML = `
       <div class="page-header">
-        <div><h1>API & Integrations</h1><p class="subtitle">Connect ChannelView to your AMS, CRM, or other tools</p></div>
+        <div><h1>Connections</h1><p class="subtitle">Link ChannelView to the other tools you use</p></div>
         <div class="page-actions">
-          <a href="/api/docs" target="_blank" class="btn btn-outline">View API Documentation</a>
+          <a href="/api/docs" target="_blank" class="btn btn-outline">View API Docs</a>
         </div>
       </div>
 
@@ -3479,8 +3479,8 @@ async function renderIntegrations() {
   content.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
       <div>
-        <h1 style="font-size:24px;font-weight:700">Integrations</h1>
-        <p style="color:#666;margin-top:4px">Connect ChannelView to your ATS, CRM, and automation tools</p>
+        <h1 style="font-size:24px;font-weight:700">Connections</h1>
+        <p style="color:#666;margin-top:4px">Link ChannelView with the other tools your agency uses</p>
       </div>
     </div>
 
@@ -3587,8 +3587,8 @@ async function renderCompliance() {
   content.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
       <div>
-        <h1 style="font-size:24px;font-weight:700">Compliance & Audit</h1>
-        <p style="color:#666;margin-top:4px">Audit trail, data retention, and EEOC compliance documentation</p>
+        <h1 style="font-size:24px;font-weight:700">Compliance</h1>
+        <p style="color:#666;margin-top:4px">Track who did what, keep records, and stay compliant</p>
       </div>
       <div style="display:flex;gap:12px">
         <button class="btn btn-outline" onclick="exportComplianceLog()">Export CSV</button>
@@ -3693,8 +3693,8 @@ async function renderKanban() {
   content.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <div>
-        <h1 style="font-size:24px;font-weight:700">Candidate Pipeline</h1>
-        <p style="color:#666;margin-top:4px">Drag candidates between stages to update their status</p>
+        <h1 style="font-size:24px;font-weight:700">Hiring Board</h1>
+        <p style="color:#666;margin-top:4px">Drag candidates between stages to move them along</p>
       </div>
       <select id="kanban-filter" class="form-input" style="width:auto" onchange="filterKanban()">
         <option value="">All Interviews</option>
@@ -3883,7 +3883,7 @@ async function testEmailDelivery() {
 async function renderReports() {
   content.innerHTML = `
     <div class="page-header">
-      <div><h1>Reports & Analytics</h1><p class="subtitle">Hiring funnel analytics, candidate scorecards, and side-by-side comparisons</p></div>
+      <div><h1>Reports</h1><p class="subtitle">Hiring funnel, candidate scorecards, and side-by-side comparisons</p></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
@@ -3893,7 +3893,7 @@ async function renderReports() {
           <div class="form-group"><label>From</label><input type="date" id="rpt-from" class="form-control"></div>
           <div class="form-group"><label>To</label><input type="date" id="rpt-to" class="form-control"></div>
         </div>
-        <button class="btn btn-primary" onclick="loadFunnelReport()">Generate Funnel Report</button>
+        <button class="btn btn-primary" onclick="loadFunnelReport()">Generate Hiring Report</button>
         <div id="funnel-result" style="margin-top:16px"></div>
       </div>
 
@@ -4006,7 +4006,7 @@ async function deleteReportConfig(id) {
 async function renderSecurity() {
   content.innerHTML = `
     <div class="page-header">
-      <div><h1>Security</h1><p class="subtitle">Account security, audit, and access management</p></div>
+      <div><h1>Security</h1><p class="subtitle">Password, login history, and account safety</p></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
@@ -4149,7 +4149,7 @@ async function testSanitize() {
 async function renderTeam() {
   content.innerHTML = `
     <div class="page-header">
-      <div><h1>Team</h1><p class="subtitle">Manage team members, roles, and permissions</p></div>
+      <div><h1>My Team</h1><p class="subtitle">Add people, set their roles, and manage access</p></div>
       <button class="btn btn-primary" onclick="showInviteModal()">Invite Member</button>
     </div>
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
@@ -4223,7 +4223,7 @@ async function removeTeamMember(id) {
 async function renderActivity() {
   content.innerHTML = `
     <div class="page-header">
-      <div><h1>Activity Feed</h1><p class="subtitle">Real-time team activity and usage tracking</p></div>
+      <div><h1>Activity Feed</h1><p class="subtitle">What your team has been doing</p></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="card">
@@ -4392,7 +4392,7 @@ async function renderAdminAnalytics() {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
         <div class="card">
-          <h3 style="margin-bottom:12px">Conversion Funnel</h3>
+          <h3 style="margin-bottom:12px">Hiring Funnel</h3>
           <div id="funnel-chart">
             ${funnel.map(s => `
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -4486,7 +4486,7 @@ async function renderAiScoring() {
     const features = config.supported_features || {};
 
     content.innerHTML = `
-      <div class="page-header"><h2>AI Scoring & Evaluation</h2>
+      <div class="page-header"><h2>AI Scoring</h2>
         <button class="btn btn-primary" onclick="showCreateRubricModal()">Create Rubric</button>
       </div>
 
@@ -4592,7 +4592,7 @@ async function renderIntegrationsHub() {
     const widgets = widgetsRes.widgets || [];
 
     content.innerHTML = `
-      <div class="page-header"><h2>Webhooks & Embeddable Widgets</h2></div>
+      <div class="page-header"><h2>Embed &amp; Connect</h2></div>
 
       <div class="card" style="margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -4713,7 +4713,7 @@ async function renderReviewHub() {
     const candidates = (candsRes.candidates || []).slice(0, 20);
 
     content.innerHTML = `
-      <div class="page-header"><h2>Review & Compare Candidates</h2>
+      <div class="page-header"><h2>Compare Candidates</h2>
         <button class="btn btn-primary" onclick="showCreateShortlistModal()">New Shortlist</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
@@ -5000,7 +5000,7 @@ async function renderEmailTemplates() {
     const stats = statsRes;
 
     content.innerHTML = `
-      <div class="page-header"><h2>Email Templates & Delivery</h2>
+      <div class="page-header"><h2>Email Templates</h2>
         <button class="btn btn-primary" onclick="showCreateTemplateModal()">New Template</button>
       </div>
       <div class="stats-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
@@ -5107,7 +5107,7 @@ async function renderWhiteLabel() {
   const preview = previewRes.preview || {};
 
   content.innerHTML = `
-    <div class="page-header"><h1>White-Label & Custom Branding</h1>
+    <div class="page-header"><h1>Custom Look &amp; Feel</h1>
       <button class="btn btn-primary" onclick="showCreateBrandModal()">+ New Brand Profile</button></div>
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px">
       <div class="stat-card"><div class="stat-value">${profiles.length}</div><div class="stat-label">Brand Profiles</div></div>
@@ -5181,7 +5181,7 @@ async function renderReportHub() {
   const reports = res.reports || [];
 
   content.innerHTML = `
-    <div class="page-header"><h1>Report Hub</h1></div>
+    <div class="page-header"><h1>All Reports</h1></div>
     <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
       <div class="stat-card"><div class="stat-value">${reports.length}</div><div class="stat-label">Total Reports</div></div>
       <div class="stat-card"><div class="stat-value">${reports.filter(r=>r.recommendation==='Strong Hire').length}</div><div class="stat-label">Strong Hires</div></div>
@@ -5233,7 +5233,7 @@ async function renderBulkOps() {
   const interviews = (Array.isArray(intRes) ? intRes : intRes.interviews || []);
 
   content.innerHTML = `
-    <div class="page-header"><h1>Bulk Operations & Workflow Automation</h1></div>
+    <div class="page-header"><h1>Bulk Actions</h1></div>
     <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
       <div class="stat-card"><div class="stat-value">${ops.length}</div><div class="stat-label">Operations Run</div></div>
       <div class="stat-card"><div class="stat-value">${ops.reduce((a,o)=>a+(o.processed_items||0),0)}</div><div class="stat-label">Items Processed</div></div>
@@ -5354,7 +5354,7 @@ async function renderAuditTrail() {
   const policies = retentionRes.policies || [];
 
   content.innerHTML = `
-    <div class="page-header"><h1>Audit Trail & Compliance</h1></div>
+    <div class="page-header"><h1>Activity History</h1></div>
     <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
       <div class="stat-card"><div class="stat-value">${stats.total||0}</div><div class="stat-label">Audit Entries</div></div>
       <div class="stat-card"><div class="stat-value">${(stats.by_severity||{}).warning||0}</div><div class="stat-label">Warnings</div></div>
@@ -5494,7 +5494,7 @@ async function renderBilling() {
     <div class="card" style="margin-bottom:24px">
       <h3 style="margin:0 0 12px;font-size:15px">Feature Access</h3>
       <div style="display:flex;gap:20px;flex-wrap:wrap">
-        ${[['AI Scoring', usage.features?.ai_scoring],['API Access', usage.features?.api_access],['Integrations', usage.features?.integrations],['Bulk Ops', usage.features?.bulk_ops],['White Label', usage.features?.white_label]].map(([f,on]) =>
+        ${[['AI Scoring', usage.features?.ai_scoring],['API Access', usage.features?.api_access],['Connections', usage.features?.integrations],['Bulk Actions', usage.features?.bulk_ops],['Custom Look & Feel', usage.features?.white_label]].map(([f,on]) =>
           `<div style="font-size:13px;color:${on?'#0ace0a':'#ccc'}">${on?'✓':'✗'} ${f}</div>`
         ).join('')}
       </div>
@@ -5701,7 +5701,7 @@ async function renderAiInsightsC20() {
   } catch(e) { interviews = []; }
 
   el.innerHTML = `
-    <div class="page-header"><h1>AI Scoring & Insights</h1></div>
+    <div class="page-header"><h1>AI Scoring</h1></div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px">
       <div class="card" style="border-left:4px solid #0ace0a">
@@ -5903,8 +5903,8 @@ async function renderAmsIntegrations() {
 
   content.innerHTML = `
     <div style="max-width:900px">
-      <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">AMS/CRM Integrations</h2>
-      <p style="color:#666;margin-bottom:24px">Connect ChannelView to your agency management system to sync candidates and interview data.</p>
+      <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Connect Your AMS / CRM</h2>
+      <p style="color:#666;margin-bottom:24px">Sync your candidates and interview info with the management system you already use.</p>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:32px">
         ${(providers.providers||[]).map(p => {
@@ -5984,8 +5984,8 @@ async function renderApiManagement() {
 
   content.innerHTML = `
     <div style="max-width:900px">
-      <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">API Key Management</h2>
-      <p style="color:#666;margin-bottom:24px">Manage API keys for programmatic access to ChannelView. Keys support scoped permissions and rate limiting.</p>
+      <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">API Keys</h2>
+      <p style="color:#666;margin-bottom:24px">Manage your API keys for connecting ChannelView to custom tools and automations.</p>
 
       <button class="btn btn-primary" onclick="showCreateKeyModal()" style="margin-bottom:20px">+ Create API Key</button>
 
@@ -6154,8 +6154,8 @@ async function renderAnalyticsDashboard() {
     <div style="max-width:1100px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Analytics Dashboard</h2>
-          <p style="color:#666;font-size:13px">Key metrics for your agency hiring pipeline</p>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Numbers at a Glance</h2>
+          <p style="color:#666;font-size:13px">Your key recruiting numbers in one place</p>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm btn-outline" onclick="loadRoiPanel()">ROI Report</button>
@@ -6172,7 +6172,7 @@ async function renderAnalyticsDashboard() {
 
       <!-- Pipeline Funnel -->
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-bottom:24px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:16px">Candidate Pipeline</h3>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:16px">Your Candidates</h3>
         <div style="display:flex;gap:4px;align-items:end;height:120px">
           ${(pipeline.pipeline||[]).map(s => {
             const maxCount = Math.max(...(pipeline.pipeline||[]).map(p => p.count), 1);
@@ -6268,7 +6268,7 @@ async function renderEmailDelivery() {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
           <h1 style="font-size:24px;font-weight:700">Email Delivery</h1>
-          <p style="color:#666">Configure and monitor email delivery for candidate invitations and notifications</p>
+          <p style="color:#666">Check if your emails to candidates are being sent and delivered</p>
         </div>
         <button class="btn btn-primary" onclick="showSendEmailModal()">Send Test Email</button>
       </div>
@@ -6971,8 +6971,8 @@ async function renderCandidateExperience() {
     <div style="max-width:800px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Candidate Experience</h2>
-          <p style="color:#666;font-size:13px">Configure the apply page, interview prep, and thank-you messaging</p>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Candidate Portal</h2>
+          <p style="color:#666;font-size:13px">Set up what candidates see when they apply, interview, and finish</p>
         </div>
         <select id="ce-interview-select" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
           onchange="history.replaceState(null,'','/candidate-experience?interview_id='+this.value);renderCandidateExperience()">
@@ -7116,7 +7116,7 @@ async function renderPipelineFunnel() {
     <div style="max-width:1100px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Pipeline Funnel</h2>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Hiring Funnel</h2>
           <p style="color:#666;font-size:13px">${funnelData.total_candidates || 0} total candidates &middot; ${funnelData.hire_rate || 0}% hire rate</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -7130,7 +7130,7 @@ async function renderPipelineFunnel() {
 
       <!-- Funnel Visualization -->
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;margin-bottom:24px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:20px">Conversion Funnel</h3>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:20px">Hiring Funnel</h3>
         <div style="display:flex;flex-direction:column;gap:2px">
           ${funnel.map((s, i) => {
             const width = Math.max(s.count / maxCount * 100, 12);
@@ -7219,7 +7219,7 @@ async function renderEnhancedKanban() {
   content.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
-        <h1 style="font-size:24px;font-weight:700">Enhanced Pipeline</h1>
+        <h1 style="font-size:24px;font-weight:700">Hiring Board</h1>
         <p style="color:#666;margin-top:4px;font-size:13px">${data.total || 0} candidates across ${stages.length} stages</p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -7369,12 +7369,12 @@ async function renderAutoRules() {
     <div style="max-width:800px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Auto-Stage Rules</h2>
-          <p style="color:#666;font-size:13px">Automatically move candidates between stages based on triggers</p>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Auto-Rules</h2>
+          <p style="color:#666;font-size:13px">Automatically move candidates along when certain things happen</p>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm btn-primary" onclick="c31ApplyRules()">⚡ Run Rules Now</button>
-          <button class="btn btn-sm btn-outline" onclick="renderEnhancedKanban()">← Back to Pipeline</button>
+          <button class="btn btn-sm btn-outline" onclick="renderEnhancedKanban()">← Back to Hiring Board</button>
         </div>
       </div>
 
@@ -7512,15 +7512,15 @@ async function renderCustomStages() {
     <div style="max-width:800px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Custom Pipeline Stages</h2>
-          <p style="color:#666;font-size:13px">Customize the stages candidates move through for each interview</p>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Hiring Stages</h2>
+          <p style="color:#666;font-size:13px">Set up the steps each candidate goes through in your hiring process</p>
         </div>
         <div style="display:flex;gap:8px">
           <select id="stage-interview-select" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
             onchange="history.replaceState(null,'','/custom-stages?interview_id='+this.value);renderCustomStages()">
             ${interviews.map(i => `<option value="${i.id}" ${i.id===selectedId?'selected':''}>${i.title}</option>`).join('')}
           </select>
-          <button class="btn btn-sm btn-outline" onclick="renderEnhancedKanban()">← Pipeline</button>
+          <button class="btn btn-sm btn-outline" onclick="renderEnhancedKanban()">← Hiring Board</button>
         </div>
       </div>
 
@@ -7624,7 +7624,7 @@ async function renderSourceTracking() {
     <div style="max-width:900px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Source Tracking</h2>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Where They Found You</h2>
           <p style="color:#666;font-size:13px">${data.total || 0} candidates from ${sources.length} sources</p>
         </div>
         <select style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
@@ -7700,7 +7700,7 @@ async function renderJobBoardSettings() {
     <div style="max-width:700px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Job Board Settings</h2>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Job Board</h2>
           <p style="color:#666;font-size:13px">Publish open positions to your public job board</p>
         </div>
         <select style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
@@ -7781,7 +7781,7 @@ async function c31SaveJobBoard(interviewId) {
 // ==================== CYCLE 33: LEAD SOURCING ENGINE ====================
 
 async function renderLeadSourcing() {
-  content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading Lead Sourcing Hub...</div>';
+  content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading Find Candidates...</div>';
 
   const params = new URLSearchParams(window.location.search);
   const curState = params.get('state') || '';
@@ -7841,7 +7841,7 @@ async function renderLeadSourcing() {
     <!-- Bulk Actions -->
     <div id="ls-bulk-bar" style="display:none;background:#f0fff0;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px">
       <span id="ls-selected-count" style="font-size:13px;font-weight:600">0 selected</span>
-      <button class="btn btn-sm" onclick="c33BulkConvert()" style="background:#0ace0a;color:#000;font-weight:600;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">Convert to Pipeline</button>
+      <button class="btn btn-sm" onclick="c33BulkConvert()" style="background:#0ace0a;color:#000;font-weight:600;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">Add to Candidates</button>
       <button class="btn btn-sm" onclick="c33BulkDelete()" style="background:#fee2e2;color:#991b1b;font-weight:600;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">Delete Selected</button>
     </div>
 
@@ -7878,7 +7878,7 @@ async function renderLeadSourcing() {
             <td style="padding:10px 12px;font-size:12px;text-transform:capitalize">${(l.source||'').replace(/_/g,' ')}</td>
             <td style="padding:10px 12px">${leadStatusBadge(l.status)}</td>
             <td style="padding:10px 12px;text-align:right">
-              <button onclick="c33ConvertLead('${l.id}')" title="Convert to Pipeline" style="background:none;border:none;cursor:pointer;padding:4px;color:#0ace0a;font-size:16px">&#x2795;</button>
+              <button onclick="c33ConvertLead('${l.id}')" title="Add to Candidates" style="background:none;border:none;cursor:pointer;padding:4px;color:#0ace0a;font-size:16px">&#x2795;</button>
               <button onclick="c33EditLead('${l.id}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:4px;color:#666;font-size:16px">&#x270E;</button>
               <button onclick="c33DeleteLead('${l.id}')" title="Delete" style="background:none;border:none;cursor:pointer;padding:4px;color:#ef4444;font-size:16px">&#x2716;</button>
             </td>
@@ -8020,7 +8020,7 @@ async function renderLeadSourcing() {
     <div style="max-width:1100px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Lead Sourcing Hub</h2>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Find Candidates</h2>
           <p style="color:#666;font-size:13px">${total} lead${total!==1?'s':''} in database</p>
         </div>
       </div>
@@ -8550,7 +8550,7 @@ async function c33ViewRefStats(id) {
 // --- C33 Feature 3: Job Syndication ---
 
 async function renderJobSyndication() {
-  content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading Job Syndication...</div>';
+  content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading Post to Job Sites...</div>';
 
   let syndications = [], interviews = [];
   try { const d = await api('/api/job-syndication'); syndications = d.syndications || []; } catch(e) {}
@@ -8560,8 +8560,8 @@ async function renderJobSyndication() {
     <div style="max-width:900px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Job Syndication</h2>
-          <p style="color:#666;font-size:13px">Syndicate your positions to Indeed, Google Jobs, and more</p>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Post to Job Sites</h2>
+          <p style="color:#666;font-size:13px">Push your open positions to Indeed, Google Jobs, and more</p>
         </div>
       </div>
 
@@ -8583,11 +8583,11 @@ async function renderJobSyndication() {
               <option value="google_jobs">Google for Jobs</option>
             </select>
           </div>
-          <button onclick="c33CreateSyndication()" style="background:#0ace0a;color:#000;font-weight:600;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;height:38px">Syndicate</button>
+          <button onclick="c33CreateSyndication()" style="background:#0ace0a;color:#000;font-weight:600;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;height:38px">Post Job</button>
         </div>
       </div>
 
-      <!-- Active Syndications -->
+      <!-- Active Postings -->
       ${syndications.length ? `
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:24px">
         <table style="width:100%;border-collapse:collapse">
@@ -8654,7 +8654,7 @@ async function c33DeleteSyndication(id) {
   if (!confirm('Remove this syndication?')) return;
   try {
     await api('/api/job-syndication/' + id, { method: 'DELETE' });
-    toast('Syndication removed', 'success');
+    toast('Posting removed', 'success');
     renderJobSyndication();
   } catch(e) { toast(e.message, 'error'); }
 }
@@ -8687,8 +8687,8 @@ async function renderVoiceAgent() {
     <div style="max-width:1200px;margin:0 auto">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
         <div>
-          <h2 style="margin:0;font-size:24px;font-weight:700">Voice Agent</h2>
-          <p style="color:#666;margin:4px 0 0">AI-powered outbound calls for recruiting & pipeline engagement</p>
+          <h2 style="margin:0;font-size:24px;font-weight:700">Phone Screening</h2>
+          <p style="color:#666;margin:4px 0 0">AI makes phone calls to pre-screen candidates before you spend time interviewing</p>
         </div>
         <div style="display:flex;gap:8px">
           <button onclick="c34ShowSettings()" class="btn btn-secondary" style="font-size:13px">
@@ -8705,7 +8705,7 @@ async function renderVoiceAgent() {
       ${!isConfigured ? `
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:48px;text-align:center;margin-bottom:24px">
           <svg viewBox="0 0 24 24" fill="none" stroke="#0ace0a" stroke-width="1.5" width="48" height="48" style="margin-bottom:16px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          <h3 style="margin:0 0 8px;font-size:20px">Set Up Your Voice Agent</h3>
+          <h3 style="margin:0 0 8px;font-size:20px">Set Up Phone Screening</h3>
           <p style="color:#666;margin:0 0 20px;max-width:500px;margin-left:auto;margin-right:auto">Connect your Retell AI account to enable AI-powered outbound calls for scheduling interviews, checking in with candidates, and keeping your pipeline engaged.</p>
           <button onclick="c34ShowSettings()" class="btn btn-primary" style="background:#0ace0a;color:#000;padding:10px 24px;font-size:14px">Connect Retell AI</button>
         </div>
@@ -8967,7 +8967,7 @@ function c34ShowSettings() {
   modal.innerHTML = `
     <div style="background:#fff;border-radius:12px;padding:28px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-        <h3 style="margin:0;font-size:18px">Voice Agent Settings</h3>
+        <h3 style="margin:0;font-size:18px">Phone Screening Settings</h3>
         <button onclick="document.getElementById('c34-settings-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">&times;</button>
       </div>
       <div style="margin-bottom:16px">
@@ -8982,7 +8982,7 @@ function c34ShowSettings() {
       <div style="margin-bottom:20px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="c34-enabled" style="width:16px;height:16px;accent-color:#0ace0a">
-          <span style="font-size:13px;font-weight:600">Enable Voice Agent</span>
+          <span style="font-size:13px;font-weight:600">Turn On Phone Screening</span>
         </label>
       </div>
       <button onclick="c34SaveSettings()" class="btn btn-primary" style="width:100%;background:#0ace0a;color:#000;padding:10px;font-size:14px;font-weight:600">Save Settings</button>
