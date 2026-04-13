@@ -436,7 +436,9 @@ def candidate_interview(token):
     candidate = db.execute(
         '''SELECT c.*, i.title, i.welcome_msg, i.thank_you_msg, i.thinking_time,
            i.max_answer_time, i.max_retakes, i.brand_color, i.description,
-           i.intro_video_path, i.format_selector_enabled, i.formats_enabled,
+           i.intro_video_path, i.intro_type, i.intro_template_id,
+           i.interest_rating_enabled, i.interest_prompt,
+           i.format_selector_enabled, i.formats_enabled,
            u.agency_name, u.name as interviewer_name
            FROM candidates c
            JOIN interviews i ON c.interview_id = i.id
@@ -1037,7 +1039,8 @@ def api_update_interview(interview_id):
         return jsonify({'error': 'Not found'}), 404
 
     fields = ['title','description','department','position','status','thinking_time',
-              'max_answer_time','max_retakes','welcome_msg','thank_you_msg','brand_color','intro_video_path']
+              'max_answer_time','max_retakes','welcome_msg','thank_you_msg','brand_color','intro_video_path',
+              'intro_type','intro_template_id','interest_rating_enabled','interest_prompt']
     updates = []
     values = []
     for f in fields:
@@ -1203,7 +1206,77 @@ def api_remove_interview_intro_video(interview_id):
             try: os.remove(old_file)
             except: pass
 
-    db.execute('UPDATE interviews SET intro_video_path=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?', (interview_id,))
+    db.execute('UPDATE interviews SET intro_video_path=NULL, intro_type="none", intro_template_id=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?', (interview_id,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+# ======================== CYCLE 35: INTRO TEMPLATES API ========================
+
+@app.route('/api/intro-templates', methods=['GET'])
+@require_auth
+def api_list_intro_templates_c35():
+    """List all available intro templates (system + user-created)."""
+    db = get_db()
+    templates = db.execute(
+        'SELECT * FROM intro_templates WHERE is_system=1 OR user_id=? ORDER BY is_system DESC, name',
+        (g.user_id,)
+    ).fetchall()
+    db.close()
+    return jsonify([dict(t) for t in templates])
+
+@app.route('/api/interviews/<interview_id>/intro-template', methods=['PUT'])
+@require_auth
+def api_set_intro_template_c35(interview_id):
+    """Attach a pre-made intro template to an interview."""
+    data = request.get_json()
+    db = get_db()
+    interview = db.execute('SELECT * FROM interviews WHERE id=? AND user_id=?', (interview_id, g.user_id)).fetchone()
+    if not interview:
+        db.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    template_id = data.get('template_id')
+    if template_id:
+        tmpl = db.execute('SELECT * FROM intro_templates WHERE id=?', (template_id,)).fetchone()
+        if not tmpl:
+            db.close()
+            return jsonify({'error': 'Template not found'}), 404
+        db.execute(
+            'UPDATE interviews SET intro_type="template", intro_template_id=?, intro_video_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (template_id, tmpl['html_path'], interview_id)
+        )
+    else:
+        db.execute(
+            'UPDATE interviews SET intro_type="none", intro_template_id=NULL, intro_video_path=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (interview_id,)
+        )
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+# ======================== CYCLE 35: INTEREST RATING API ========================
+
+@app.route('/api/interview/<token>/interest-rating', methods=['POST'])
+def api_submit_interest_rating_c35(token):
+    """Candidate submits their interest rating (1-10) after completing video questions."""
+    data = request.get_json()
+    db = get_db()
+    candidate = db.execute('SELECT * FROM candidates WHERE token=?', (token,)).fetchone()
+    if not candidate:
+        db.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    rating = data.get('rating')
+    if not rating or not isinstance(rating, int) or rating < 1 or rating > 10:
+        db.close()
+        return jsonify({'error': 'Rating must be 1-10'}), 400
+
+    comment = data.get('comment', '')
+    db.execute(
+        'UPDATE candidates SET interest_rating=?, interest_comment=?, interest_rated_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        (rating, comment, candidate['id'])
+    )
     db.commit()
     db.close()
     return jsonify({'success': True})

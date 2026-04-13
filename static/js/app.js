@@ -1435,12 +1435,13 @@ async function renderInterviewDetail() {
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
       <div class="card">
         <div class="card-header"><h3>Candidates</h3></div>
-        ${iv.candidates.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Score</th><th>Link</th><th></th></tr></thead><tbody>
+        ${iv.candidates.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Score</th><th>Interest</th><th>Link</th><th></th></tr></thead><tbody>
           ${iv.candidates.map(c => `<tr>
             <td><strong>${c.first_name} ${c.last_name}</strong></td>
             <td style="font-size:13px">${c.email}</td>
             <td>${statusBadge(c.status)}</td>
             <td>${c.ai_score ? scoreRing(c.ai_score, 36) : '—'}</td>
+            <td>${c.interest_rating ? `<span style="display:inline-flex;align-items:center;background:${c.interest_rating>=8?'rgba(10,206,10,.1)':c.interest_rating>=5?'rgba(255,165,0,.1)':'rgba(220,38,38,.1)'};color:${c.interest_rating>=8?'#0ace0a':c.interest_rating>=5?'#f59e0b':'#dc2626'};padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${c.interest_rating}/10</span>` : '—'}</td>
             <td><button class="btn btn-sm btn-outline" onclick="copyLink('${baseUrl}/i/${c.token}')" title="Copy interview link">Copy Link</button></td>
             <td><a href="/review/${c.id}" class="btn btn-sm btn-outline">Review</a></td>
           </tr>`).join('')}
@@ -1460,25 +1461,58 @@ async function renderInterviewDetail() {
           <p style="color:#666;font-size:14px">${iv.description || 'No description'}</p>
         </div>
         <div class="card">
-          <h3 style="margin-bottom:10px">Intro Video</h3>
-          ${iv.intro_video_path ? `
-            <div style="border-radius:8px;overflow:hidden;background:#000;aspect-ratio:16/9;margin-bottom:10px">
-              <video controls src="${iv.intro_video_path}" style="width:100%;height:100%;object-fit:cover"></video>
+          <h3 style="margin-bottom:4px">Candidate Intro</h3>
+          <p style="color:#888;font-size:13px;margin-bottom:14px">Plays before the first question — sets the tone and sells the opportunity</p>
+          <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #e5e7eb;padding-bottom:8px">
+            <button class="btn btn-sm ${iv.intro_type==='template'||!iv.intro_type||iv.intro_type==='none'?'btn-primary':'btn-outline'}" onclick="showIntroTab('templates','${iv.id}')" id="intro-tab-templates">Choose a Template</button>
+            <button class="btn btn-sm ${iv.intro_type==='uploaded'?'btn-primary':'btn-outline'}" onclick="showIntroTab('upload','${iv.id}')" id="intro-tab-upload">Upload Video</button>
+            <button class="btn btn-sm btn-outline" onclick="showIntroTab('record','${iv.id}')" id="intro-tab-record" style="opacity:.5;cursor:not-allowed" title="Coming soon">Record Your Own <span style="font-size:10px;background:#f3f4f6;padding:2px 6px;border-radius:4px;margin-left:4px">Soon</span></button>
+          </div>
+          <div id="intro-panel-templates" class="intro-panel">
+            <div id="intro-template-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+              <div style="text-align:center;padding:20px;color:#999;font-size:13px">Loading templates...</div>
             </div>
-            <div style="display:flex;gap:6px">
-              <label class="btn btn-sm btn-outline" style="cursor:pointer;flex:1;text-align:center">
-                Replace <input type="file" accept="video/*" onchange="replaceDetailIntro('${iv.id}', this)" style="display:none">
-              </label>
-              <button class="btn btn-sm btn-outline" style="color:#dc2626;border-color:#dc2626;flex:1" onclick="deleteDetailIntro('${iv.id}')">Remove</button>
+          </div>
+          <div id="intro-panel-upload" class="intro-panel" style="display:none">
+            ${iv.intro_video_path && iv.intro_type==='uploaded' ? `
+              <div style="border-radius:8px;overflow:hidden;background:#000;aspect-ratio:16/9;margin-bottom:10px">
+                <video controls src="${iv.intro_video_path}" style="width:100%;height:100%;object-fit:cover"></video>
+              </div>
+              <div style="display:flex;gap:6px">
+                <label class="btn btn-sm btn-outline" style="cursor:pointer;flex:1;text-align:center">
+                  Replace <input type="file" accept="video/*" onchange="replaceDetailIntro('${iv.id}', this)" style="display:none">
+                </label>
+                <button class="btn btn-sm btn-outline" style="color:#dc2626;border-color:#dc2626;flex:1" onclick="deleteDetailIntro('${iv.id}')">Remove</button>
+              </div>
+            ` : `
+              <div style="text-align:center;padding:20px;border:2px dashed #e5e7eb;border-radius:8px">
+                <p style="color:#999;font-size:13px;margin-bottom:10px">Upload a video your candidates will see before the interview starts</p>
+                <label class="btn btn-sm btn-primary" style="cursor:pointer">
+                  Upload Video <input type="file" accept="video/*" onchange="replaceDetailIntro('${iv.id}', this)" style="display:none">
+                </label>
+              </div>
+            `}
+          </div>
+          <div id="intro-panel-record" class="intro-panel" style="display:none">
+            <div style="text-align:center;padding:20px;border:2px dashed #e5e7eb;border-radius:8px">
+              <p style="font-size:28px;margin-bottom:8px">🎥</p>
+              <p style="color:#999;font-size:13px">Record your own intro video — coming soon!</p>
+              <p style="color:#aaa;font-size:12px;margin-top:4px">You'll be able to record a personal message right from your browser.</p>
             </div>
-          ` : `
-            <div style="text-align:center;padding:16px;border:2px dashed #e5e7eb;border-radius:8px">
-              <p style="color:#999;font-size:13px;margin-bottom:10px">No intro video yet</p>
-              <label class="btn btn-sm btn-primary" style="cursor:pointer">
-                Upload Video <input type="file" accept="video/*" onchange="replaceDetailIntro('${iv.id}', this)" style="display:none">
-              </label>
-            </div>
-          `}
+          </div>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <h3>Interest Rating</h3>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#666;cursor:pointer">
+              <input type="checkbox" ${iv.interest_rating_enabled!==0?'checked':''} onchange="toggleInterestRating('${iv.id}',this.checked)"> Enabled
+            </label>
+          </div>
+          <p style="color:#888;font-size:13px;margin-bottom:10px">After the last video question, candidates rate their interest 1-10: "How interested are you in learning more about this opportunity?"</p>
+          <div style="display:flex;gap:4px;justify-content:center;padding:8px 0">
+            ${[1,2,3,4,5,6,7,8,9,10].map(n=>`<div style="width:28px;height:28px;border-radius:50%;background:${n<=7?'#e5e7eb':'#0ace0a'};color:${n<=7?'#666':'#000'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${n}</div>`).join('')}
+          </div>
+          <p style="color:#aaa;font-size:12px;text-align:center;margin-top:6px">Preview of what candidates see</p>
         </div>
       </div>
     </div>
@@ -1503,6 +1537,8 @@ async function renderInterviewDetail() {
     </div>
   `;
   loadDeadlineStatus(iv.id);
+  // Auto-load intro templates grid
+  loadIntroTemplates(iv.id);
 }
 
 function showAddCandidateModal() {
@@ -1551,6 +1587,70 @@ async function deleteDetailIntro(interviewId) {
     toast('Intro video removed', 'success');
     renderInterviewDetail();
   } catch (err) { toast('Failed to remove', 'error'); }
+}
+
+// ======================== CYCLE 35: INTRO TEMPLATES & INTEREST RATING ========================
+
+function showIntroTab(tab, interviewId) {
+  ['templates','upload','record'].forEach(t => {
+    const panel = document.getElementById('intro-panel-' + t);
+    const btn = document.getElementById('intro-tab-' + t);
+    if (panel) panel.style.display = t === tab ? 'block' : 'none';
+    if (btn && t !== 'record') { btn.className = t === tab ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline'; }
+  });
+  if (tab === 'templates') loadIntroTemplates(interviewId);
+}
+
+async function loadIntroTemplates(interviewId) {
+  const grid = document.getElementById('intro-template-grid');
+  if (!grid) return;
+  try {
+    const templates = await api('/api/intro-templates');
+    // Get current interview to check which template is selected
+    const iv = await api('/api/interviews/' + interviewId);
+    const selectedId = iv.intro_template_id || '';
+    grid.innerHTML = templates.map(t => `
+      <div onclick="selectIntroTemplate('${interviewId}','${t.id}')" style="cursor:pointer;border:2px solid ${t.id===selectedId?'#0ace0a':'#e5e7eb'};border-radius:12px;padding:16px;text-align:center;transition:border-color .2s;background:${t.id===selectedId?'rgba(10,206,10,.05)':'#fff'}">
+        <div style="font-size:32px;margin-bottom:8px">${t.thumbnail_emoji || '👋'}</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">${t.name}</div>
+        <div style="font-size:12px;color:#888;line-height:1.4">${t.description || ''}</div>
+        <div style="margin-top:8px;font-size:11px;color:${t.id===selectedId?'#0ace0a':'#aaa'}">${t.id===selectedId?'✓ Selected':'~'+t.duration_seconds+'s'}</div>
+      </div>
+    `).join('') + `
+      <div onclick="selectIntroTemplate('${interviewId}','')" style="cursor:pointer;border:2px solid ${!selectedId||selectedId===''?'#0ace0a':'#e5e7eb'};border-radius:12px;padding:16px;text-align:center;transition:border-color .2s;background:${!selectedId?'rgba(10,206,10,.05)':'#fff'}">
+        <div style="font-size:32px;margin-bottom:8px">⏭️</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">No Intro</div>
+        <div style="font-size:12px;color:#888;line-height:1.4">Skip the intro — go straight to questions</div>
+        <div style="margin-top:8px;font-size:11px;color:${!selectedId?'#0ace0a':'#aaa'}">${!selectedId?'✓ Selected':''}</div>
+      </div>
+    `;
+  } catch (err) { grid.innerHTML = '<p style="color:#999;font-size:13px">Failed to load templates</p>'; }
+}
+
+async function selectIntroTemplate(interviewId, templateId) {
+  try {
+    await api('/api/interviews/' + interviewId + '/intro-template', {
+      method: 'PUT',
+      body: JSON.stringify({ template_id: templateId || null })
+    });
+    toast(templateId ? 'Intro template selected!' : 'Intro removed', 'success');
+    loadIntroTemplates(interviewId);
+  } catch (err) { toast('Failed to set intro', 'error'); }
+}
+
+async function previewIntroTemplate(htmlPath) {
+  const w = window.open(htmlPath, '_blank', 'width=800,height=500');
+  if (w) w.focus();
+}
+
+async function toggleInterestRating(interviewId, enabled) {
+  try {
+    await api('/api/interviews/' + interviewId, {
+      method: 'PUT',
+      body: JSON.stringify({ interest_rating_enabled: enabled ? 1 : 0 })
+    });
+    toast(enabled ? 'Interest rating enabled' : 'Interest rating disabled', 'success');
+  } catch (err) { toast('Failed to update', 'error'); }
 }
 
 async function toggleInterviewStatus(id, current) {
@@ -1689,6 +1789,7 @@ async function renderCandidates() {
           <option value="created_at" ${candidateSort==='created_at'?'selected':''}>Newest First</option>
           <option value="first_name" ${candidateSort==='first_name'?'selected':''}>Name</option>
           <option value="ai_score" ${candidateSort==='ai_score'?'selected':''}>AI Score</option>
+          <option value="interest_rating" ${candidateSort==='interest_rating'?'selected':''}>Interest Rating</option>
           <option value="status" ${candidateSort==='status'?'selected':''}>Status</option>
         </select>
         <button class="btn btn-sm btn-outline" onclick="candidateSortDir=candidateSortDir==='asc'?'desc':'asc';renderCandidates()" title="Toggle sort direction">
@@ -1719,7 +1820,7 @@ async function renderCandidates() {
       <table>
         <thead><tr>
           <th style="width:40px"><input type="checkbox" id="select-all-cands" onchange="toggleAllCandidates(this.checked)"></th>
-          <th>Name</th><th>Interview</th><th>Status</th><th>Score</th><th>Tags</th><th>Date</th><th></th>
+          <th>Name</th><th>Interview</th><th>Status</th><th>Score</th><th>Interest</th><th>Tags</th><th>Date</th><th></th>
         </tr></thead>
         <tbody id="cand-table-body">
         ${candidates.map(c => `<tr data-cid="${c.id}">
@@ -1728,11 +1829,12 @@ async function renderCandidates() {
           <td style="font-size:13px">${c.interview_title || '—'}</td>
           <td>${statusBadge(c.status)}</td>
           <td>${c.ai_score ? scoreRing(c.ai_score, 36) : '—'}</td>
+          <td>${c.interest_rating ? `<span style="display:inline-flex;align-items:center;gap:4px;background:${c.interest_rating>=8?'rgba(10,206,10,.1)':c.interest_rating>=5?'rgba(255,165,0,.1)':'rgba(220,38,38,.1)'};color:${c.interest_rating>=8?'#0ace0a':c.interest_rating>=5?'#f59e0b':'#dc2626'};padding:3px 10px;border-radius:12px;font-size:13px;font-weight:600">${c.interest_rating}/10</span>` : '<span style="color:#ccc">—</span>'}</td>
           <td id="tags-cell-${c.id}" style="font-size:12px">—</td>
           <td style="font-size:13px">${formatDate(c.created_at)}</td>
           <td><a href="/review/${c.id}" class="btn btn-sm btn-outline">Review</a></td>
         </tr>`).join('')}
-        ${candidates.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:40px;color:#999">No candidates found</td></tr>' : ''}
+        ${candidates.length === 0 ? '<tr><td colspan="9" style="text-align:center;padding:40px;color:#999">No candidates found</td></tr>' : ''}
         </tbody>
       </table>
     </div>
@@ -1920,6 +2022,12 @@ async function renderReview() {
           ${scoreRing(c.ai_score, 80)}
           <p style="margin-top:12px;font-size:14px;color:#666">${c.ai_summary || ''}</p>
           ${renderCategoryBreakdown(c.ai_scores_json)}
+        </div>` : ''}
+        ${c.interest_rating ? `<div class="card" style="text-align:center">
+          <h3 style="margin-bottom:12px">Candidate Interest</h3>
+          <div style="font-size:48px;font-weight:800;color:${c.interest_rating>=8?'#0ace0a':c.interest_rating>=5?'#f59e0b':'#dc2626'}">${c.interest_rating}<span style="font-size:20px;color:#999">/10</span></div>
+          <p style="margin-top:8px;font-size:14px;color:#888">${c.interest_rating>=8?'Highly interested — ready for a live conversation':c.interest_rating>=5?'Somewhat interested — may need a nudge':'Low interest — probably not the right fit'}</p>
+          ${c.interest_comment ? `<p style="margin-top:8px;font-size:13px;color:#666;font-style:italic">"${c.interest_comment}"</p>` : ''}
         </div>` : ''}
         <div class="card">
           <h3 style="margin-bottom:12px">Notes</h3>

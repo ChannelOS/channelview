@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Welcome</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;overflow:hidden;height:100vh;width:100vw}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transform:translateY(30px);transition:opacity .8s ease,transform .8s ease;padding:40px;text-align:center}
+.slide.active{opacity:1;transform:translateY(0)}
+.slide.exit{opacity:0;transform:translateY(-30px)}
+
+/* Slide 1 - Big Welcome */
+.s1 .icon{font-size:64px;margin-bottom:24px;animation:pulse 2s ease-in-out infinite}
+.s1 h1{font-size:clamp(28px,5vw,48px);font-weight:800;margin-bottom:12px;background:linear-gradient(135deg,#0ace0a,#08e608);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.s1 p{font-size:clamp(16px,2.5vw,22px);color:#aaa;max-width:600px;line-height:1.6}
+
+/* Slide 2 - How It Works */
+.s2 h2{font-size:clamp(22px,4vw,36px);font-weight:700;margin-bottom:32px;color:#0ace0a}
+.steps{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;max-width:800px}
+.step-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px 20px;width:200px;opacity:0;transform:translateY(20px)}
+.step-card.show{opacity:1;transform:translateY(0);transition:opacity .5s ease,transform .5s ease}
+.step-card .num{display:inline-block;background:#0ace0a;color:#000;width:32px;height:32px;border-radius:50%;font-weight:700;line-height:32px;margin-bottom:12px;font-size:15px}
+.step-card h3{font-size:15px;font-weight:600;margin-bottom:6px}
+.step-card p{font-size:13px;color:#999;line-height:1.5}
+
+/* Slide 3 - Encouragement */
+.s3 .quote{font-size:clamp(20px,3.5vw,34px);font-weight:600;max-width:650px;line-height:1.5;margin-bottom:24px}
+.s3 .quote span{color:#0ace0a}
+.s3 .subtext{font-size:clamp(14px,2vw,18px);color:#888;max-width:500px;line-height:1.6}
+
+/* Slide 4 - Ready */
+.s4 .ready-icon{width:80px;height:80px;border-radius:50%;background:#0ace0a;display:flex;align-items:center;justify-content:center;margin-bottom:24px;animation:pulse 1.5s ease-in-out infinite}
+.s4 .ready-icon svg{width:40px;height:40px}
+.s4 h2{font-size:clamp(24px,4vw,40px);font-weight:800;margin-bottom:12px}
+.s4 p{font-size:clamp(15px,2vw,20px);color:#aaa;max-width:500px;line-height:1.5}
+
+/* Progress bar */
+.progress{position:fixed;bottom:0;left:0;height:4px;background:#0ace0a;transition:width .8s ease;z-index:10}
+
+/* Branding */
+.brand{position:fixed;top:20px;left:24px;display:flex;align-items:center;gap:10px;opacity:.6}
+.brand .logo{background:#0ace0a;color:#000;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+.brand span{font-size:13px;color:#888;font-weight:500}
+
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+</style>
+</head>
+<body>
+
+<div class="brand"><div class="logo">C</div><span id="brandName">ChannelView</span></div>
+
+<!-- Slide 1: Welcome -->
+<div class="slide s1 active" data-duration="4000">
+  <div class="icon">👋</div>
+  <h1>Thanks for Being Here</h1>
+  <p>We're excited you're interested. This short video interview is a chance for us to get to know each other a little better.</p>
+</div>
+
+<!-- Slide 2: How It Works -->
+<div class="slide s2" data-duration="6000">
+  <h2>Here's How This Works</h2>
+  <div class="steps">
+    <div class="step-card" data-delay="400">
+      <div class="num">1</div>
+      <h3>Watch & Read</h3>
+      <p>You'll see each question on screen with time to think before answering</p>
+    </div>
+    <div class="step-card" data-delay="800">
+      <div class="num">2</div>
+      <h3>Record</h3>
+      <p>Hit record and answer in your own words — keep it natural</p>
+    </div>
+    <div class="step-card" data-delay="1200">
+      <div class="num">3</div>
+      <h3>Review</h3>
+      <p>Watch your answer back and re-record if you'd like</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: Encouragement -->
+<div class="slide s3" data-duration="5000">
+  <div class="quote">There are <span>no wrong answers</span>. We just want to hear your story and see if this could be a great fit.</div>
+  <div class="subtext">Be yourself. Talk like you're having a conversation. That's all we're looking for.</div>
+</div>
+
+<!-- Slide 4: Ready -->
+<div class="slide s4" data-duration="3500">
+  <div class="ready-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
+  </div>
+  <h2>You're All Set</h2>
+  <p>When you're ready, close this intro and start your interview. Good luck!</p>
+</div>
+
+<div class="progress" id="progress"></div>
+
+<script>
+(function(){
+  const slides = document.querySelectorAll('.slide');
+  const progress = document.getElementById('progress');
+  let current = 0;
+  const total = slides.length;
+
+  // Accept brand name from parent
+  window.addEventListener('message', function(e){
+    if(e.data && e.data.agencyName){
+      document.getElementById('brandName').textContent = e.data.agencyName;
+    }
+  });
+
+  function updateProgress(){
+    progress.style.width = ((current + 1) / total * 100) + '%';
+  }
+
+  function showCards(){
+    const cards = slides[current].querySelectorAll('.step-card');
+    cards.forEach(function(c){
+      setTimeout(function(){ c.classList.add('show'); }, parseInt(c.dataset.delay || 0));
+    });
+  }
+
+  function next(){
+    if(current >= total - 1){
+      // Done — notify parent
+      setTimeout(function(){
+        window.parent && window.parent.postMessage({introComplete: true}, '*');
+      }, 3000);
+      return;
+    }
+    slides[current].classList.remove('active');
+    slides[current].classList.add('exit');
+    current++;
+    slides[current].classList.add('active');
+    updateProgress();
+    showCards();
+
+    var dur = parseInt(slides[current].dataset.duration || 4000);
+    setTimeout(next, dur);
+  }
+
+  updateProgress();
+  var dur = parseInt(slides[0].dataset.duration || 4000);
+  setTimeout(next, dur);
+})();
+</script>
+</body>
+</html>

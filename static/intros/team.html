@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Why Our Team</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;overflow:hidden;height:100vh;width:100vw}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity .9s ease;padding:40px;text-align:center}
+.slide.active{opacity:1}
+.slide.exit{opacity:0}
+
+/* Slide 1 - Team Identity */
+.s1 .badge{display:inline-block;background:rgba(10,206,10,.15);color:#0ace0a;font-size:13px;font-weight:600;padding:6px 16px;border-radius:20px;margin-bottom:20px;text-transform:uppercase;letter-spacing:1px}
+.s1 h1{font-size:clamp(26px,5vw,44px);font-weight:800;line-height:1.3;max-width:650px;margin-bottom:16px}
+.s1 p{font-size:clamp(15px,2.2vw,20px);color:#999;max-width:520px;line-height:1.6}
+
+/* Slide 2 - Values Flip Cards */
+.s2 h2{font-size:clamp(20px,3.5vw,32px);font-weight:700;margin-bottom:32px;color:#0ace0a}
+.values{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:800px}
+.value{width:170px;height:170px;perspective:600px;opacity:0;transform:translateY(15px)}
+.value.show{opacity:1;transform:translateY(0);transition:all .5s ease}
+.value-inner{width:100%;height:100%;position:relative;transition:transform .6s ease;transform-style:preserve-3d;cursor:default}
+.value:hover .value-inner{transform:rotateY(180deg)}
+.value-front,.value-back{position:absolute;inset:0;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;backface-visibility:hidden;padding:16px}
+.value-front{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+.value-front .vicon{font-size:36px;margin-bottom:10px}
+.value-front h3{font-size:14px;font-weight:600}
+.value-back{background:rgba(10,206,10,.1);border:1px solid rgba(10,206,10,.25);transform:rotateY(180deg)}
+.value-back p{font-size:12px;color:#ccc;line-height:1.5}
+
+/* Slide 3 - Support System */
+.s3 h2{font-size:clamp(20px,3.5vw,32px);font-weight:700;margin-bottom:28px}
+.s3 h2 span{color:#0ace0a}
+.timeline{max-width:500px;text-align:left;position:relative;padding-left:24px}
+.timeline::before{content:'';position:absolute;left:7px;top:8px;bottom:8px;width:2px;background:rgba(10,206,10,.3)}
+.tl-item{position:relative;padding:0 0 20px 20px;opacity:0;transform:translateX(-10px)}
+.tl-item.show{opacity:1;transform:translateX(0);transition:all .4s ease}
+.tl-item::before{content:'';position:absolute;left:-20px;top:6px;width:12px;height:12px;border-radius:50%;background:#0ace0a;border:2px solid #111}
+.tl-item h3{font-size:15px;font-weight:600;margin-bottom:3px}
+.tl-item p{font-size:13px;color:#888;line-height:1.5}
+
+/* Slide 4 - Culture */
+.s4 .big-quote{font-size:clamp(18px,3vw,30px);font-weight:600;max-width:600px;line-height:1.5;margin-bottom:24px;font-style:italic;color:#e0e0e0}
+.s4 .big-quote span{color:#0ace0a;font-style:normal}
+.s4 .attribution{font-size:14px;color:#666}
+
+/* Slide 5 - Let's Go */
+.s5 h2{font-size:clamp(24px,4vw,40px);font-weight:800;margin-bottom:12px}
+.s5 h2 span{color:#0ace0a}
+.s5 p{font-size:clamp(14px,2vw,18px);color:#888;max-width:480px;line-height:1.6;margin-bottom:20px}
+.dots{display:flex;gap:8px;justify-content:center}
+.dot{width:10px;height:10px;border-radius:50%;background:#0ace0a;opacity:.3;animation:dotPulse 1.5s ease-in-out infinite}
+.dot:nth-child(2){animation-delay:.2s}
+.dot:nth-child(3){animation-delay:.4s}
+
+.progress{position:fixed;bottom:0;left:0;height:4px;background:#0ace0a;transition:width .8s ease;z-index:10}
+.brand{position:fixed;top:20px;left:24px;display:flex;align-items:center;gap:10px;opacity:.6}
+.brand .logo{background:#0ace0a;color:#000;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+.brand span{font-size:13px;color:#888;font-weight:500}
+
+@keyframes dotPulse{0%,100%{opacity:.3}50%{opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="brand"><div class="logo">C</div><span id="brandName">ChannelView</span></div>
+
+<!-- Slide 1: Team Identity -->
+<div class="slide s1 active" data-duration="5000">
+  <div class="badge">Our Culture</div>
+  <h1>We Inspire, Listen, and Empower Each Other</h1>
+  <p>This isn't a place where you're on your own. We're a team that celebrates wins together, supports each other through challenges, and gives back to our community.</p>
+</div>
+
+<!-- Slide 2: Values -->
+<div class="slide s2" data-duration="7000">
+  <h2>What We Stand For</h2>
+  <div class="values">
+    <div class="value" data-delay="300">
+      <div class="value-inner">
+        <div class="value-front"><div class="vicon">🤝</div><h3>Support</h3></div>
+        <div class="value-back"><p>You're never alone. Mentors, training, and a team that has your back from day one.</p></div>
+      </div>
+    </div>
+    <div class="value" data-delay="600">
+      <div class="value-inner">
+        <div class="value-front"><div class="vicon">🌱</div><h3>Growth</h3></div>
+        <div class="value-back"><p>Clear path from new representative to leadership. Your ambition is the only ceiling.</p></div>
+      </div>
+    </div>
+    <div class="value" data-delay="900">
+      <div class="value-inner">
+        <div class="value-front"><div class="vicon">💪</div><h3>Purpose</h3></div>
+        <div class="value-back"><p>Every day you help families protect what matters most. This work means something.</p></div>
+      </div>
+    </div>
+    <div class="value" data-delay="1200">
+      <div class="value-inner">
+        <div class="value-front"><div class="vicon">🎉</div><h3>Recognition</h3></div>
+        <div class="value-back"><p>Bonuses, trips, awards, and celebrations. We don't let wins go unnoticed.</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: Support System -->
+<div class="slide s3" data-duration="7000">
+  <h2>How We <span>Set You Up</span> to Win</h2>
+  <div class="timeline">
+    <div class="tl-item" data-delay="400">
+      <h3>Week 1-2: Foundation Training</h3>
+      <p>Classroom and virtual training to learn the products, the process, and the people</p>
+    </div>
+    <div class="tl-item" data-delay="800">
+      <h3>Week 3-4: On-the-Job Mentoring</h3>
+      <p>Shadow experienced team members and start building real client relationships</p>
+    </div>
+    <div class="tl-item" data-delay="1200">
+      <h3>Week 5-8: Launch Your Business</h3>
+      <p>Start running your own appointments with continued coaching and support</p>
+    </div>
+    <div class="tl-item" data-delay="1600">
+      <h3>Week 8+: Bonuses Kick In</h3>
+      <p>Production bonuses start flowing on top of your commissions and renewals</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 4: Culture Quote -->
+<div class="slide s4" data-duration="5000">
+  <div class="big-quote">"We serve our clients and celebrate every success along the way — <span>that's the way we do it.</span>"</div>
+  <div class="attribution">— The team you could be joining</div>
+</div>
+
+<!-- Slide 5: Let's Go -->
+<div class="slide s5" data-duration="4000">
+  <h2>Ready to <span>Meet the Team?</span></h2>
+  <p>Answer a few quick questions and let's see if we're a fit for each other. We're rooting for you!</p>
+  <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+</div>
+
+<div class="progress" id="progress"></div>
+
+<script>
+(function(){
+  var slides = document.querySelectorAll('.slide');
+  var progress = document.getElementById('progress');
+  var current = 0;
+  var total = slides.length;
+
+  window.addEventListener('message', function(e){
+    if(e.data && e.data.agencyName) document.getElementById('brandName').textContent = e.data.agencyName;
+  });
+
+  function updateProgress(){ progress.style.width = ((current+1)/total*100)+'%'; }
+
+  function animateChildren(){
+    var els = slides[current].querySelectorAll('[data-delay]');
+    els.forEach(function(el){
+      setTimeout(function(){ el.classList.add('show'); }, parseInt(el.dataset.delay||0));
+    });
+  }
+
+  // Auto-flip value cards after delay
+  function autoFlipCards(){
+    var values = slides[current].querySelectorAll('.value');
+    values.forEach(function(v, i){
+      setTimeout(function(){
+        var inner = v.querySelector('.value-inner');
+        if(inner){ inner.style.transform = 'rotateY(180deg)'; }
+        setTimeout(function(){ if(inner) inner.style.transform = ''; }, 2000);
+      }, 2000 + (i * 600));
+    });
+  }
+
+  function next(){
+    if(current >= total-1){
+      setTimeout(function(){ window.parent && window.parent.postMessage({introComplete:true},'*'); }, 3500);
+      return;
+    }
+    slides[current].classList.remove('active');
+    slides[current].classList.add('exit');
+    current++;
+    slides[current].classList.add('active');
+    updateProgress();
+    animateChildren();
+    if(slides[current].classList.contains('s2')) autoFlipCards();
+    setTimeout(next, parseInt(slides[current].dataset.duration||5000));
+  }
+
+  updateProgress();
+  animateChildren();
+  setTimeout(next, parseInt(slides[0].dataset.duration||5000));
+})();
+</script>
+</body>
+</html>

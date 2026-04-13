@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Opportunity</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;overflow:hidden;height:100vh;width:100vw}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transform:scale(.97);transition:opacity .8s ease,transform .8s ease;padding:40px;text-align:center}
+.slide.active{opacity:1;transform:scale(1)}
+.slide.exit{opacity:0;transform:scale(1.03)}
+
+/* Slide 1 - Hook */
+.s1 h1{font-size:clamp(26px,5vw,46px);font-weight:800;line-height:1.3;max-width:700px;margin-bottom:16px}
+.s1 h1 span{color:#0ace0a}
+.s1 p{font-size:clamp(15px,2.2vw,20px);color:#999;max-width:550px;line-height:1.6}
+
+/* Slide 2 - What You'll Do */
+.s2 h2{font-size:clamp(20px,3.5vw,32px);font-weight:700;margin-bottom:28px;color:#0ace0a}
+.cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:850px}
+.card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px 18px;width:180px;text-align:left;opacity:0;transform:translateY(16px)}
+.card.show{opacity:1;transform:translateY(0);transition:all .5s ease}
+.card .emoji{font-size:28px;margin-bottom:10px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.card p{font-size:12px;color:#888;line-height:1.5}
+
+/* Slide 3 - What You Get */
+.s3 h2{font-size:clamp(20px,3.5vw,32px);font-weight:700;margin-bottom:28px}
+.perks{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;max-width:750px}
+.perk{opacity:0;transform:translateX(-10px)}
+.perk.show{opacity:1;transform:translateX(0);transition:all .4s ease}
+.perk-inner{display:flex;align-items:center;gap:12px;background:rgba(10,206,10,.08);border:1px solid rgba(10,206,10,.2);border-radius:12px;padding:14px 20px;min-width:220px}
+.perk-inner .check{color:#0ace0a;font-size:20px;flex-shrink:0}
+.perk-inner span{font-size:14px;font-weight:500}
+
+/* Slide 4 - Who Thrives */
+.s4 h2{font-size:clamp(20px,3.5vw,32px);font-weight:700;margin-bottom:24px;color:#0ace0a}
+.traits{max-width:600px;text-align:left}
+.trait{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);opacity:0;transform:translateX(-10px)}
+.trait.show{opacity:1;transform:translateX(0);transition:all .4s ease}
+.trait .dot{width:8px;height:8px;border-radius:50%;background:#0ace0a;flex-shrink:0}
+.trait span{font-size:clamp(14px,2vw,17px);color:#ccc}
+
+/* Slide 5 - CTA */
+.s5 .emoji-big{font-size:56px;margin-bottom:20px;animation:float 3s ease-in-out infinite}
+.s5 h2{font-size:clamp(22px,4vw,38px);font-weight:800;margin-bottom:12px}
+.s5 p{font-size:clamp(14px,2vw,18px);color:#888;max-width:500px;line-height:1.6}
+
+.progress{position:fixed;bottom:0;left:0;height:4px;background:#0ace0a;transition:width .8s ease;z-index:10}
+.brand{position:fixed;top:20px;left:24px;display:flex;align-items:center;gap:10px;opacity:.6}
+.brand .logo{background:#0ace0a;color:#000;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+.brand span{font-size:13px;color:#888;font-weight:500}
+
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+</style>
+</head>
+<body>
+
+<div class="brand"><div class="logo">C</div><span id="brandName">ChannelView</span></div>
+
+<!-- Slide 1: Hook -->
+<div class="slide s1 active" data-duration="5000">
+  <h1>A Career Where You <span>Help People</span> and Build Something of Your Own</h1>
+  <p>This isn't just a job — it's a chance to make a real difference in people's lives while building long-term income and flexibility.</p>
+</div>
+
+<!-- Slide 2: What You'll Do -->
+<div class="slide s2" data-duration="7000">
+  <h2>What Your Day Looks Like</h2>
+  <div class="cards">
+    <div class="card" data-delay="300">
+      <div class="emoji">🤝</div>
+      <h3>Meet with Clients</h3>
+      <p>Connect with businesses and families to understand what they need</p>
+    </div>
+    <div class="card" data-delay="600">
+      <div class="emoji">💡</div>
+      <h3>Educate & Advise</h3>
+      <p>Help people understand their options and find the right coverage</p>
+    </div>
+    <div class="card" data-delay="900">
+      <div class="emoji">📈</div>
+      <h3>Grow Your Book</h3>
+      <p>Build relationships that turn into referrals and long-term revenue</p>
+    </div>
+    <div class="card" data-delay="1200">
+      <div class="emoji">🎯</div>
+      <h3>Set Your Pace</h3>
+      <p>Work on your own schedule with the freedom to run your business your way</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: What You Get -->
+<div class="slide s3" data-duration="6000">
+  <h2>What's In It For You</h2>
+  <div class="perks">
+    <div class="perk" data-delay="300"><div class="perk-inner"><span class="check">✓</span><span>Comprehensive training from day one</span></div></div>
+    <div class="perk" data-delay="500"><div class="perk-inner"><span class="check">✓</span><span>Flexible schedule — real work-life balance</span></div></div>
+    <div class="perk" data-delay="700"><div class="perk-inner"><span class="check">✓</span><span>Competitive first-year earning potential</span></div></div>
+    <div class="perk" data-delay="900"><div class="perk-inner"><span class="check">✓</span><span>Residual income that grows over time</span></div></div>
+    <div class="perk" data-delay="1100"><div class="perk-inner"><span class="check">✓</span><span>Career growth into leadership roles</span></div></div>
+    <div class="perk" data-delay="1300"><div class="perk-inner"><span class="check">✓</span><span>Bonuses, incentive trips, and recognition</span></div></div>
+  </div>
+</div>
+
+<!-- Slide 4: Who Thrives -->
+<div class="slide s4" data-duration="6000">
+  <h2>People Who Thrive Here</h2>
+  <div class="traits">
+    <div class="trait" data-delay="300"><div class="dot"></div><span>Self-starters who like being in charge of their own success</span></div>
+    <div class="trait" data-delay="600"><div class="dot"></div><span>People who genuinely enjoy helping others</span></div>
+    <div class="trait" data-delay="900"><div class="dot"></div><span>Strong communicators who build trust quickly</span></div>
+    <div class="trait" data-delay="1200"><div class="dot"></div><span>Driven individuals looking for unlimited growth potential</span></div>
+    <div class="trait" data-delay="1500"><div class="dot"></div><span>No experience required — just the right mindset</span></div>
+  </div>
+</div>
+
+<!-- Slide 5: CTA -->
+<div class="slide s5" data-duration="4000">
+  <div class="emoji-big">🚀</div>
+  <h2>Sound Like You?</h2>
+  <p>Great — that's why you're here. The next step is a few quick interview questions so we can get to know you better. Let's go!</p>
+</div>
+
+<div class="progress" id="progress"></div>
+
+<script>
+(function(){
+  var slides = document.querySelectorAll('.slide');
+  var progress = document.getElementById('progress');
+  var current = 0;
+  var total = slides.length;
+
+  window.addEventListener('message', function(e){
+    if(e.data && e.data.agencyName) document.getElementById('brandName').textContent = e.data.agencyName;
+  });
+
+  function updateProgress(){ progress.style.width = ((current+1)/total*100)+'%'; }
+
+  function animateChildren(){
+    var els = slides[current].querySelectorAll('[data-delay]');
+    els.forEach(function(el){
+      setTimeout(function(){ el.classList.add('show'); }, parseInt(el.dataset.delay||0));
+    });
+  }
+
+  function next(){
+    if(current >= total-1){
+      setTimeout(function(){ window.parent && window.parent.postMessage({introComplete:true},'*'); }, 3500);
+      return;
+    }
+    slides[current].classList.remove('active');
+    slides[current].classList.add('exit');
+    current++;
+    slides[current].classList.add('active');
+    updateProgress();
+    animateChildren();
+    setTimeout(next, parseInt(slides[current].dataset.duration||5000));
+  }
+
+  updateProgress();
+  animateChildren();
+  setTimeout(next, parseInt(slides[0].dataset.duration||5000));
+})();
+</script>
+</body>
+</html>

@@ -285,6 +285,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="candidate-info">{{ candidate.email }}</div>
       {% if candidate.description %}<p class="desc">{{ candidate.description }}</p>{% endif %}
       {% if candidate.intro_video_path %}
+      {% if candidate.intro_type == 'template' and candidate.intro_video_path.endswith('.html') %}
+      <div id="intro-presentation" style="max-width:560px;margin:0 auto 24px;border-radius:14px;overflow:hidden;border:2px solid #222;background:#111">
+        <div style="aspect-ratio:16/9;position:relative">
+          <iframe id="intro-iframe" src="{{ candidate.intro_video_path }}" style="width:100%;height:100%;border:none;border-radius:12px" allow="autoplay"></iframe>
+        </div>
+        <div style="padding:10px 14px;background:#1a1a1a;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:14px">✨</span>
+            <span style="font-size:13px;color:#aaa">About this opportunity</span>
+          </div>
+          <button onclick="skipIntroPresentation()" style="background:none;border:1px solid #444;color:#aaa;padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer">Skip →</button>
+        </div>
+      </div>
+      {% else %}
       <div style="max-width:520px;margin:0 auto 24px;border-radius:14px;overflow:hidden;background:#000;border:2px solid #222">
         <video id="intro-vid" controls playsinline style="width:100%;display:block;aspect-ratio:16/9;object-fit:cover"
                src="{{ candidate.intro_video_path }}" poster="">
@@ -294,6 +308,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
           <span style="font-size:13px;color:#aaa">A message from <strong style="color:#fff">{{ candidate.interviewer_name or 'the hiring team' }}</strong></span>
         </div>
       </div>
+      {% endif %}
       {% endif %}
       <div class="details">
         <div class="detail"><div class="val" id="q-count">—</div><div class="lbl">Questions</div></div>
@@ -435,7 +450,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </div>
   </div>
 
-  <!-- ===== STEP 6: DONE ===== -->
+  <!-- ===== STEP 6: INTEREST RATING ===== -->
+  {% if candidate.interest_rating_enabled != 0 %}
+  <div class="step" id="step-interest-rating">
+    <div style="max-width:520px;margin:0 auto;text-align:center;padding:24px">
+      <div style="font-size:48px;margin-bottom:16px">🤔</div>
+      <h2 style="font-size:clamp(20px,4vw,28px);margin-bottom:8px;color:#fff">One Last Thing</h2>
+      <p style="color:#aaa;font-size:15px;line-height:1.6;margin-bottom:24px;max-width:440px;margin-left:auto;margin-right:auto">
+        {{ candidate.interest_prompt or "Now that you've learned a little about this opportunity, how interested are you in having a conversation to learn more?" }}
+      </p>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:8px;flex-wrap:wrap" id="rating-dots">
+        <button onclick="selectRating(1)" class="rating-btn" data-n="1" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">1</button>
+        <button onclick="selectRating(2)" class="rating-btn" data-n="2" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">2</button>
+        <button onclick="selectRating(3)" class="rating-btn" data-n="3" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">3</button>
+        <button onclick="selectRating(4)" class="rating-btn" data-n="4" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">4</button>
+        <button onclick="selectRating(5)" class="rating-btn" data-n="5" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">5</button>
+        <button onclick="selectRating(6)" class="rating-btn" data-n="6" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">6</button>
+        <button onclick="selectRating(7)" class="rating-btn" data-n="7" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">7</button>
+        <button onclick="selectRating(8)" class="rating-btn" data-n="8" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">8</button>
+        <button onclick="selectRating(9)" class="rating-btn" data-n="9" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">9</button>
+        <button onclick="selectRating(10)" class="rating-btn" data-n="10" style="width:44px;height:44px;border-radius:50%;border:2px solid #333;background:transparent;color:#888;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s">10</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;max-width:420px;margin:0 auto 24px;padding:0 8px">
+        <span style="font-size:12px;color:#666">Not interested</span>
+        <span style="font-size:12px;color:#666">Very interested</span>
+      </div>
+      <div id="rating-response" style="display:none;margin-bottom:16px">
+        <p id="rating-msg" style="color:#0ace0a;font-size:15px;font-weight:600;margin-bottom:12px"></p>
+      </div>
+      <button class="btn btn-brand btn-lg" id="btn-submit-rating" onclick="submitRatingAndFinish()" style="display:none">Submit Interview →</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== STEP 7: DONE ===== -->
   <div class="step" id="step-done">
     <div class="thank-you">
       <div class="checkmark">✓</div>
@@ -1280,17 +1328,100 @@ function closeModal() {
 }
 
 // ==================== SUBMIT ====================
+const INTEREST_RATING_ENABLED = {{ 'true' if candidate.interest_rating_enabled != 0 else 'false' }};
+let selectedRating = 0;
+
 async function submitInterview() {
   const btn = document.getElementById('btn-submit');
   btn.disabled=true; btn.textContent='Submitting...';
-  try { await fetch(`/api/interview/${TOKEN}/complete`, {method:'POST'}); } catch(e){}
   document.getElementById('done-qc').textContent = questions.length;
   document.getElementById('done-dur').textContent = fmt(totalRecTime);
+
+  if (INTEREST_RATING_ENABLED && document.getElementById('step-interest-rating')) {
+    // Go to interest rating before completing
+    goTo('interest-rating');
+  } else {
+    // No rating — complete immediately
+    try { await fetch(`/api/interview/${TOKEN}/complete`, {method:'POST'}); } catch(e){}
+    goTo('done');
+    cleanupMedia();
+  }
+}
+
+function selectRating(n) {
+  selectedRating = n;
+  document.querySelectorAll('.rating-btn').forEach(function(b){
+    var val = parseInt(b.dataset.n);
+    if (val <= n) {
+      b.style.background = '#0ace0a';
+      b.style.borderColor = '#0ace0a';
+      b.style.color = '#000';
+    } else {
+      b.style.background = 'transparent';
+      b.style.borderColor = '#333';
+      b.style.color = '#888';
+    }
+  });
+  // Show response message
+  var resp = document.getElementById('rating-response');
+  var msg = document.getElementById('rating-msg');
+  var submitBtn = document.getElementById('btn-submit-rating');
+  resp.style.display = 'block';
+  submitBtn.style.display = 'inline-block';
+  if (n >= 8) msg.textContent = "Great to hear! We're excited to connect with you.";
+  else if (n >= 5) msg.textContent = "Thanks for your honesty — we appreciate you taking the time.";
+  else msg.textContent = "No worries — thanks for letting us know.";
+}
+
+async function submitRatingAndFinish() {
+  var btn = document.getElementById('btn-submit-rating');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  // Submit rating
+  try {
+    await fetch('/api/interview/' + TOKEN + '/interest-rating', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({rating: selectedRating})
+    });
+  } catch(e){}
+  // Complete interview
+  try { await fetch('/api/interview/' + TOKEN + '/complete', {method:'POST'}); } catch(e){}
   goTo('done');
-  if (stream) stream.getTracks().forEach(t => t.stop());
+  cleanupMedia();
+}
+
+function skipIntroPresentation() {
+  var el = document.getElementById('intro-presentation');
+  if (el) el.style.display = 'none';
+}
+
+function cleanupMedia() {
+  if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
   if (audioCtx) audioCtx.close();
   if (rafId) cancelAnimationFrame(rafId);
 }
+
+// Listen for intro completion message from iframe
+window.addEventListener('message', function(e){
+  if (e.data && e.data.introComplete) {
+    var el = document.getElementById('intro-presentation');
+    if (el) {
+      el.style.opacity = '0';
+      el.style.transition = 'opacity 0.5s ease';
+      setTimeout(function(){ el.style.display = 'none'; }, 500);
+    }
+  }
+});
+
+// Send agency name to intro iframe
+window.addEventListener('load', function(){
+  var iframe = document.getElementById('intro-iframe');
+  if (iframe) {
+    iframe.addEventListener('load', function(){
+      iframe.contentWindow.postMessage({agencyName: '{{ candidate.agency_name or "ChannelView" }}'}, '*');
+    });
+  }
+});
 </script>
 </body>
 </html>

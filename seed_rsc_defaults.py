@@ -65,13 +65,16 @@ def seed_interviews(db, user_id):
         iid = str(uuid.uuid4())
         db.execute(
             """INSERT INTO interviews (id, user_id, title, description, department, position,
-               thinking_time, max_answer_time, max_retakes, status, welcome_msg, thank_you_msg, brand_color)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+               thinking_time, max_answer_time, max_retakes, status, welcome_msg, thank_you_msg, brand_color,
+               intro_type, intro_template_id, intro_video_path, interest_rating_enabled, interest_prompt)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (iid, user_id, t['title'], t['description'], t['department'], t['position'],
              30, 120, 1, 'active',
              "Welcome! This interview has a few short video questions. Take your time, be yourself, and don't worry about being perfect — we just want to get to know you.",
              "Thank you for completing your interview! We'll review your responses and be in touch soon. If you have any questions in the meantime, don't hesitate to reach out.",
-             '#0ace0a')
+             '#0ace0a',
+             'template', 'intro_opportunity', '/static/intros/opportunity.html', 1,
+             "Now that you've learned a little about this opportunity, how interested are you in having a conversation to learn more?")
         )
         for idx, q in enumerate(t['questions']):
             db.execute(

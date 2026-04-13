@@ -905,6 +905,37 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_vsess_candidate ON video_sessions(candidate_id);
     """)
 
+    # ======================== CYCLE 35: INTRO TEMPLATES & INTEREST RATING ========================
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS intro_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        thumbnail_emoji TEXT DEFAULT '👋',
+        html_path TEXT NOT NULL,
+        category TEXT DEFAULT 'general',
+        is_system INTEGER DEFAULT 1,
+        user_id TEXT,
+        duration_seconds INTEGER DEFAULT 30,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_intro_templates_category ON intro_templates(category);
+    """)
+
+    # Seed system intro templates if empty
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM intro_templates WHERE is_system=1").fetchone()[0]
+        if count == 0:
+            conn.executescript("""
+            INSERT OR IGNORE INTO intro_templates (id, name, description, thumbnail_emoji, html_path, category, is_system, duration_seconds)
+            VALUES
+                ('intro_welcome', 'Welcome & What to Expect', 'Sets the tone, explains the video interview process, and makes the candidate comfortable.', '👋', '/static/intros/welcome.html', 'general', 1, 20),
+                ('intro_opportunity', 'The Opportunity', 'Paints the picture — what the role looks like day-to-day, benefits, flexibility, and growth potential.', '🚀', '/static/intros/opportunity.html', 'opportunity', 1, 30),
+                ('intro_team', 'Why Our Team', 'Culture, support system, training path, and what makes this team different.', '🤝', '/static/intros/team.html', 'culture', 1, 30);
+            """)
+    except:
+        pass
+
     # Migrations for existing databases
     migrations = [
         ("interviews", "intro_video_path", "TEXT"),
@@ -1018,6 +1049,14 @@ def init_db():
         ("responses", "video_thumbnail_path", "TEXT"),
         ("interviews", "email_template_id", "TEXT"),
         ("interviews", "reminder_template_id", "TEXT"),
+        # Cycle 35: Intro templates & Interest rating
+        ("interviews", "intro_type", "TEXT DEFAULT 'none'"),
+        ("interviews", "intro_template_id", "TEXT"),
+        ("interviews", "interest_rating_enabled", "INTEGER DEFAULT 1"),
+        ("interviews", "interest_prompt", "TEXT"),
+        ("candidates", "interest_rating", "INTEGER"),
+        ("candidates", "interest_comment", "TEXT"),
+        ("candidates", "interest_rated_at", "TIMESTAMP"),
     ]
     for table, col, coltype in migrations:
         try:
