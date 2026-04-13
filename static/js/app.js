@@ -31,6 +31,7 @@ async function api(methodOrUrl, urlOrOpts = {}, body) {
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
+const apiFetch = api;
 
 function toast(msg, type = '') {
   const c = document.getElementById('toast-container');
