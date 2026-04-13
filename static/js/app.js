@@ -2894,7 +2894,7 @@ async function renderAnalytics() {
       </div>` : ''}
     `;
   } catch(e) {
-    content.innerHTML = `<div class="empty-state"><h3>Analytics</h3><p>No analytics data yet. Create some interviews and candidates first.</p></div>`;
+    content.innerHTML = `<div class="empty-state"><h3>Numbers &amp; Trends</h3><p>No data yet. Once you have interviews and candidates, your numbers will show up here.</p></div>`;
   }
 }
 
@@ -2948,7 +2948,7 @@ async function renderAiInsights() {
                 </div>
               </div>
             `).join('')}
-          </div>` : '<div class="empty-state"><p>No scored candidates yet. Run AI scoring on completed interviews to see distribution.</p></div>'}
+          </div>` : '<div class="empty-state"><p>No scored candidates yet. Once interviews are completed, AI will score them automatically.</p></div>'}
         </div>
 
         <!-- Per-Interview Averages -->
@@ -3016,7 +3016,7 @@ async function renderAiInsights() {
       </div>
     `;
   } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>AI Insights</h3><p>No AI scoring data available yet. Score some candidates to see insights here.</p></div>`;
+    content.innerHTML = `<div class="empty-state"><h3>AI Scoring</h3><p>No scoring data yet. Once candidates complete interviews, AI will score them and results will show here.</p></div>`;
   }
 }
 
