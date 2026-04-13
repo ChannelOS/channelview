@@ -5,7 +5,21 @@
 
 // ==================== UTILITIES ====================
 
-async function api(url, opts = {}) {
+async function api(methodOrUrl, urlOrOpts = {}, body) {
+  // Support both calling conventions:
+  //   api('/url', {method:'POST', body:...})  — new style
+  //   api('GET', '/url')                      — legacy style
+  //   api('POST', '/url', {key:'val'})        — legacy style with body
+  let url, opts;
+  const HTTP_METHODS = ['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS'];
+  if (HTTP_METHODS.includes(methodOrUrl)) {
+    url = urlOrOpts;
+    opts = { method: methodOrUrl };
+    if (body) opts.body = JSON.stringify(body);
+  } else {
+    url = methodOrUrl;
+    opts = typeof urlOrOpts === 'object' ? urlOrOpts : {};
+  }
   const csrf = (document.cookie.match(/csrf_token=([^;]+)/) || [])[1] || '';
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, ...opts.headers },
@@ -5305,8 +5319,8 @@ async function renderBilling() {
   let usage = {}, status = {};
   try {
     [usage, status] = await Promise.all([
-      api('GET', '/api/billing/usage'),
-      api('GET', '/api/billing/status')
+      api('/api/billing/usage'),
+      api('/api/billing/status')
     ]);
   } catch(e) { usage = {}; status = {}; }
 
