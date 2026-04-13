@@ -4866,9 +4866,19 @@ async function addAgency() {
   if (!name || !email || !agencyName) { toast('Please fill in all fields', 'error'); return; }
   const res = await api('POST', '/api/fmo/agencies', { name, email, agency_name: agencyName, plan });
   if (res.success) {
-    document.getElementById('agency-modal').style.display = 'none';
-    toast(`Agency created! Temp password: ${res.agency.temp_password}`, 'success');
-    renderFmoPortal();
+    document.getElementById('agency-modal').innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:32px;max-width:480px;width:90%;text-align:center">
+        <div style="background:#0ace0a;color:#000;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:24px">✓</div>
+        <h3 style="margin:0 0 8px">Agency Created!</h3>
+        <p style="color:#555;margin:0 0 20px">${res.agency.agency_name} is ready to go.</p>
+        <div style="background:#f3f4f6;border-radius:8px;padding:16px;text-align:left;margin:0 0 20px">
+          <p style="margin:0 0 6px"><strong>Email:</strong> ${res.agency.email}</p>
+          <p style="margin:0 0 6px"><strong>Temp Password:</strong> <code style="background:#e8e8e8;padding:2px 8px;border-radius:4px;font-size:15px;user-select:all">${res.agency.temp_password}</code></p>
+          <p style="margin:0"><strong>Plan:</strong> ${res.agency.plan.charAt(0).toUpperCase() + res.agency.plan.slice(1)}</p>
+        </div>
+        <p style="color:#888;font-size:13px;margin:0 0 20px">Share these credentials with the agency. They'll be prompted to change the password on first login.</p>
+        <button class="btn btn-primary" onclick="document.getElementById('agency-modal').style.display='none';renderFmoPortal()">Done</button>
+      </div>`;
   } else toast(res.error || 'Failed to create agency', 'error');
 }
 
