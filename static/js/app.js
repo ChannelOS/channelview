@@ -4816,6 +4816,7 @@ async function renderFmoPortal() {
                     <option value="professional" ${plan==='professional'||plan==='pro'?'selected':''}>Professional $179</option>
                     <option value="enterprise" ${plan==='enterprise'?'selected':''}>Enterprise $299</option>
                   </select>
+                  ${!a.is_self ? `<button onclick="deleteAgency('${a.id}','${(a.agency_name||'').replace(/'/g,"\\'")}')" style="font-size:11px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:4px;background:#fff;color:#dc2626;cursor:pointer" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff'">Delete</button>` : ''}
                 </div>
               </div>
             </div>`;
@@ -4886,6 +4887,15 @@ async function changePlan(agencyId, newPlan) {
   const res = await api('PUT', `/api/fmo/agencies/${agencyId}/plan`, { plan: newPlan });
   if (res.success) toast(`Plan updated to ${newPlan}`);
   else { toast(res.error || 'Failed', 'error'); renderFmoPortal(); }
+}
+
+async function deleteAgency(agencyId, agencyName) {
+  if (!confirm(`Delete "${agencyName}" and all its data? This cannot be undone.`)) return;
+  try {
+    const res = await api('DELETE', `/api/fmo/agencies/${agencyId}`);
+    if (res.success) { toast(`Deleted ${res.deleted_email}`, 'success'); renderFmoPortal(); }
+    else toast(res.error || 'Failed to delete', 'error');
+  } catch(e) { toast(e.message || 'Failed to delete', 'error'); }
 }
 
 

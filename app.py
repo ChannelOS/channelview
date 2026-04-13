@@ -8618,6 +8618,38 @@ def api_fmo_update_agency_plan(agency_id):
     return jsonify({'success': True, 'plan': new_plan})
 
 
+@app.route('/api/fmo/agencies/<agency_id>', methods=['DELETE'])
+@require_auth
+@require_fmo_admin
+def api_fmo_delete_agency(agency_id):
+    """Delete an agency and all its data. FMO admin only."""
+    db = get_db()
+    agency = db.execute('SELECT id, email, fmo_parent_id FROM users WHERE id=?', (agency_id,)).fetchone()
+    if not agency:
+        db.close()
+        return jsonify({'error': 'Agency not found'}), 404
+    agency = dict(agency)
+    # Can't delete yourself
+    if agency_id == g.user_id:
+        db.close()
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+    # Must be your agency
+    if agency.get('fmo_parent_id') != g.user_id:
+        db.close()
+        return jsonify({'error': 'Agency not found'}), 404
+    # Cascade delete all related data
+    db.execute('DELETE FROM email_log WHERE user_id=? OR candidate_id IN (SELECT id FROM candidates WHERE user_id=?)', (agency_id, agency_id))
+    db.execute('DELETE FROM responses WHERE candidate_id IN (SELECT id FROM candidates WHERE user_id=?)', (agency_id,))
+    db.execute('DELETE FROM candidates WHERE user_id=?', (agency_id,))
+    db.execute('DELETE FROM questions WHERE interview_id IN (SELECT id FROM interviews WHERE user_id=?)', (agency_id,))
+    db.execute('DELETE FROM interviews WHERE user_id=?', (agency_id,))
+    db.execute('DELETE FROM team_members WHERE account_id=?', (agency_id,))
+    db.execute('DELETE FROM users WHERE id=?', (agency_id,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'deleted_email': agency['email']})
+
+
 @app.route('/api/fmo/stats', methods=['GET'])
 @require_auth
 @require_fmo_admin
