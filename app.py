@@ -125,9 +125,32 @@ def set_csrf_cookie(response):
 
 # ======================== STRIPE CONFIG ========================
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
-STRIPE_PRICE_ID = os.environ.get('STRIPE_PRICE_ID', '')  # Single monthly price
+STRIPE_PRICE_ID = os.environ.get('STRIPE_PRICE_ID', '')  # Legacy fallback
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 STRIPE_API_BASE = 'https://api.stripe.com/v1'
+
+# Tier-specific Stripe Price IDs ($99 / $179 / $299 monthly)
+STRIPE_PRICE_ID_STARTER = os.environ.get('STRIPE_PRICE_ID_STARTER', '')
+STRIPE_PRICE_ID_PROFESSIONAL = os.environ.get('STRIPE_PRICE_ID_PROFESSIONAL', STRIPE_PRICE_ID)  # fallback to legacy
+STRIPE_PRICE_ID_ENTERPRISE = os.environ.get('STRIPE_PRICE_ID_ENTERPRISE', '')
+
+# Map plan names → Stripe price IDs (includes legacy aliases)
+PLAN_PRICE_MAP = {
+    'starter': STRIPE_PRICE_ID_STARTER,
+    'essentials': STRIPE_PRICE_ID_STARTER,
+    'professional': STRIPE_PRICE_ID_PROFESSIONAL,
+    'pro': STRIPE_PRICE_ID_PROFESSIONAL,
+    'enterprise': STRIPE_PRICE_ID_ENTERPRISE,
+}
+
+# Reverse map: Stripe price ID → canonical plan name (for webhook)
+PRICE_PLAN_MAP = {}
+if STRIPE_PRICE_ID_STARTER:
+    PRICE_PLAN_MAP[STRIPE_PRICE_ID_STARTER] = 'starter'
+if STRIPE_PRICE_ID_PROFESSIONAL:
+    PRICE_PLAN_MAP[STRIPE_PRICE_ID_PROFESSIONAL] = 'professional'
+if STRIPE_PRICE_ID_ENTERPRISE:
+    PRICE_PLAN_MAP[STRIPE_PRICE_ID_ENTERPRISE] = 'enterprise'
 
 def _stripe_request(method, endpoint, data=None):
     """Make a request to the Stripe API. Returns (response_dict, status_code)."""
@@ -154,8 +177,8 @@ def _validate_production_config():
     warnings = []
     if not STRIPE_SECRET_KEY:
         warnings.append("STRIPE_SECRET_KEY not set — billing/checkout will return 503")
-    if not STRIPE_PRICE_ID:
-        warnings.append("STRIPE_PRICE_ID not set — checkout will fail")
+    if not any([STRIPE_PRICE_ID_STARTER, STRIPE_PRICE_ID_PROFESSIONAL, STRIPE_PRICE_ID_ENTERPRISE, STRIPE_PRICE_ID]):
+        warnings.append("No STRIPE_PRICE_IDs set — checkout will fail")
     if not os.environ.get('SENDGRID_API_KEY') and not os.environ.get('SMTP_HOST'):
         warnings.append("No email backend configured — emails will log only (set SENDGRID_API_KEY or SMTP_HOST)")
     if os.environ.get('FLASK_ENV') == 'production':
@@ -679,9 +702,17 @@ def api_billing_status():
 @app.route('/api/billing/checkout', methods=['POST'])
 @require_auth
 def api_billing_checkout():
-    """Create a Stripe Checkout session for the monthly plan."""
-    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+    """Create a Stripe Checkout session for a specific plan tier."""
+    if not STRIPE_SECRET_KEY:
         return jsonify({'error': 'Billing is not configured. Contact support.'}), 503
+
+    data = request.get_json() or {}
+    requested_plan = data.get('plan', 'professional')
+
+    # Look up the Stripe price ID for the requested plan
+    price_id = PLAN_PRICE_MAP.get(requested_plan, '')
+    if not price_id:
+        return jsonify({'error': f'No pricing configured for plan: {requested_plan}'}), 400
 
     db = get_db()
     user = db.execute('SELECT email, stripe_customer_id FROM users WHERE id=?', (g.user_id,)).fetchone()
@@ -708,11 +739,12 @@ def api_billing_checkout():
     session, status = _stripe_request('POST', '/checkout/sessions', {
         'customer': customer_id,
         'mode': 'subscription',
-        'line_items[0][price]': STRIPE_PRICE_ID,
+        'line_items[0][price]': price_id,
         'line_items[0][quantity]': '1',
         'success_url': success_url,
         'cancel_url': cancel_url,
         'metadata[channelview_user_id]': g.user_id,
+        'metadata[channelview_plan]': requested_plan,
     })
     if status >= 400:
         return jsonify({'error': 'Failed to create checkout session'}), 500
@@ -780,10 +812,17 @@ def stripe_webhook():
             user_id = obj.get('metadata', {}).get('channelview_user_id')
             customer_id = obj.get('customer')
             subscription_id = obj.get('subscription')
+            # Determine plan from metadata or default to professional
+            plan_name = obj.get('metadata', {}).get('channelview_plan', 'professional')
+            # Normalize legacy aliases
+            if plan_name in ('pro', 'essentials'):
+                plan_name = 'professional' if plan_name == 'pro' else 'starter'
+            if plan_name not in ('starter', 'professional', 'enterprise'):
+                plan_name = 'professional'
             if user_id and subscription_id:
-                db.execute('''UPDATE users SET plan='pro', stripe_customer_id=?, stripe_subscription_id=?,
+                db.execute('''UPDATE users SET plan=?, stripe_customer_id=?, stripe_subscription_id=?,
                               subscription_status='active', updated_at=CURRENT_TIMESTAMP WHERE id=?''',
-                           (customer_id, subscription_id, user_id))
+                           (plan_name, customer_id, subscription_id, user_id))
                 db.commit()
 
         elif event_type in ('customer.subscription.updated', 'customer.subscription.deleted'):
@@ -791,9 +830,15 @@ def stripe_webhook():
             status = obj.get('status', '')
             cancel_at = obj.get('cancel_at')
             current_period_end = obj.get('current_period_end')
-            user = db.execute('SELECT id FROM users WHERE stripe_subscription_id=?', (sub_id,)).fetchone()
+            user = db.execute('SELECT id, plan FROM users WHERE stripe_subscription_id=?', (sub_id,)).fetchone()
             if user:
-                new_plan = 'pro' if status in ('active', 'trialing') else 'free'
+                if status in ('active', 'trialing'):
+                    # Determine plan from the subscription's price ID
+                    items = obj.get('items', {}).get('data', [])
+                    price_id = items[0].get('price', {}).get('id', '') if items else ''
+                    new_plan = PRICE_PLAN_MAP.get(price_id, user['plan'] or 'professional')
+                else:
+                    new_plan = 'free'
                 ends_at = datetime.utcfromtimestamp(current_period_end).isoformat() if current_period_end else None
                 db.execute('''UPDATE users SET plan=?, subscription_status=?, subscription_ends_at=?,
                               updated_at=CURRENT_TIMESTAMP WHERE id=?''',
