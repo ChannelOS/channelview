@@ -1107,20 +1107,21 @@ async function openIntroLibrary() {
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'modal-intro-library';
-    modal.className = 'modal-overlay';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center';
-    modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+    modal.className = 'modal-overlay show';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center';
+    modal.onclick = function(e) { if (e.target === modal) closeIntroLibrary(); };
     modal.innerHTML = `
       <div style="background:#fff;border-radius:12px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;margin:20px">
         <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
           <h3 style="margin:0">My Video Library</h3>
-          <button onclick="document.getElementById('modal-intro-library').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+          <button onclick="closeIntroLibrary()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
         </div>
         <div id="intro-library-list" style="overflow-y:auto;flex:1;padding:16px 20px"></div>
       </div>
     `;
     document.body.appendChild(modal);
   }
+  modal.classList.add('show');
   modal.style.display = 'flex';
   const list = document.getElementById('intro-library-list');
   list.innerHTML = '<div style="text-align:center;padding:20px;color:#999">Loading...</div>';
@@ -1178,12 +1179,16 @@ async function openIntroLibrary() {
   }
 }
 
+function closeIntroLibrary() {
+  const modal = document.getElementById('modal-intro-library');
+  if (modal) { modal.classList.remove('show'); modal.style.display = 'none'; }
+}
+
 function useLibraryIntro(path) {
   introBlob = null;
   introFromLibraryPath = path;
   showIntroPreview(path);
-  const modal = document.getElementById('modal-intro-library');
-  if (modal) modal.style.display = 'none';
+  closeIntroLibrary();
   // Hide the save-to-library button since it's already in the library
   const saveBtn = document.getElementById('btn-save-to-lib');
   if (saveBtn) saveBtn.style.display = 'none';
@@ -1207,8 +1212,7 @@ function useIntroTemplate(templateId, htmlPath) {
     const playback = document.getElementById('intro-playback');
     if (playback) playback.parentElement.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111;border-radius:12px;aspect-ratio:16/9;margin-bottom:12px"><div style="text-align:center;color:#fff"><div style="font-size:48px;margin-bottom:8px">📄</div><div style="font-size:14px;font-weight:600">Click-Through Template Selected</div><div style="font-size:12px;color:#999;margin-top:4px">Candidates will see an interactive intro presentation</div></div></div>';
   }
-  const modal = document.getElementById('modal-intro-library');
-  if (modal) modal.style.display = 'none';
+  closeIntroLibrary();
   toast('Intro template selected!', 'success');
 }
 
