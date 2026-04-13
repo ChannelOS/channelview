@@ -1267,19 +1267,19 @@ def _try_send_candidate_email(db, user_id, candidate_id, email_type, build_fn, *
 
 def _build_invite_email(smtp_config, candidate_name, interview_title, interview_link, agency_name, brand_color, welcome_msg, to_email):
     from email_service import build_invite_email
-    subject = f'You\'re Invited: {interview_title} — Video Interview'
+    subject = f'{agency_name} — I\'d love to learn more about you'
     html = build_invite_email(candidate_name, interview_title, interview_link, agency_name, brand_color, welcome_msg)
     return subject, html
 
 def _build_reminder_email(smtp_config, candidate_name, interview_title, interview_link, agency_name, brand_color, status, to_email):
     from email_service import build_reminder_email
-    subject = f'Reminder: {interview_title} — Complete Your Interview'
+    subject = f'Still interested? I\'d hate for you to miss this'
     html = build_reminder_email(candidate_name, interview_title, interview_link, agency_name, brand_color, status)
     return subject, html
 
 def _build_completion_email(smtp_config, candidate_name, interview_title, agency_name, brand_color, thank_you_msg, to_email):
     from email_service import build_completion_email
-    subject = f'Interview Complete: {interview_title} — Thank You!'
+    subject = f'Got it — thanks so much, {candidate_name}!'
     html = build_completion_email(candidate_name, interview_title, agency_name, brand_color, thank_you_msg)
     return subject, html
 
@@ -3850,7 +3850,7 @@ def _send_notification_email(user, candidate, notification_type, extra=None):
 
     templates = {
         'candidate_invited': {
-            'subject': f"You're invited to interview for {extra.get('position', 'a position')} at {agency_name}",
+            'subject': f"{agency_name} — I'd love to learn more about you",
             'body': f"""
                 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
                     <div style="background:{brand_color};padding:16px 24px;border-radius:8px 8px 0 0;">
@@ -3858,11 +3858,11 @@ def _send_notification_email(user, candidate, notification_type, extra=None):
                     </div>
                     <div style="background:#f9f9f9;padding:24px;border-radius:0 0 8px 8px;">
                         <p>Hi {candidate.get('first_name', '')},</p>
-                        <p>You have been invited to complete a video interview for <strong>{extra.get('position', 'a position')}</strong> at {agency_name}.</p>
+                        <p>I came across your background and I think you could be a great fit for an opportunity on my team. I put together a short video interview — just a few casual questions so I can get to know you a little better.</p>
                         <p style="text-align:center;margin:24px 0;">
-                            <a href="{extra.get('interview_url', '#')}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;padding:12px 32px;border-radius:6px;text-decoration:none;">Start Interview</a>
+                            <a href="{extra.get('interview_url', '#')}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;padding:12px 32px;border-radius:6px;text-decoration:none;">Start Your Interview</a>
                         </p>
-                        <p style="color:#666;font-size:14px;">This interview can be completed at your convenience. You will need a camera and microphone.</p>
+                        <p style="color:#666;font-size:14px;">Takes about 10-15 minutes. Do it from your phone or computer — whenever works for you.</p>
                     </div>
                 </div>"""
         },
@@ -3895,7 +3895,7 @@ def _send_notification_email(user, candidate, notification_type, extra=None):
                 </div>"""
         },
         'candidate_reminder': {
-            'subject': f"Reminder: Complete your interview for {extra.get('position', 'a position')}",
+            'subject': f"Still interested? I'd hate for you to miss this",
             'body': f"""
                 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
                     <div style="background:{brand_color};padding:16px 24px;border-radius:8px 8px 0 0;">
@@ -3903,9 +3903,9 @@ def _send_notification_email(user, candidate, notification_type, extra=None):
                     </div>
                     <div style="background:#f9f9f9;padding:24px;border-radius:0 0 8px 8px;">
                         <p>Hi {candidate.get('first_name', '')},</p>
-                        <p>This is a friendly reminder to complete your video interview for <strong>{extra.get('position', 'a position')}</strong> at {agency_name}.</p>
+                        <p>I wanted to follow up — I sent over a short video interview a few days ago and haven't heard back yet. Totally understand if the timing wasn't right, but I didn't want you to miss the opportunity.</p>
                         <p style="text-align:center;margin:24px 0;">
-                            <a href="{extra.get('interview_url', '#')}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;padding:12px 32px;border-radius:6px;text-decoration:none;">Complete Interview</a>
+                            <a href="{extra.get('interview_url', '#')}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;padding:12px 32px;border-radius:6px;text-decoration:none;">Complete Your Interview</a>
                         </p>
                     </div>
                 </div>"""
@@ -8270,15 +8270,15 @@ def api_delete_shortlist(shortlist_id):
 
 DEFAULT_EMAIL_TEMPLATES = {
     'invitation': {
-        'subject': 'You\'re invited to interview for {{position}} at {{agency_name}}',
+        'subject': '{{interviewer_name}} with {{agency_name}} — I\'d love to learn more about you',
         'variables': ['candidate_name', 'position', 'agency_name', 'interview_url', 'interviewer_name'],
     },
     'reminder': {
-        'subject': 'Reminder: Complete your interview for {{position}}',
+        'subject': 'Still interested? I\'d hate for you to miss this',
         'variables': ['candidate_name', 'position', 'agency_name', 'interview_url', 'days_remaining'],
     },
     'completion': {
-        'subject': 'Thank you for completing your interview, {{candidate_name}}!',
+        'subject': 'Got it — thanks so much, {{candidate_name}}!',
         'variables': ['candidate_name', 'position', 'agency_name', 'thank_you_msg'],
     },
     'share_report': {

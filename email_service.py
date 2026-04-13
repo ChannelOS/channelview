@@ -227,20 +227,19 @@ def _base_template(brand_color, agency_name, content_html):
 
 def build_invite_email(candidate_name, interview_title, interview_link, agency_name, brand_color, welcome_msg=None):
     """Build the invitation email HTML."""
-    welcome = welcome_msg or "We'd like to invite you to complete a short video interview."
+    welcome = welcome_msg or "I came across your background and I think you could be a great fit for an opportunity on my team. I'd love to learn a little more about you through a short video interview."
     content = f'''
-    <h1 style="margin:0 0 8px;font-size:22px;color:#111">You're Invited!</h1>
+    <h1 style="margin:0 0 8px;font-size:22px;color:#111">I'd Love to Hear From You</h1>
     <p style="color:#6b7280;font-size:15px;margin:0 0 24px;line-height:1.5">
       Hi {candidate_name},<br><br>
       {welcome}
     </p>
     <div style="background:#f9fafb;border-radius:8px;padding:16px 20px;margin-bottom:24px">
-      <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Interview</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Opportunity</p>
       <p style="margin:0;font-size:16px;color:#111;font-weight:600">{interview_title}</p>
     </div>
     <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 24px">
-      This is a one-way video interview â you'll record your responses on your own time, at your own pace.
-      All you need is a device with a camera and microphone.
+      It's just a few questions on video — casual, no wrong answers. You can do it from your phone or computer whenever works for you. Takes about 10-15 minutes.
     </p>
     <div style="text-align:center;margin:28px 0">
       <a href="{interview_link}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;
@@ -258,12 +257,12 @@ def build_invite_email(candidate_name, interview_title, interview_link, agency_n
 def build_reminder_email(candidate_name, interview_title, interview_link, agency_name, brand_color, status='invited'):
     """Build the reminder email HTML."""
     if status == 'in_progress':
-        headline = "Don't Forget to Finish!"
-        message = f"You've started your interview for <strong>{interview_title}</strong> but haven't completed it yet. Your progress has been saved â pick up right where you left off."
+        headline = "You're Almost There"
+        message = f"I noticed you started your interview for <strong>{interview_title}</strong> but didn't get to finish. No worries — your progress is saved and you can pick right back up where you left off."
         button_text = "Continue Your Interview"
     else:
-        headline = "Friendly Reminder"
-        message = f"We noticed you haven't started your video interview for <strong>{interview_title}</strong> yet. It only takes a few minutes!"
+        headline = "Still Interested?"
+        message = f"I wanted to follow up — I sent over a short video interview for <strong>{interview_title}</strong> a few days ago. I'd hate for you to miss the opportunity. It only takes about 10-15 minutes."
         button_text = "Start Your Interview"
 
     content = f'''
@@ -287,43 +286,22 @@ def build_reminder_email(candidate_name, interview_title, interview_link, agency
 
 def build_completion_email(candidate_name, interview_title, agency_name, brand_color, thank_you_msg=None):
     """Build the completion confirmation email HTML."""
-    thanks = thank_you_msg or "Thank you for completing your interview! We will review your responses and be in touch soon."
+    thanks = thank_you_msg or "Thank you so much for taking the time to do that — I really appreciate it. I'm going to review your responses over the next few days, and if it looks like we're a good match, I'll reach out to set up a time for us to talk."
     content = f'''
     <div style="text-align:center;margin-bottom:24px">
       <div style="display:inline-block;width:56px;height:56px;border-radius:50%;background:{brand_color}20;
            line-height:56px;font-size:28px">&#10003;</div>
     </div>
-    <h1 style="margin:0 0 8px;font-size:22px;color:#111;text-align:center">Interview Complete!</h1>
+    <h1 style="margin:0 0 8px;font-size:22px;color:#111;text-align:center">Got It — Thanks!</h1>
     <p style="color:#6b7280;font-size:15px;margin:0 0 24px;line-height:1.5;text-align:center">
       Hi {candidate_name},<br><br>
       {thanks}
     </p>
     <div style="background:#f9fafb;border-radius:8px;padding:16px 20px;margin-bottom:24px;text-align:center">
-      <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Interview</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Opportunity</p>
       <p style="margin:0;font-size:16px;color:#111;font-weight:600">{interview_title}</p>
     </div>
     <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0;text-align:center">
-      Our team will review your responses carefully. We'll reach out with next steps as soon as possible.
-    </p>'''
-    return _base_template(brand_color, agency_name, content)
-
-
-def build_branded_email(candidate_name, interview_title, message_text, action_link, button_text, agency_name, brand_color):
-    """Build a generic branded email with a custom message and CTA button. Used by waterfall engine."""
-    content = f'''
-    <h1 style="margin:0 0 8px;font-size:22px;color:#111">{interview_title}</h1>
-    <p style="color:#6b7280;font-size:15px;margin:0 0 24px;line-height:1.5">
-      Hi {candidate_name},<br><br>
-      {message_text}
-    </p>
-    <div style="text-align:center;margin:28px 0">
-      <a href="{action_link}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;
-         font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none;letter-spacing:0.3px">
-        {button_text}
-      </a>
-    </div>
-    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0">
-      If the button doesn't work, copy and paste this link:<br>
-      <a href="{action_link}" style="color:{brand_color};word-break:break-all">{action_link}</a>
+      Feel free to reply if anything comes to mind — I'm always happy to answer questions.
     </p>'''
     return _base_template(brand_color, agency_name, content)

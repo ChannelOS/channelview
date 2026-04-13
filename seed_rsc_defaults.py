@@ -91,47 +91,51 @@ def seed_email_templates(db, user_id):
         {
             'type': 'invitation',
             'name': 'Interview Invitation',
-            'subject': "You're invited to interview with {{agency_name}}",
+            'subject': "{{interviewer_name}} with {{agency_name}} — I'd love to learn more about you",
             'body': """<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
 <p>Hi {{candidate_name}},</p>
 
-<p>Thank you for your interest in joining our team! We'd like to learn more about you through a short video interview.</p>
+<p>I came across your background and something about it caught my eye. I think you might be a great fit for an opportunity on my team, and I'd love to learn a little more about you.</p>
+
+<p>I've put together a short video interview — just a few questions so I can get a feel for who you are. It's casual, there are no wrong answers, and it only takes about 10-15 minutes.</p>
 
 <p><strong>Here's how it works:</strong></p>
 <ul style="color:#444;line-height:1.8">
-  <li>Click the link below to start</li>
-  <li>You'll answer a few questions on video (about 10-15 minutes total)</li>
-  <li>You can do it anytime from your phone or computer — no scheduling needed</li>
-  <li>You'll get time to read each question before recording</li>
+  <li>Click the link below when you're ready</li>
+  <li>You'll see each question one at a time and record a short video answer</li>
+  <li>Do it from your phone or computer — whenever works for you</li>
+  <li>No scheduling, no pressure — just be yourself</li>
 </ul>
 
 <p style="text-align:center;margin:28px 0">
   <a href="{{interview_url}}" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none">Start Your Interview</a>
 </p>
 
-<p>Don't overthink it — just be yourself. We're excited to hear from you!</p>
+<p>I'm really looking forward to hearing from you.</p>
 
-<p>Best,<br>{{interviewer_name}}<br>{{agency_name}}</p>
+<p>{{interviewer_name}}<br>{{agency_name}}</p>
 </div>""",
             'is_default': 1,
             'variables': '["candidate_name","agency_name","interview_url","interviewer_name","position"]'
         },
         {
             'type': 'reminder',
-            'name': 'Friendly Reminder',
-            'subject': "Quick reminder: Your interview is waiting for you",
+            'name': 'Friendly Nudge',
+            'subject': "Still interested? I'd hate for you to miss this",
             'body': """<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
 <p>Hi {{candidate_name}},</p>
 
-<p>Just a quick nudge — we noticed you haven't completed your video interview yet. No worries, it only takes about 10-15 minutes and you can do it right from your phone.</p>
+<p>I wanted to follow up — I sent over a short video interview a few days ago and haven't heard back yet. Totally understand if the timing wasn't right, but I didn't want you to miss the opportunity.</p>
+
+<p>It only takes about 10-15 minutes, and you can do it right from your phone whenever you have a few minutes.</p>
 
 <p style="text-align:center;margin:28px 0">
   <a href="{{interview_url}}" style="display:inline-block;background:#0ace0a;color:#000;font-weight:700;font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none">Complete Your Interview</a>
 </p>
 
-<p>If you have any questions or need more time, just reply to this email. We're happy to help!</p>
+<p>If you have any questions at all, just hit reply — I'm happy to chat.</p>
 
-<p>Best,<br>{{interviewer_name}}<br>{{agency_name}}</p>
+<p>{{interviewer_name}}<br>{{agency_name}}</p>
 </div>""",
             'is_default': 1,
             'variables': '["candidate_name","agency_name","interview_url","interviewer_name","days_remaining"]'
@@ -139,17 +143,17 @@ def seed_email_templates(db, user_id):
         {
             'type': 'completion',
             'name': 'Thank You - Interview Complete',
-            'subject': "Thanks for completing your interview, {{candidate_name}}!",
+            'subject': "Got it — thanks so much, {{candidate_name}}!",
             'body': """<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
 <p>Hi {{candidate_name}},</p>
 
-<p>We received your video interview — thank you for taking the time!</p>
+<p>I just received your video interview — thank you for taking the time to do that. I really appreciate it.</p>
 
-<p>Our team will review your responses and we'll be in touch within a few business days with next steps. If we'd like to move forward, we'll reach out to schedule a conversation.</p>
+<p>I'm going to review your responses over the next few days. If it looks like we're a good match, I'll reach out to set up a time for us to talk and I can tell you more about the opportunity.</p>
 
-<p>In the meantime, if you have any questions, don't hesitate to reach out.</p>
+<p>In the meantime, feel free to reply if anything comes to mind — I'm always happy to answer questions.</p>
 
-<p>Thanks again,<br>{{interviewer_name}}<br>{{agency_name}}</p>
+<p>Talk soon,<br>{{interviewer_name}}<br>{{agency_name}}</p>
 </div>""",
             'is_default': 1,
             'variables': '["candidate_name","agency_name","interviewer_name","position"]'
