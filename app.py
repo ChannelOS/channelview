@@ -17768,6 +17768,134 @@ def api_pipeline_stale_c29c():
         db.close()
 
 
+# ======================== CYCLE 36: RSC TIME-SAVING TOOLS ========================
+
+@app.route('/api/screening-scripts', methods=['GET'])
+@require_auth
+def api_list_screening_scripts_c36():
+    """List all available screening call scripts (system + user-created)."""
+    db = get_db()
+    try:
+        scripts = db.execute(
+            'SELECT * FROM screening_scripts WHERE is_system=1 OR user_id=? ORDER BY is_system DESC, name',
+            (g.user_id,)
+        ).fetchall()
+        result = []
+        for s in scripts:
+            d = dict(s)
+            # Parse qualifying_questions from JSON string
+            import json
+            try:
+                d['qualifying_questions'] = json.loads(d['qualifying_questions'])
+            except:
+                d['qualifying_questions'] = [d['qualifying_questions']]
+            result.append(d)
+        return jsonify(result)
+    finally:
+        db.close()
+
+
+@app.route('/api/screening-scripts/<script_id>', methods=['GET'])
+@require_auth
+def api_get_screening_script_c36(script_id):
+    """Get a single screening script by ID."""
+    db = get_db()
+    try:
+        script = db.execute(
+            'SELECT * FROM screening_scripts WHERE id=? AND (is_system=1 OR user_id=?)',
+            (script_id, g.user_id)
+        ).fetchone()
+        if not script:
+            return jsonify({'error': 'Script not found'}), 404
+        d = dict(script)
+        import json
+        try:
+            d['qualifying_questions'] = json.loads(d['qualifying_questions'])
+        except:
+            d['qualifying_questions'] = [d['qualifying_questions']]
+        return jsonify(d)
+    finally:
+        db.close()
+
+
+@app.route('/api/scheduling-templates', methods=['GET'])
+@require_auth
+def api_list_scheduling_templates_c36():
+    """List all scheduling templates (system + user-created)."""
+    db = get_db()
+    try:
+        fmt = request.args.get('format_type')
+        if fmt:
+            templates = db.execute(
+                'SELECT * FROM scheduling_templates WHERE (is_system=1 OR user_id=?) AND format_type=? ORDER BY is_system DESC, name',
+                (g.user_id, fmt)
+            ).fetchall()
+        else:
+            templates = db.execute(
+                'SELECT * FROM scheduling_templates WHERE is_system=1 OR user_id=? ORDER BY format_type, name',
+                (g.user_id,)
+            ).fetchall()
+        return jsonify([dict(t) for t in templates])
+    finally:
+        db.close()
+
+
+@app.route('/api/scheduling-templates/<template_id>', methods=['GET'])
+@require_auth
+def api_get_scheduling_template_c36(template_id):
+    """Get a single scheduling template."""
+    db = get_db()
+    try:
+        tmpl = db.execute(
+            'SELECT * FROM scheduling_templates WHERE id=? AND (is_system=1 OR user_id=?)',
+            (template_id, g.user_id)
+        ).fetchone()
+        if not tmpl:
+            return jsonify({'error': 'Template not found'}), 404
+        return jsonify(dict(tmpl))
+    finally:
+        db.close()
+
+
+@app.route('/api/message-templates', methods=['GET'])
+@require_auth
+def api_list_message_templates_c36():
+    """List all message templates (system + user-created)."""
+    db = get_db()
+    try:
+        category = request.args.get('category')
+        if category:
+            templates = db.execute(
+                'SELECT * FROM message_templates WHERE (is_system=1 OR user_id=?) AND category=? ORDER BY is_system DESC, tone, name',
+                (g.user_id, category)
+            ).fetchall()
+        else:
+            templates = db.execute(
+                'SELECT * FROM message_templates WHERE is_system=1 OR user_id=? ORDER BY category, tone, name',
+                (g.user_id,)
+            ).fetchall()
+        return jsonify([dict(t) for t in templates])
+    finally:
+        db.close()
+
+
+@app.route('/api/message-templates/<template_id>', methods=['GET'])
+@require_auth
+def api_get_message_template_c36(template_id):
+    """Get a single message template."""
+    db = get_db()
+    try:
+        tmpl = db.execute(
+            'SELECT * FROM message_templates WHERE id=? AND (is_system=1 OR user_id=?)',
+            (template_id, g.user_id)
+        ).fetchone()
+        if not tmpl:
+            return jsonify({'error': 'Template not found'}), 404
+        return jsonify(dict(tmpl))
+    finally:
+        db.close()
+
+
 # ======================== INIT & RUN ========================
 
 if __name__ == '__main__':

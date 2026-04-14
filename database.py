@@ -2562,6 +2562,156 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 36: RSC TIME-SAVING TOOLS ========================
+
+    conn.executescript("""
+    -- Screening call scripts (pre-loaded phone scripts with variations)
+    CREATE TABLE IF NOT EXISTS screening_scripts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        script_type TEXT NOT NULL DEFAULT 'warm_lead',
+        opening TEXT NOT NULL,
+        qualifying_questions TEXT NOT NULL,
+        opportunity_pitch TEXT NOT NULL,
+        next_steps TEXT NOT NULL,
+        objection_handling TEXT NOT NULL,
+        is_system INTEGER DEFAULT 1,
+        user_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_screening_scripts_type ON screening_scripts(script_type);
+    CREATE INDEX IF NOT EXISTS idx_screening_scripts_user ON screening_scripts(user_id);
+
+    -- Scheduling templates (one-click copy/paste scheduling language)
+    CREATE TABLE IF NOT EXISTS scheduling_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        format_type TEXT NOT NULL DEFAULT 'group_virtual',
+        subject_line TEXT NOT NULL,
+        body_text TEXT NOT NULL,
+        is_system INTEGER DEFAULT 1,
+        user_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduling_templates_format ON scheduling_templates(format_type);
+
+    -- Message templates (pre-filled messages for candidate communications)
+    CREATE TABLE IF NOT EXISTS message_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'invitation',
+        tone TEXT DEFAULT 'professional',
+        subject_line TEXT,
+        body_text TEXT NOT NULL,
+        is_system INTEGER DEFAULT 1,
+        user_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_templates_category ON message_templates(category);
+    CREATE INDEX IF NOT EXISTS idx_message_templates_user ON message_templates(user_id);
+    """)
+
+    # Seed screening scripts
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM screening_scripts WHERE is_system=1").fetchone()[0]
+        if count == 0:
+            conn.execute("""INSERT OR IGNORE INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""", (
+                'script_warm_lead', 'Warm Lead Script', 'warm_lead',
+                'Hi [CANDIDATE_NAME], this is [RSC_NAME] with [AGENCY_NAME]. Thanks so much for your interest in our Benefits Advisor opportunity! I saw you came across our opening and wanted to connect personally. Do you have a few minutes to chat about what we do and see if it might be a fit?',
+                '["What made you interested in exploring this opportunity?","Tell me a little about your professional background  --  what are you doing currently?","Are you looking for something full-time, or more of a flexible side opportunity?","Whats most important to you in your next role  --  income potential, flexibility, helping people, or something else?","Have you ever worked in a commission-based or entrepreneurial role before?"]',
+                'Great  --  so let me tell you a bit about what we do. We help families and individuals navigate their benefits options  --  health insurance, supplemental coverage, retirement planning. Think of it as being a trusted advisor, not a salesperson. The role is flexible  --  you set your own schedule, work from wherever you want, and there is genuinely uncapped earning potential. Most of our top performers started exactly where you are now, with no insurance background. We provide full training, mentorship, and licensing support.',
+                'Here is what I would love to do  --  I would like to invite you to a short virtual information session where you can learn more, meet some of our team, and ask any questions. No commitment, no pressure. If after that you are excited, we will talk about next steps. Does [DATE] at [TIME] work for you?',
+                'I totally understand the hesitation around commission-based work. What I can tell you is that our training program is designed to get you producing quickly  --  most new team members see their first paycheck within 2-3 weeks. And you are not doing this alone  --  you will have a mentor and a full support system. Why not come to the info session, get all your questions answered, and then decide?'
+            ))
+            conn.execute("""INSERT OR IGNORE INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""", (
+                'script_cold_outreach', 'Cold Outreach Script', 'cold_outreach',
+                'Hi [CANDIDATE_NAME], this is [RSC_NAME] with [AGENCY_NAME]. I know I am catching you out of the blue, and I appreciate you taking the call. I am reaching out because we are expanding our team of Benefits Advisors in the [AREA] area, and your background caught my attention. Do you have just two minutes? I promise I will be respectful of your time.',
+                '["Im curious  --  are you currently happy in your role, or are you open to exploring something new?","What do you do currently, if you dont mind me asking?","If the right opportunity came along  --  something flexible with strong earning potential  --  would you be open to hearing about it?","What would an ideal work situation look like for you?","Have you ever thought about working in financial services or helping people with their benefits?"]',
+                'I appreciate your honesty. Here is the quick version  --  we help families and individuals with their insurance and benefits decisions. Health coverage, supplemental plans, retirement. It is a role where you genuinely help people, and the compensation reflects that. Our advisors set their own schedules, work remotely or in-person, and have access to full training even if they have zero insurance experience. We are growing fast, which is why I reached out.',
+                'I know cold calls can feel random, so here is what I would suggest  --  let me send you a quick 3-minute video overview that explains what we do. No commitment, no follow-up pressure. If it resonates, you can book a time to chat further. Can I grab your email to send that over?',
+                'I get it  --  unsolicited calls are not everyone is favorite thing, and I respect that. All I am asking for is 3 minutes of your time to watch a short video. If it is not for you, no hard feelings at all. But I would hate for you to miss out on something that could be a great fit just because of how you heard about it. Fair enough?'
+            ))
+            conn.execute("""INSERT OR IGNORE INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""", (
+                'script_referral', 'Referral Script', 'referral',
+                'Hi [CANDIDATE_NAME], this is [RSC_NAME] with [AGENCY_NAME]. I am calling because [REFERRER_NAME] mentioned you might be a great fit for an opportunity on our team. They spoke really highly of you! Do you have a couple minutes? I would love to tell you what this is about.',
+                '["[REFERRER_NAME] said some great things  --  can you tell me a little about your background?","What are you up to professionally right now?","[REFERRER_NAME] thought you would be great at this because of your people skills  --  would you say that is a strength of yours?","Are you open to exploring something new, even if it is different from what you are doing now?","What matters most to you in a career  --  flexibility, income, purpose, growth?"]',
+                'So here is what [REFERRER_NAME] thought you would be great at  --  we are Benefits Advisors. We help families navigate health insurance, supplemental coverage, and retirement planning. It is a role that is all about building relationships and helping people make smart decisions about their benefits. The reason [REFERRER_NAME] thought of you is that the people who excel in this role are exactly the kind of people who are great with people  --  which sounds like you. Full training is provided, no experience needed, and the earning potential is significant.',
+                'Here is what I would love to do  --  [REFERRER_NAME] is actually coming to our next info session on [DATE]. How about you join them? You two can check it out together, ask questions, and see if it clicks. No pressure, just information. Would that work?',
+                'I completely understand wanting to know more before committing your time. How about this  --  I will send you the same info packet I sent [REFERRER_NAME] when they first looked into it. Take a look on your own time, and if you have questions, you can reach out to me or ask [REFERRER_NAME] directly since they have been through the whole process. Sound fair?'
+            ))
+    except:
+        pass
+
+    # Seed scheduling templates
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM scheduling_templates WHERE is_system=1").fetchone()[0]
+        if count == 0:
+            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            VALUES (?, ?, ?, ?, ?, 1)""", (
+                'sched_group_virtual', 'Group Virtual Session', 'group_virtual',
+                'You are Invited: Virtual Benefits Advisor Info Session  --  [DATE]',
+                'Hi [CANDIDATE_NAME],\n\nThank you for your interest in learning more about the Benefits Advisor opportunity with [AGENCY_NAME]!\n\nI would like to invite you to our upcoming virtual information session:\n\nDate: [DATE]\nTime: [TIME]\nFormat: Virtual (Zoom/Video Call)\nLink: [MEETING_LINK]\nDuration: Approximately [DURATION] minutes\n\nDuring this session, you will:\n- Learn about the role and what a typical day looks like\n- Hear from current team members about their experience\n- Get your questions answered in a relaxed, no-pressure setting\n\nNo preparation needed  --  just show up with an open mind and any questions you have.\n\nLooking forward to seeing you there!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
+            ))
+            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            VALUES (?, ?, ?, ?, ?, 1)""", (
+                'sched_group_inperson', 'Group In-Person Session', 'group_inperson',
+                'You are Invited: In-Person Benefits Advisor Info Session  --  [DATE]',
+                'Hi [CANDIDATE_NAME],\n\nThank you for your interest in the Benefits Advisor opportunity with [AGENCY_NAME]!\n\nI would like to invite you to our upcoming in-person information session:\n\nDate: [DATE]\nTime: [TIME]\nLocation: [LOCATION]\nDuration: Approximately [DURATION] minutes\nParking: [PARKING_DETAILS]\n\nDuring this session, you will:\n- Tour our office and meet the team\n- Learn about the role and career path\n- Get your questions answered face-to-face in a relaxed setting\n\nPlease arrive 5-10 minutes early. Business casual attire is fine  --  no need to dress up.\n\nLooking forward to meeting you!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
+            ))
+            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            VALUES (?, ?, ?, ?, ?, 1)""", (
+                'sched_1on1_virtual', '1-on-1 Virtual Meeting', 'one_on_one_virtual',
+                'Let us Connect: Virtual Chat About the Benefits Advisor Role',
+                'Hi [CANDIDATE_NAME],\n\nThank you for taking the time to learn about what we do! I would love to set up a quick 1-on-1 virtual chat to answer your questions and tell you more about the Benefits Advisor opportunity.\n\nHere are the details:\n\nDate: [DATE]\nTime: [TIME]\nFormat: Virtual (Video Call)\nLink: [MEETING_LINK]\nDuration: About [DURATION] minutes\n\nThis is a casual conversation  --  no interview, no pressure. I just want to learn a bit about you and share what makes this opportunity unique.\n\nIf the time does not work, just reply and we will find something better.\n\nTalk soon!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
+            ))
+            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            VALUES (?, ?, ?, ?, ?, 1)""", (
+                'sched_1on1_inperson', '1-on-1 In-Person Meeting', 'one_on_one_inperson',
+                'Let us Meet: Coffee Chat About the Benefits Advisor Role',
+                'Hi [CANDIDATE_NAME],\n\nGreat connecting with you! I would love to meet up in person for a quick chat about the Benefits Advisor opportunity with [AGENCY_NAME].\n\nHere are the details:\n\nDate: [DATE]\nTime: [TIME]\nLocation: [LOCATION]\nDuration: About [DURATION] minutes\n\nThis is a relaxed, get-to-know-you conversation  --  no formal interview. I want to hear about your background and share what makes our team special.\n\nIf something comes up or you need to reschedule, just let me know.\n\nLooking forward to meeting you!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
+            ))
+    except:
+        pass
+
+    # Seed message templates
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM message_templates WHERE is_system=1").fetchone()[0]
+        if count == 0:
+            msg_seeds = [
+                ('msg_invite_professional', 'Professional Invitation', 'invitation', 'professional',
+                 'Opportunity to Join Our Benefits Team',
+                 'Dear [CANDIDATE_NAME],\n\nI came across your profile and believe you could be an excellent fit for our Benefits Advisor team at [AGENCY_NAME].\n\nWe are currently expanding and looking for motivated individuals who enjoy helping others. The role offers flexible scheduling, comprehensive training, and significant earning potential  --  no prior insurance experience required.\n\nI would love to share more details. Would you be available for a brief conversation this week?\n\nBest regards,\n[RSC_NAME]\n[AGENCY_NAME]'),
+                ('msg_invite_casual', 'Casual Invitation', 'invitation', 'casual',
+                 'Quick Question for You',
+                 'Hey [CANDIDATE_NAME]!\n\nI hope this finds you well. I am reaching out because we are growing our team and I think you might be a great fit.\n\nWe help people navigate their insurance and benefits options  --  it is rewarding work with great flexibility and earning potential. No experience needed  --  we train you on everything.\n\nWould you be open to a quick chat to learn more? No pressure at all.\n\nCheers,\n[RSC_NAME]'),
+                ('msg_invite_enthusiastic', 'Enthusiastic Invitation', 'invitation', 'enthusiastic',
+                 'Exciting Opportunity  --  I Thought of You!',
+                 'Hi [CANDIDATE_NAME]!\n\nI am so excited to reach out to you! We are building something special at [AGENCY_NAME] and I genuinely think you could be a fantastic addition to our team.\n\nAs a Benefits Advisor, you would help families make smart decisions about their health insurance and benefits  --  all while enjoying a flexible schedule and unlimited earning potential. The best part? We provide all the training and support you need to succeed, even if you have never worked in insurance before.\n\nI would love to tell you more! Are you free for a quick call this week?\n\nCan not wait to connect!\n[RSC_NAME]\n[AGENCY_NAME]'),
+                ('msg_followup', 'Post-Interview Follow-Up', 'follow_up', 'professional',
+                 'Great Meeting You  --  Next Steps',
+                 'Hi [CANDIDATE_NAME],\n\nThank you for taking the time to meet with us! It was great learning about your background and I enjoyed our conversation.\n\nI wanted to follow up with the next steps:\n\n1. [NEXT_STEP_1]\n2. [NEXT_STEP_2]\n3. [NEXT_STEP_3]\n\nIf you have any questions in the meantime, do not hesitate to reach out. I am here to help!\n\nBest,\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'),
+                ('msg_rejection', 'Not Moving Forward', 'rejection', 'professional',
+                 'Update on Your Application',
+                 'Hi [CANDIDATE_NAME],\n\nThank you for your interest in the Benefits Advisor opportunity with [AGENCY_NAME] and for the time you invested in our process.\n\nAfter careful consideration, we have decided to move forward with other candidates whose experience more closely aligns with our current needs.\n\nThis is not a reflection of your abilities  --  we were impressed by [POSITIVE_NOTE]. We encourage you to keep us in mind for future opportunities, as our team is always growing.\n\nWishing you all the best in your career journey.\n\nWarm regards,\n[RSC_NAME]\n[AGENCY_NAME]'),
+                ('msg_offer', 'Offer / Next Steps', 'offer', 'enthusiastic',
+                 'Welcome to the Team  --  Next Steps!',
+                 'Hi [CANDIDATE_NAME],\n\nI am thrilled to officially welcome you to the [AGENCY_NAME] team!\n\nWe were so impressed with you throughout the process, and we are excited about what you will bring to our team.\n\nHere are your next steps to get started:\n\n1. Complete your onboarding paperwork (link below)\n2. Schedule your licensing study plan\n3. Meet your training mentor\n\n[ONBOARDING_LINK]\n\nYour first training session is on [DATE]. Please reach out if you have any questions before then.\n\nWelcome aboard!\n[RSC_NAME]\n[AGENCY_NAME]'),
+                ('msg_noshow', 'No-Show Follow-Up', 'no_show', 'casual',
+                 'We Missed You  --  Reschedule?',
+                 'Hey [CANDIDATE_NAME],\n\nI noticed you were not able to make it to our session on [DATE]. No worries at all  --  life happens!\n\nI still think you would be a great fit for our team and I would love to reschedule. We have another session coming up on [NEW_DATE]  --  would that work better for you?\n\nIf your schedule has changed or you are no longer interested, totally understand. Just let me know either way.\n\nHope to hear from you!\n[RSC_NAME]\n[AGENCY_NAME]'),
+            ]
+            for seed in msg_seeds:
+                conn.execute("""INSERT OR IGNORE INTO message_templates (id, name, category, tone, subject_line, body_text, is_system)
+                VALUES (?, ?, ?, ?, ?, ?, 1)""", seed)
+    except:
+        pass
+
     try:
         conn.commit()
     except:

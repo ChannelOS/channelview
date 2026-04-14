@@ -1483,8 +1483,10 @@ async function renderInterviewDetail() {
       </div>
       <div class="page-actions">
         <button class="btn btn-outline" onclick="showAddCandidateModal('${iv.id}')">+ Add Candidate</button>
+        <button class="btn btn-outline" onclick="openScreeningScripts()">📞 Call Scripts</button>
+        <button class="btn btn-outline" onclick="openSchedulingTemplates()">📅 Scheduling</button>
         <button class="btn btn-outline" onclick="cloneInterview('${iv.id}')">📋 Clone</button>
-        <button class="btn btn-outline" onclick="showScheduleModal('${iv.id}')">📅 Schedule</button>
+        <button class="btn btn-outline" onclick="showScheduleModal('${iv.id}')">⏰ Deadlines</button>
         <button class="btn btn-sm ${iv.status === 'active' ? 'btn-outline' : 'btn-primary'}" onclick="toggleInterviewStatus('${iv.id}','${iv.status}')">
           ${iv.status === 'active' ? 'Pause' : 'Activate'}
         </button>
@@ -2387,6 +2389,39 @@ async function renderReview() {
           <p style="margin-top:8px;font-size:14px;color:#888">${c.interest_rating>=8?'Highly interested — ready for a live conversation':c.interest_rating>=5?'Somewhat interested — may need a nudge':'Low interest — probably not the right fit'}</p>
           ${c.interest_comment ? `<p style="margin-top:8px;font-size:13px;color:#666;font-style:italic">"${c.interest_comment}"</p>` : ''}
         </div>` : ''}
+        <div class="card">
+          <h3 style="margin-bottom:12px">Quick Message</h3>
+          <div style="margin-bottom:8px">
+            <select id="msg-template-select" class="form-control" style="font-size:13px" onchange="loadMessageTemplate(this.value)">
+              <option value="">Choose a message template...</option>
+              <optgroup label="Invitation">
+                <option value="msg_invite_professional">Professional Invitation</option>
+                <option value="msg_invite_casual">Casual Invitation</option>
+                <option value="msg_invite_enthusiastic">Enthusiastic Invitation</option>
+              </optgroup>
+              <optgroup label="Follow-Up">
+                <option value="msg_followup">Post-Interview Follow-Up</option>
+              </optgroup>
+              <optgroup label="Rejection">
+                <option value="msg_rejection">Not Moving Forward</option>
+              </optgroup>
+              <optgroup label="Offer">
+                <option value="msg_offer">Offer / Next Steps</option>
+              </optgroup>
+              <optgroup label="No-Show">
+                <option value="msg_noshow">No-Show Follow-Up</option>
+              </optgroup>
+            </select>
+          </div>
+          <div id="msg-subject-row" style="display:none;margin-bottom:6px">
+            <input id="msg-subject" class="form-control" style="font-size:13px" placeholder="Subject line...">
+          </div>
+          <textarea id="msg-body" style="width:100%;min-height:120px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:13px" placeholder="Select a template above or type your message..."></textarea>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn btn-sm btn-primary" onclick="copyMessageToClipboard()">📋 Copy Message</button>
+            <button class="btn btn-sm btn-outline" onclick="clearMessageTemplate()">Clear</button>
+          </div>
+        </div>
         <div class="card">
           <h3 style="margin-bottom:12px">Notes</h3>
           <textarea id="candidate-notes" style="width:100%;min-height:100px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:14px" placeholder="Add notes about this candidate...">${c.notes || ''}</textarea>
@@ -9732,6 +9767,259 @@ document.querySelectorAll('.nav-item').forEach(el => {
     if (ov) ov.classList.remove('open');
   });
 });
+
+
+// ==================== CYCLE 36: RSC TIME-SAVING TOOLS ====================
+
+// --- Screening Call Scripts ---
+async function openScreeningScripts() {
+  let modal = document.getElementById('modal-screening-scripts');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modal-screening-scripts';
+  modal.className = 'modal-overlay show';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.onclick = function(e) { if (e.target === modal) closeScreeningScripts(); };
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;width:100%;max-width:700px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;margin:20px">
+      <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:12px">
+          <h3 style="margin:0">📞 Screening Call Scripts</h3>
+          <select id="script-type-select" onchange="switchScriptType(this.value)" style="padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px">
+            <option value="warm_lead">🔥 Warm Lead</option>
+            <option value="cold_outreach">❄️ Cold Outreach</option>
+            <option value="referral">🤝 Referral</option>
+          </select>
+        </div>
+        <button onclick="closeScreeningScripts()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+      </div>
+      <div id="script-content" style="overflow-y:auto;flex:1;padding:20px">
+        <div style="text-align:center;padding:40px;color:#999">Loading scripts...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  await loadScreeningScript('warm_lead');
+}
+
+function closeScreeningScripts() {
+  const modal = document.getElementById('modal-screening-scripts');
+  if (modal) { modal.classList.remove('show'); modal.style.display = 'none'; }
+}
+
+async function switchScriptType(type) {
+  await loadScreeningScript(type);
+}
+
+async function loadScreeningScript(type) {
+  const el = document.getElementById('script-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:#999">Loading...</div>';
+  try {
+    const scripts = await api('/api/screening-scripts');
+    const script = scripts.find(s => s.script_type === type);
+    if (!script) {
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:#999">No script found for this type.</div>';
+      return;
+    }
+    const questions = Array.isArray(script.qualifying_questions) ? script.qualifying_questions : [script.qualifying_questions];
+    el.innerHTML = `
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h4 style="margin:0;color:#0ace0a">Opening</h4>
+          <button class="btn btn-sm btn-outline" onclick="copySection('script-opening')" style="font-size:11px">📋 Copy</button>
+        </div>
+        <div id="script-opening" style="background:#f0fdf4;border:1px solid #d1fae5;border-radius:8px;padding:14px;font-size:14px;line-height:1.6">${script.opening}</div>
+      </div>
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h4 style="margin:0;color:#2563eb">Qualifying Questions</h4>
+          <button class="btn btn-sm btn-outline" onclick="copySection('script-questions')" style="font-size:11px">📋 Copy</button>
+        </div>
+        <div id="script-questions" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px">
+          ${questions.map((q, i) => `<div style="padding:8px 0;${i < questions.length - 1 ? 'border-bottom:1px solid #dbeafe' : ''};font-size:14px;line-height:1.5"><span style="color:#2563eb;font-weight:600">${i + 1}.</span> ${q}</div>`).join('')}
+        </div>
+      </div>
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h4 style="margin:0;color:#7c3aed">Opportunity Pitch</h4>
+          <button class="btn btn-sm btn-outline" onclick="copySection('script-pitch')" style="font-size:11px">📋 Copy</button>
+        </div>
+        <div id="script-pitch" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:14px;font-size:14px;line-height:1.6">${script.opportunity_pitch}</div>
+      </div>
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h4 style="margin:0;color:#059669">Next Steps</h4>
+          <button class="btn btn-sm btn-outline" onclick="copySection('script-nextsteps')" style="font-size:11px">📋 Copy</button>
+        </div>
+        <div id="script-nextsteps" style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:14px;font-size:14px;line-height:1.6">${script.next_steps}</div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h4 style="margin:0;color:#dc2626">Objection Handling</h4>
+          <button class="btn btn-sm btn-outline" onclick="copySection('script-objections')" style="font-size:11px">📋 Copy</button>
+        </div>
+        <div id="script-objections" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;font-size:14px;line-height:1.6">${script.objection_handling}</div>
+      </div>
+      <div style="text-align:center;margin-top:16px">
+        <button class="btn btn-primary" onclick="copyFullScript('${type}')">📋 Copy Full Script</button>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:#dc2626">Error loading script: ${e.message}</div>`;
+  }
+}
+
+function copySection(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.innerText).then(() => toast('Copied to clipboard!', 'success')).catch(() => toast('Failed to copy', 'error'));
+}
+
+async function copyFullScript(type) {
+  try {
+    const scripts = await api('/api/screening-scripts');
+    const s = scripts.find(sc => sc.script_type === type);
+    if (!s) return;
+    const questions = Array.isArray(s.qualifying_questions) ? s.qualifying_questions : [s.qualifying_questions];
+    const full = `SCREENING CALL SCRIPT: ${s.name}\n\n--- OPENING ---\n${s.opening}\n\n--- QUALIFYING QUESTIONS ---\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\n--- OPPORTUNITY PITCH ---\n${s.opportunity_pitch}\n\n--- NEXT STEPS ---\n${s.next_steps}\n\n--- OBJECTION HANDLING ---\n${s.objection_handling}`;
+    await navigator.clipboard.writeText(full);
+    toast('Full script copied!', 'success');
+  } catch (e) { toast('Failed to copy', 'error'); }
+}
+
+// --- Scheduling Templates ---
+async function openSchedulingTemplates() {
+  let modal = document.getElementById('modal-scheduling-templates');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'modal-scheduling-templates';
+  modal.className = 'modal-overlay show';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.onclick = function(e) { if (e.target === modal) closeSchedulingTemplates(); };
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;width:100%;max-width:650px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;margin:20px">
+      <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
+        <h3 style="margin:0">📅 Scheduling Templates</h3>
+        <button onclick="closeSchedulingTemplates()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+      </div>
+      <div id="sched-template-list" style="overflow-y:auto;flex:1;padding:16px 20px">
+        <div style="text-align:center;padding:40px;color:#999">Loading templates...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  await loadSchedulingTemplates();
+}
+
+function closeSchedulingTemplates() {
+  const modal = document.getElementById('modal-scheduling-templates');
+  if (modal) { modal.classList.remove('show'); modal.style.display = 'none'; }
+}
+
+async function loadSchedulingTemplates() {
+  const el = document.getElementById('sched-template-list');
+  if (!el) return;
+  try {
+    const templates = await api('/api/scheduling-templates');
+    if (!templates.length) {
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:#999">No scheduling templates available.</div>';
+      return;
+    }
+    const formatLabels = {
+      group_virtual: { icon: '👥💻', label: 'Group Virtual', color: '#7c3aed' },
+      group_inperson: { icon: '👥🏢', label: 'Group In-Person', color: '#059669' },
+      one_on_one_virtual: { icon: '📞💻', label: '1-on-1 Virtual', color: '#2563eb' },
+      one_on_one_inperson: { icon: '🤝🏢', label: '1-on-1 In-Person', color: '#d97706' }
+    };
+    el.innerHTML = templates.map(t => {
+      const fmt = formatLabels[t.format_type] || { icon: '📅', label: t.format_type, color: '#666' };
+      return `
+        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:18px">${fmt.icon}</span>
+              <span style="font-weight:600;color:${fmt.color}">${fmt.label}</span>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="copySchedulingTemplate('${t.id}')" style="font-size:12px">📋 Copy All</button>
+          </div>
+          <div style="margin-bottom:8px">
+            <div style="font-size:11px;color:#999;text-transform:uppercase;font-weight:600;margin-bottom:2px">Subject</div>
+            <div style="background:#f9fafb;border-radius:6px;padding:8px 12px;font-size:13px;cursor:pointer" onclick="copyText(this.innerText)" title="Click to copy">${t.subject_line}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#999;text-transform:uppercase;font-weight:600;margin-bottom:2px">Body</div>
+            <div style="background:#f9fafb;border-radius:6px;padding:10px 12px;font-size:13px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow-y:auto;cursor:pointer" onclick="copyText(this.innerText)" title="Click to copy">${t.body_text}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:#dc2626">Error: ${e.message}</div>`;
+  }
+}
+
+async function copySchedulingTemplate(templateId) {
+  try {
+    const tmpl = await api(`/api/scheduling-templates/${templateId}`);
+    const full = `Subject: ${tmpl.subject_line}\n\n${tmpl.body_text}`;
+    await navigator.clipboard.writeText(full);
+    toast('Template copied!', 'success');
+  } catch (e) { toast('Failed to copy', 'error'); }
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => toast('Copied!', 'success')).catch(() => toast('Failed to copy', 'error'));
+}
+
+// --- Message Templates ---
+async function loadMessageTemplate(templateId) {
+  if (!templateId) {
+    clearMessageTemplate();
+    return;
+  }
+  try {
+    const tmpl = await api(`/api/message-templates/${templateId}`);
+    const subjectRow = document.getElementById('msg-subject-row');
+    const subjectEl = document.getElementById('msg-subject');
+    const bodyEl = document.getElementById('msg-body');
+    if (tmpl.subject_line) {
+      if (subjectRow) subjectRow.style.display = 'block';
+      if (subjectEl) subjectEl.value = tmpl.subject_line;
+    } else {
+      if (subjectRow) subjectRow.style.display = 'none';
+    }
+    if (bodyEl) bodyEl.value = tmpl.body_text;
+  } catch (e) {
+    toast('Failed to load template: ' + e.message, 'error');
+  }
+}
+
+function clearMessageTemplate() {
+  const select = document.getElementById('msg-template-select');
+  const subjectRow = document.getElementById('msg-subject-row');
+  const subjectEl = document.getElementById('msg-subject');
+  const bodyEl = document.getElementById('msg-body');
+  if (select) select.value = '';
+  if (subjectRow) subjectRow.style.display = 'none';
+  if (subjectEl) subjectEl.value = '';
+  if (bodyEl) bodyEl.value = '';
+}
+
+function copyMessageToClipboard() {
+  const subject = document.getElementById('msg-subject');
+  const body = document.getElementById('msg-body');
+  if (!body || !body.value.trim()) {
+    toast('No message to copy', 'error');
+    return;
+  }
+  let text = '';
+  if (subject && subject.value.trim()) {
+    text = `Subject: ${subject.value.trim()}\n\n`;
+  }
+  text += body.value;
+  navigator.clipboard.writeText(text).then(() => toast('Message copied!', 'success')).catch(() => toast('Failed to copy', 'error'));
+}
 
 
 // ==================== INIT ====================
