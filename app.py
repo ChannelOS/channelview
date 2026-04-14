@@ -991,9 +991,9 @@ def api_create_interview():
         (interview_id, g.user_id, data.get('title', 'Untitled Interview'),
          data.get('description', ''), data.get('department', ''),
          data.get('position', ''), data.get('thinking_time', 30),
-         data.get('max_answer_time', 120), data.get('max_retakes', 1),
-         data.get('welcome_msg', 'Welcome! This interview consists of a few video questions. Take your time and be yourself.'),
-         data.get('thank_you_msg', 'Thank you for completing your interview! We will review your responses and be in touch soon.'),
+         data.get('max_answer_time', 120), data.get('max_retakes', 3),
+         data.get('welcome_msg', 'Thanks for your interest! This is a quick video interview — just a few questions so we can get to know you. Be yourself, there are no wrong answers. You can re-record if you need to.'),
+         data.get('thank_you_msg', 'Thank you so much for taking the time! We really appreciate it. We\'ll review your responses and reach out soon. If you have any questions in the meantime, don\'t hesitate to reach out.'),
          data.get('brand_color', '#0ace0a'))
     )
 
@@ -2315,7 +2315,7 @@ def api_create_template():
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
         (tid, g.user_id, data.get('title', 'Untitled Template'),
          data.get('description', ''), data.get('department', ''), data.get('position', ''),
-         data.get('thinking_time', 30), data.get('max_answer_time', 120), data.get('max_retakes', 1),
+         data.get('thinking_time', 30), data.get('max_answer_time', 120), data.get('max_retakes', 3),
          data.get('welcome_msg', ''), data.get('thank_you_msg', ''),
          1 if data.get('is_shared') else 0)
     )
@@ -11630,7 +11630,7 @@ def api_start_candidate_session():
             'thank_you_message': cand_d.get('thank_you_msg'),
             'thinking_time': cand_d.get('thinking_time', 30),
             'max_answer_time': cand_d.get('max_answer_time', 120),
-            'max_retakes': cand_d.get('max_retakes', 1),
+            'max_retakes': cand_d.get('max_retakes', 3),
             'show_progress_bar': cand_d.get('show_progress_bar', 1),
             'allow_retakes': cand_d.get('allow_retakes', 1),
             'require_camera_test': cand_d.get('require_camera_test', 1),

@@ -424,7 +424,7 @@ async function renderDashboard() {
         <div class="stat-card"><div class="stat-label">Active Interviews</div><div class="stat-value">${s.active_interviews}</div></div>
         <div class="stat-card"><div class="stat-label">Total Candidates</div><div class="stat-value">${s.total_candidates}</div></div>
         <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${s.completed}</div></div>
-        <div class="stat-card"><div class="stat-label">Avg AI Score</div><div class="stat-value">${s.avg_score || '—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Interview Score</div><div class="stat-value">${s.avg_score || '—'}</div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
@@ -436,7 +436,7 @@ async function renderDashboard() {
               <td>${statusBadge(c.status)}</td>
               <td>${c.ai_score ? scoreRing(c.ai_score, 40) : '—'}</td>
             </tr>`).join('')}
-          </tbody></table>` : '<div class="empty-state"><p>No candidates yet</p></div>'}
+          </tbody></table>` : '<div class="empty-state"><p style="font-size:15px;margin-bottom:8px">No candidates yet</p><p style="color:#888;font-size:13px">Once you send out an interview, candidates will show up here as they respond.</p><a href="/interviews/new" class="btn btn-sm btn-primary" style="margin-top:8px">Create Your First Interview</a></div>'}
         </div>
         <div class="card">
           <div class="card-header"><h3>Active Interviews</h3><a href="/interviews" class="btn btn-sm btn-outline">View All</a></div>
@@ -446,22 +446,22 @@ async function renderDashboard() {
               <td>${i.completed_count || 0}/${i.candidate_count || 0}</td>
               <td>${statusBadge(i.status)}</td>
             </tr>`).join('')}
-          </tbody></table>` : '<div class="empty-state"><p>No interviews yet</p></div>'}
+          </tbody></table>` : '<div class="empty-state"><p style="font-size:15px;margin-bottom:8px">No interviews yet</p><p style="color:#888;font-size:13px">Create an interview with your questions, then send it to candidates. Takes about 2 minutes.</p><a href="/interviews/new" class="btn btn-sm btn-primary" style="margin-top:8px">Create Interview</a></div>'}
         </div>
       </div>
       ${data.recent_interviews.length === 0 ? `
       <div class="card" style="text-align:center;padding:40px;margin-top:16px">
-        <h3 style="margin-bottom:8px">Get started with sample data</h3>
-        <p style="color:#666;margin-bottom:16px">Load sample insurance interviews and candidates to explore ChannelView</p>
-        <button class="btn btn-primary" onclick="seedData()">Load Sample Data</button>
+        <h3 style="margin-bottom:8px">Ready to start hiring?</h3>
+        <p style="color:#666;margin-bottom:16px">We've set up ready-made interview templates for insurance recruiting. Load them to get started in under a minute.</p>
+        <button class="btn btn-primary" onclick="seedData()">Load Interview Templates</button>
       </div>` : ''}
     `;
   } catch (err) {
     content.innerHTML = `<div class="card" style="text-align:center;padding:40px">
       <h3 style="margin-bottom:8px">Welcome to ChannelView!</h3>
-      <p style="color:#666;margin-bottom:16px">Load sample data to get started, or create your first interview.</p>
-      <button class="btn btn-primary" onclick="seedData()" style="margin-right:8px">Load Sample Data</button>
-      <a href="/interviews/new" class="btn btn-secondary">Create Interview</a>
+      <p style="color:#666;margin-bottom:16px">You're all set to start recruiting. Load our ready-made insurance interview templates, or jump straight in and create your own.</p>
+      <button class="btn btn-primary" onclick="seedData()" style="margin-right:8px">Load Interview Templates</button>
+      <a href="/interviews/new" class="btn btn-secondary">Create My Own</a>
     </div>`;
   }
 }
@@ -469,7 +469,7 @@ async function renderDashboard() {
 async function seedData() {
   try {
     await api('/api/seed', { method: 'POST' });
-    toast('Sample data loaded!', 'success');
+    toast('Interview templates loaded! You are ready to start recruiting.', 'success');
     setTimeout(() => location.reload(), 500);
   } catch (err) { toast(err.message, 'error'); }
 }
@@ -496,7 +496,7 @@ async function renderInterviews() {
         <td><a href="/interviews/${i.id}" class="btn btn-sm btn-outline">View</a></td>
       </tr>`).join('')}
       </tbody></table>
-    </div>` : `<div class="empty-state"><div class="icon">🎥</div><h3>No interviews yet</h3><p>Create your first interview template to start screening candidates.</p><a href="/interviews/new" class="btn btn-primary">+ New Interview</a></div>`}
+    </div>` : `<div class="empty-state"><div class="icon">🎥</div><h3>Ready to start interviewing?</h3><p>Create an interview with your questions, pick a template, or build your own. It only takes a couple minutes.</p><a href="/interviews/new" class="btn btn-primary">+ New Interview</a></div>`}
   `;
 }
 
@@ -2474,7 +2474,7 @@ async function renderReview() {
               ${renderResponseCategories(r.ai_scores_json)}
             </div>` : ''}
           </div>
-        `).join('') : '<div class="card empty-state"><h3>No responses yet</h3><p>This candidate hasn\'t completed their interview.</p></div>'}
+        `).join('') : '<div class="card empty-state"><h3>Waiting on this candidate</h3><p>They haven\'t finished their interview yet. You can send them a reminder from the candidate list.</p></div>'}
       </div>
       <div>
         <div class="card">
@@ -3540,7 +3540,7 @@ async function renderAnalytics() {
       </div>` : ''}
     `;
   } catch(e) {
-    content.innerHTML = `<div class="empty-state"><h3>Numbers &amp; Trends</h3><p>No data yet. Once you have interviews and candidates, your numbers will show up here.</p></div>`;
+    content.innerHTML = `<div class="empty-state"><h3>Hiring Analytics</h3><p>Nothing to report yet — once candidates start completing interviews, you'll see completion rates, scores, and hiring trends here.</p></div>`;
   }
 }
 
@@ -3662,7 +3662,7 @@ async function renderAiInsights() {
       </div>
     `;
   } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>AI Scoring</h3><p>No scoring data yet. Once candidates complete interviews, AI will score them and results will show here.</p></div>`;
+    content.innerHTML = `<div class="empty-state"><h3>Interview Insights</h3><p>No scores yet. Once candidates finish their interviews, AI will automatically rate their responses and give you a summary — no extra work on your end.</p></div>`;
   }
 }
 
