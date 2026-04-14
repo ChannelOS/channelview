@@ -924,17 +924,21 @@ def init_db():
 
     # Seed system intro templates if empty
     try:
+        conn.commit()  # Ensure clean transaction state
         count = conn.execute("SELECT COUNT(*) FROM intro_templates WHERE is_system=1").fetchone()[0]
         if count == 0:
-            conn.executescript("""
-            INSERT OR IGNORE INTO intro_templates (id, name, description, thumbnail_emoji, html_path, category, is_system, duration_seconds)
-            VALUES
-                ('intro_welcome', 'Welcome & What to Expect', 'Sets the tone, explains the video interview process, and makes the candidate comfortable.', '👋', '/static/intros/welcome.html', 'general', 1, 20),
-                ('intro_opportunity', 'The Opportunity', 'Paints the picture — what the role looks like day-to-day, benefits, flexibility, and growth potential.', '🚀', '/static/intros/opportunity.html', 'opportunity', 1, 30),
-                ('intro_team', 'Why Our Team', 'Culture, support system, training path, and what makes this team different.', '🤝', '/static/intros/team.html', 'culture', 1, 30);
-            """)
+            conn.execute("""INSERT INTO intro_templates (id, name, description, thumbnail_emoji, html_path, category, is_system, duration_seconds)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?)""", ('intro_welcome', 'Welcome & What to Expect', 'Sets the tone, explains the video interview process, and makes the candidate comfortable.', '\U0001f44b', '/static/intros/welcome.html', 'general', 20))
+            conn.execute("""INSERT INTO intro_templates (id, name, description, thumbnail_emoji, html_path, category, is_system, duration_seconds)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?)""", ('intro_opportunity', 'The Opportunity', 'Paints the picture - what the role looks like day-to-day, benefits, flexibility, and growth potential.', '\U0001f680', '/static/intros/opportunity.html', 'opportunity', 30))
+            conn.execute("""INSERT INTO intro_templates (id, name, description, thumbnail_emoji, html_path, category, is_system, duration_seconds)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?)""", ('intro_team', 'Why Our Team', 'Culture, support system, training path, and what makes this team different.', '\U0001f91d', '/static/intros/team.html', 'culture', 30))
+            conn.commit()
     except:
-        pass
+        try:
+            conn.rollback()
+        except:
+            pass
 
     # Migrations for existing databases
     migrations = [
@@ -2564,8 +2568,8 @@ def init_db():
 
     # ======================== CYCLE 36: RSC TIME-SAVING TOOLS ========================
 
-    conn.executescript("""
-    -- Screening call scripts (pre-loaded phone scripts with variations)
+    # Screening call scripts (pre-loaded phone scripts with variations)
+    conn.execute("""
     CREATE TABLE IF NOT EXISTS screening_scripts (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2579,11 +2583,12 @@ def init_db():
         user_id TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_screening_scripts_type ON screening_scripts(script_type);
-    CREATE INDEX IF NOT EXISTS idx_screening_scripts_user ON screening_scripts(user_id);
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_screening_scripts_type ON screening_scripts(script_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_screening_scripts_user ON screening_scripts(user_id)")
 
-    -- Scheduling templates (one-click copy/paste scheduling language)
+    # Scheduling templates (one-click copy/paste scheduling language)
+    conn.execute("""
     CREATE TABLE IF NOT EXISTS scheduling_templates (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2594,10 +2599,11 @@ def init_db():
         user_id TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_scheduling_templates_format ON scheduling_templates(format_type);
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_scheduling_templates_format ON scheduling_templates(format_type)")
 
-    -- Message templates (pre-filled messages for candidate communications)
+    # Message templates (pre-filled messages for candidate communications)
+    conn.execute("""
     CREATE TABLE IF NOT EXISTS message_templates (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2609,13 +2615,14 @@ def init_db():
         user_id TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_message_templates_category ON message_templates(category);
-    CREATE INDEX IF NOT EXISTS idx_message_templates_user ON message_templates(user_id);
-    """)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_message_templates_category ON message_templates(category)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_message_templates_user ON message_templates(user_id)")
+    conn.commit()
 
     # Seed screening scripts
     try:
+        conn.commit()  # Ensure clean transaction state
         count = conn.execute("SELECT COUNT(*) FROM screening_scripts WHERE is_system=1").fetchone()[0]
         if count == 0:
             conn.execute("""INSERT INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
@@ -2645,11 +2652,16 @@ def init_db():
                 'Here is what I would love to do  --  [REFERRER_NAME] is actually coming to our next info session on [DATE]. How about you join them? You two can check it out together, ask questions, and see if it clicks. No pressure, just information. Would that work?',
                 'I completely understand wanting to know more before committing your time. How about this  --  I will send you the same info packet I sent [REFERRER_NAME] when they first looked into it. Take a look on your own time, and if you have questions, you can reach out to me or ask [REFERRER_NAME] directly since they have been through the whole process. Sound fair?'
             ))
+            conn.commit()
     except:
-        pass
+        try:
+            conn.rollback()
+        except:
+            pass
 
     # Seed scheduling templates
     try:
+        conn.commit()  # Ensure clean transaction state
         count = conn.execute("SELECT COUNT(*) FROM scheduling_templates WHERE is_system=1").fetchone()[0]
         if count == 0:
             conn.execute("""INSERT INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
@@ -2676,11 +2688,16 @@ def init_db():
                 'Let us Meet: Coffee Chat About the Benefits Advisor Role',
                 'Hi [CANDIDATE_NAME],\n\nGreat connecting with you! I would love to meet up in person for a quick chat about the Benefits Advisor opportunity with [AGENCY_NAME].\n\nHere are the details:\n\nDate: [DATE]\nTime: [TIME]\nLocation: [LOCATION]\nDuration: About [DURATION] minutes\n\nThis is a relaxed, get-to-know-you conversation  --  no formal interview. I want to hear about your background and share what makes our team special.\n\nIf something comes up or you need to reschedule, just let me know.\n\nLooking forward to meeting you!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
             ))
+            conn.commit()
     except:
-        pass
+        try:
+            conn.rollback()
+        except:
+            pass
 
     # Seed message templates
     try:
+        conn.commit()  # Ensure clean transaction state
         count = conn.execute("SELECT COUNT(*) FROM message_templates WHERE is_system=1").fetchone()[0]
         if count == 0:
             msg_seeds = [
@@ -2709,8 +2726,12 @@ def init_db():
             for seed in msg_seeds:
                 conn.execute("""INSERT INTO message_templates (id, name, category, tone, subject_line, body_text, is_system)
                 VALUES (?, ?, ?, ?, ?, ?, 1)""", seed)
+            conn.commit()
     except:
-        pass
+        try:
+            conn.rollback()
+        except:
+            pass
 
     try:
         conn.commit()
