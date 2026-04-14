@@ -925,7 +925,7 @@ def init_db():
     # Seed system intro templates if empty
     try:
         conn.commit()  # Ensure clean transaction state
-        count = conn.execute("SELECT COUNT(*) FROM intro_templates WHERE is_system=1").fetchone()[0]
+        count = list(conn.execute("SELECT COUNT(*) FROM intro_templates WHERE is_system=1").fetchone().values())[0]
         if count == 0:
             conn.execute("""INSERT INTO intro_templates (id, name, description, thumbnail_emoji, html_path, category, is_system, duration_seconds)
             VALUES (?, ?, ?, ?, ?, ?, 1, ?)""", ('intro_welcome', 'Welcome & What to Expect', 'Sets the tone, explains the video interview process, and makes the candidate comfortable.', '\U0001f44b', '/static/intros/welcome.html', 'general', 20))
@@ -2623,7 +2623,7 @@ def init_db():
     # Seed screening scripts
     try:
         conn.commit()  # Ensure clean transaction state
-        count = conn.execute("SELECT COUNT(*) FROM screening_scripts WHERE is_system=1").fetchone()[0]
+        count = list(conn.execute("SELECT COUNT(*) FROM screening_scripts WHERE is_system=1").fetchone().values())[0]
         if count == 0:
             conn.execute("""INSERT INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""", (
@@ -2662,7 +2662,7 @@ def init_db():
     # Seed scheduling templates
     try:
         conn.commit()  # Ensure clean transaction state
-        count = conn.execute("SELECT COUNT(*) FROM scheduling_templates WHERE is_system=1").fetchone()[0]
+        count = list(conn.execute("SELECT COUNT(*) FROM scheduling_templates WHERE is_system=1").fetchone().values())[0]
         if count == 0:
             conn.execute("""INSERT INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
             VALUES (?, ?, ?, ?, ?, 1)""", (
@@ -2698,7 +2698,7 @@ def init_db():
     # Seed message templates
     try:
         conn.commit()  # Ensure clean transaction state
-        count = conn.execute("SELECT COUNT(*) FROM message_templates WHERE is_system=1").fetchone()[0]
+        count = list(conn.execute("SELECT COUNT(*) FROM message_templates WHERE is_system=1").fetchone().values())[0]
         if count == 0:
             msg_seeds = [
                 ('msg_invite_professional', 'Professional Invitation', 'invitation', 'professional',
