@@ -50,10 +50,15 @@ for svc in email_service.py seed_rsc_defaults.py; do
     fi
 done
 
-# Static intro templates
+# Static intro templates (copy individual files to avoid docker cp nesting bug)
 if [ -d "static/intros" ]; then
-    docker cp static/intros $CONTAINER:/app/static/intros
-    echo "  + static/intros/ (directory)"
+    docker exec $CONTAINER mkdir -p /app/static/intros
+    for introfile in static/intros/*; do
+        if [ -f "$introfile" ]; then
+            docker cp "$introfile" $CONTAINER:/app/static/intros/
+            echo "  + $introfile"
+        fi
+    done
 fi
 
 echo "  Done."
