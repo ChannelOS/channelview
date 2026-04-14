@@ -43,7 +43,7 @@ for tmpl in candidate_interview.html candidate_format_choice.html candidate_done
 done
 
 # Services
-for svc in email_service.py seed_rsc_defaults.py; do
+for svc in email_service.py seed_rsc_defaults.py resume_service.py sms_service.py; do
     if [ -f "$svc" ]; then
         docker cp "$svc" $CONTAINER:/app/$svc
         echo "  + $svc"

@@ -2772,6 +2772,125 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 38: CLOSE THE GAPS ========================
+
+    # Resume Parser: Add parsed resume fields to candidates and leads
+    c38_resume_migrations = [
+        ("candidates", "parsed_summary", "TEXT"),
+        ("candidates", "parsed_experience", "TEXT"),
+        ("candidates", "parsed_skills", "TEXT"),
+        ("candidates", "resume_parsed_at", "TIMESTAMP"),
+        ("sourced_leads", "parsed_summary", "TEXT"),
+        ("sourced_leads", "parsed_experience", "TEXT"),
+        ("sourced_leads", "parsed_skills", "TEXT"),
+        ("sourced_leads", "resume_url", "TEXT"),
+        ("sourced_leads", "resume_parsed_at", "TIMESTAMP"),
+    ]
+    for table, col, coltype in c38_resume_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
+    # Auto-Engage: Add auto-engage mode to interviews
+    c38_autoengage_migrations = [
+        ("interviews", "auto_engage_mode", "TEXT DEFAULT 'hold'"),
+    ]
+    for table, col, coltype in c38_autoengage_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
+    # SMS Messaging: New table for SMS messages + Twilio config on users
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sms_messages (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        candidate_id TEXT NOT NULL,
+        interview_id TEXT,
+        direction TEXT NOT NULL DEFAULT 'outbound',
+        from_number TEXT,
+        to_number TEXT NOT NULL,
+        body TEXT NOT NULL,
+        status TEXT DEFAULT 'queued',
+        twilio_sid TEXT,
+        template_id TEXT,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (candidate_id) REFERENCES candidates(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_candidate ON sms_messages(candidate_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_user ON sms_messages(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_direction ON sms_messages(direction)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_created ON sms_messages(created_at)")
+
+    # SMS templates table
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sms_templates (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        name TEXT NOT NULL,
+        body TEXT NOT NULL,
+        is_system INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_templates_user ON sms_templates(user_id)")
+
+    # Twilio config on users table
+    c38_sms_user_migrations = [
+        ("users", "twilio_phone_number", "TEXT"),
+        ("users", "sms_enabled", "INTEGER DEFAULT 0"),
+        ("users", "sms_opt_out_message", "TEXT DEFAULT 'You have been unsubscribed. Reply START to resubscribe.'"),
+    ]
+    for table, col, coltype in c38_sms_user_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
+    # SMS opt-out tracking
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS sms_opt_outs (
+        id TEXT PRIMARY KEY,
+        phone_number TEXT NOT NULL UNIQUE,
+        opted_out_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_optout_phone ON sms_opt_outs(phone_number)")
+
+    # AI Job Description: Add generated_description to interviews
+    c38_jobdesc_migrations = [
+        ("interviews", "generated_description", "TEXT"),
+    ]
+    for table, col, coltype in c38_jobdesc_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
+    # Seed SMS templates
+    try:
+        conn.commit()
+        count = list(conn.execute("SELECT COUNT(*) FROM sms_templates WHERE is_system=1").fetchone().values())[0]
+        if count == 0:
+            sms_seeds = [
+                ('sms_invite', 'Interview Invite', 'Hi {name}! {agency} here. We\'d love to learn more about you. Complete a quick video intro at your convenience: {link}', 1),
+                ('sms_reminder', 'Friendly Reminder', 'Hi {name}, just a reminder about your video interview for {agency}. Complete it anytime here: {link}', 1),
+                ('sms_followup', 'Follow-Up Nudge', 'Hi {name}, following up on the interview invite I sent. Any questions? Happy to chat — just reply here. {agency}', 1),
+                ('sms_thankyou', 'Thank You', 'Hi {name}, thanks for completing your interview! We\'ll review and be in touch soon. — {agency}', 1),
+                ('sms_custom', 'Custom Message', '{message}', 0),
+            ]
+            for sid, name, body, is_sys in sms_seeds:
+                conn.execute("INSERT INTO sms_templates (id, name, body, is_system) VALUES (?, ?, ?, ?)",
+                             (sid, name, body, is_sys))
+            conn.commit()
+    except:
+        try:
+            conn.rollback()
+        except:
+            pass
+
     try:
         conn.commit()
     except:

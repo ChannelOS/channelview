@@ -1532,7 +1532,21 @@ async function renderInterviewDetail() {
         </div>
         <div class="card">
           <h3 style="margin-bottom:8px">Description</h3>
-          <p style="color:#666;font-size:14px">${iv.description || 'No description'}</p>
+          <p style="color:#666;font-size:14px" id="iv-description-text">${iv.description || 'No description'}</p>
+          <button class="btn btn-sm btn-outline" style="margin-top:8px;font-size:12px" onclick="showGenerateDescriptionModal('${iv.id}','${(iv.position||iv.title||'').replace(/'/g,"\\'")}')">🤖 Generate with AI</button>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <h3>Auto-Engage</h3>
+          </div>
+          <p style="color:#888;font-size:13px;margin-bottom:10px">When a candidate applies, automatically send them the next step — no manual action needed.</p>
+          <select id="auto-engage-select" onchange="updateAutoEngage('${iv.id}',this.value)"
+            style="width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px">
+            <option value="hold" ${(iv.auto_engage_mode||'hold')==='hold'?'selected':''}>Hold for review (manual)</option>
+            <option value="video_invite" ${iv.auto_engage_mode==='video_invite'?'selected':''}>Auto-send video interview invite</option>
+            <option value="format_choice" ${iv.auto_engage_mode==='format_choice'?'selected':''}>Auto-send format choice page</option>
+          </select>
+          <p style="color:#aaa;font-size:11px;margin-top:6px">${iv.auto_engage_mode==='video_invite'?'Candidates get the video interview link instantly after applying':iv.auto_engage_mode==='format_choice'?'Candidates choose their preferred interview format after applying':'You manually review and send invites to each applicant'}</p>
         </div>
         <div class="card">
           <h3 style="margin-bottom:4px">Candidate Intro</h3>
@@ -2473,7 +2487,22 @@ async function renderReview() {
             <div><strong>Started:</strong> ${formatDate(c.started_at)}</div>
             <div><strong>Completed:</strong> ${formatDate(c.completed_at)}</div>
           </div>
+          ${c.resume_url ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
+            <a href="${c.resume_url}" target="_blank" style="color:#0ace0a;font-size:13px;font-weight:600;text-decoration:none">📄 View Resume</a>
+            ${!c.parsed_summary ? `<button class="btn btn-sm btn-outline" style="margin-left:8px;font-size:11px" onclick="reparseResume('${c.id}')">🤖 Parse with AI</button>` : ''}
+          </div>` : `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
+            <label style="display:inline-block;cursor:pointer;color:#0ace0a;font-size:13px;font-weight:600">
+              📎 Upload Resume
+              <input type="file" accept=".pdf,.docx,.doc,.txt" style="display:none" onchange="uploadResume('${c.id}',this)">
+            </label>
+          </div>`}
         </div>
+        ${c.parsed_summary ? `<div class="card">
+          <h3 style="margin-bottom:8px">📋 AI Resume Summary</h3>
+          <p style="font-size:14px;color:#333;font-weight:600;margin-bottom:10px">${c.parsed_summary}</p>
+          ${(() => { try { const exp = JSON.parse(c.parsed_experience || '[]'); return exp.length ? '<div style="margin-bottom:10px"><strong style="font-size:12px;color:#888;text-transform:uppercase">Experience</strong>' + exp.map(e => '<div style="font-size:13px;color:#555;padding:4px 0;border-bottom:1px solid #f3f4f6">• ' + e + '</div>').join('') + '</div>' : ''; } catch(e) { return ''; }})()}
+          ${(() => { try { const sk = JSON.parse(c.parsed_skills || '[]'); return sk.length ? '<div><strong style="font-size:12px;color:#888;text-transform:uppercase">Skills</strong><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' + sk.map(s => '<span style="background:#f0fdf4;color:#065f46;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">' + s + '</span>').join('') + '</div></div>' : ''; } catch(e) { return ''; }})()}
+        </div>` : ''}
         ${c.ai_score ? `<div class="card" style="text-align:center">
           <h3 style="margin-bottom:16px">Overall AI Score</h3>
           ${scoreRing(c.ai_score, 80)}
@@ -2519,6 +2548,25 @@ async function renderReview() {
             <button class="btn btn-sm btn-outline" onclick="clearMessageTemplate()">Clear</button>
           </div>
         </div>
+        ${c.phone ? `<div class="card">
+          <h3 style="margin-bottom:12px">💬 Send Text Message</h3>
+          <select id="sms-template-select" class="form-control" style="font-size:13px;margin-bottom:8px" onchange="loadSmsTemplate(this.value)">
+            <option value="">Choose SMS template...</option>
+            <option value="sms_invite">Interview Invite</option>
+            <option value="sms_reminder">Friendly Reminder</option>
+            <option value="sms_followup">Follow-Up Nudge</option>
+            <option value="sms_thankyou">Thank You</option>
+            <option value="custom">Custom Message</option>
+          </select>
+          <textarea id="sms-body" style="width:100%;min-height:80px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:13px" placeholder="Type your text message..."></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <span id="sms-char-count" style="font-size:11px;color:#999">0/160</span>
+            <button class="btn btn-sm btn-primary" onclick="sendSmsToCandidate('${c.id}')">📱 Send Text</button>
+          </div>
+          <div id="sms-conversation" style="margin-top:12px;display:none;max-height:200px;overflow-y:auto;border-top:1px solid #e5e7eb;padding-top:10px">
+          </div>
+          <button class="btn btn-sm btn-outline" style="margin-top:8px;font-size:11px;width:100%" onclick="loadSmsConversation('${c.id}')">Show Conversation History</button>
+        </div>` : ''}
         <div class="card">
           <h3 style="margin-bottom:12px">Notes</h3>
           <textarea id="candidate-notes" style="width:100%;min-height:100px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-family:inherit;font-size:14px" placeholder="Add notes about this candidate...">${c.notes || ''}</textarea>
@@ -10116,6 +10164,203 @@ function copyMessageToClipboard() {
   }
   text += body.value;
   navigator.clipboard.writeText(text).then(() => toast('Message copied!', 'success')).catch(() => toast('Failed to copy', 'error'));
+}
+
+// ======================== CYCLE 38: RESUME PARSER FUNCTIONS ========================
+
+async function uploadResume(candidateId, inputEl) {
+  if (!inputEl.files || !inputEl.files[0]) return;
+  const file = inputEl.files[0];
+  const allowed = ['.pdf','.docx','.doc','.txt'];
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!allowed.includes(ext)) { toast('Invalid file type. Use PDF, DOCX, or TXT.', 'error'); return; }
+  toast('Uploading and parsing resume...', 'info');
+  try {
+    const fd = new FormData();
+    fd.append('resume', file);
+    const res = await fetch(`/api/candidates/${candidateId}/resume`, {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }, body: fd
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    toast(data.parsed ? 'Resume uploaded and parsed!' : 'Resume uploaded (parsing unavailable)', 'success');
+    // Reload the review page to show parsed data
+    renderReview();
+  } catch (e) { toast('Resume upload failed: ' + e.message, 'error'); }
+}
+
+async function reparseResume(candidateId) {
+  toast('Re-parsing resume with AI...', 'info');
+  try {
+    const data = await api(`/api/candidates/${candidateId}/reparse-resume`, 'POST');
+    toast('Resume parsed successfully!', 'success');
+    renderReview();
+  } catch (e) { toast('Parsing failed: ' + e.message, 'error'); }
+}
+
+// ======================== CYCLE 38: AUTO-ENGAGE FUNCTIONS ========================
+
+async function updateAutoEngage(interviewId, mode) {
+  try {
+    await api(`/api/interviews/${interviewId}/auto-engage`, 'PUT', { auto_engage_mode: mode });
+    toast('Auto-engage updated to: ' + (mode === 'hold' ? 'Hold for review' : mode === 'video_invite' ? 'Auto video invite' : 'Auto format choice'), 'success');
+    // Update the description text below the select
+    const desc = mode === 'video_invite' ? 'Candidates get the video interview link instantly after applying'
+      : mode === 'format_choice' ? 'Candidates choose their preferred interview format after applying'
+      : 'You manually review and send invites to each applicant';
+    const select = document.getElementById('auto-engage-select');
+    if (select && select.nextElementSibling) select.nextElementSibling.textContent = desc;
+  } catch (e) { toast('Failed to update auto-engage: ' + e.message, 'error'); }
+}
+
+// ======================== CYCLE 38: SMS FUNCTIONS ========================
+
+async function loadSmsTemplate(templateId) {
+  const bodyEl = document.getElementById('sms-body');
+  if (!bodyEl) return;
+  if (!templateId || templateId === 'custom') { bodyEl.value = ''; updateSmsCharCount(); return; }
+  try {
+    const templates = await api('/api/sms/templates');
+    const tmpl = templates.find(t => t.id === templateId);
+    if (tmpl) bodyEl.value = tmpl.body;
+    updateSmsCharCount();
+  } catch (e) { toast('Failed to load SMS template', 'error'); }
+}
+
+function updateSmsCharCount() {
+  const bodyEl = document.getElementById('sms-body');
+  const countEl = document.getElementById('sms-char-count');
+  if (bodyEl && countEl) {
+    const len = bodyEl.value.length;
+    countEl.textContent = `${len}/160`;
+    countEl.style.color = len > 160 ? '#f59e0b' : len > 320 ? '#dc2626' : '#999';
+  }
+}
+
+// Attach char counter listener when SMS body exists
+document.addEventListener('input', function(e) {
+  if (e.target && e.target.id === 'sms-body') updateSmsCharCount();
+});
+
+async function sendSmsToCandidate(candidateId) {
+  const bodyEl = document.getElementById('sms-body');
+  if (!bodyEl || !bodyEl.value.trim()) { toast('Type a message first', 'error'); return; }
+  try {
+    const templateSelect = document.getElementById('sms-template-select');
+    const data = { candidate_id: candidateId, body: bodyEl.value.trim() };
+    if (templateSelect && templateSelect.value && templateSelect.value !== 'custom') {
+      data.template_id = templateSelect.value;
+    }
+    const result = await api('/api/sms/send', 'POST', data);
+    toast('Text message sent!', 'success');
+    bodyEl.value = '';
+    updateSmsCharCount();
+    loadSmsConversation(candidateId);
+  } catch (e) { toast('SMS failed: ' + e.message, 'error'); }
+}
+
+async function loadSmsConversation(candidateId) {
+  const container = document.getElementById('sms-conversation');
+  if (!container) return;
+  try {
+    const messages = await api(`/api/sms/conversation/${candidateId}`);
+    if (!messages.length) {
+      container.style.display = 'block';
+      container.innerHTML = '<p style="color:#999;font-size:12px;text-align:center">No messages yet</p>';
+      return;
+    }
+    container.style.display = 'block';
+    container.innerHTML = messages.map(m => {
+      const isOutbound = m.direction === 'outbound';
+      return `<div style="margin-bottom:8px;text-align:${isOutbound?'right':'left'}">
+        <div style="display:inline-block;max-width:80%;padding:8px 12px;border-radius:12px;font-size:13px;
+          background:${isOutbound?'#0ace0a':'#f3f4f6'};color:${isOutbound?'#000':'#333'}">
+          ${m.body}
+        </div>
+        <div style="font-size:10px;color:#999;margin-top:2px">${m.status || ''} · ${formatDate(m.created_at)}</div>
+      </div>`;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+  } catch (e) { container.innerHTML = '<p style="color:#dc2626;font-size:12px">Failed to load messages</p>'; container.style.display = 'block'; }
+}
+
+// ======================== CYCLE 38: AI JOB DESCRIPTION GENERATOR ========================
+
+function showGenerateDescriptionModal(interviewId, currentTitle) {
+  // Create a simple modal for generating job descriptions
+  let existing = document.getElementById('modal-gen-desc');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-gen-desc';
+  modal.className = 'modal show';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:600px">
+      <div class="modal-header">
+        <h2>🤖 Generate Job Description</h2>
+        <button class="modal-close" onclick="document.getElementById('modal-gen-desc').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Job Title</label>
+          <select id="gen-desc-title" style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px">
+            <option value="Benefits Advisor" ${currentTitle==='Benefits Advisor'?'selected':''}>Benefits Advisor</option>
+            <option value="Benefits Consultant" ${currentTitle==='Benefits Consultant'?'selected':''}>Benefits Consultant</option>
+            <option value="Financial Services Representative" ${currentTitle==='Financial Services Representative'?'selected':''}>Financial Services Representative</option>
+            <option value="Insurance Sales Professional" ${currentTitle==='Insurance Sales Professional'?'selected':''}>Insurance Sales Professional</option>
+            <option value="Account Executive" ${currentTitle==='Account Executive'?'selected':''}>Account Executive</option>
+            <option value="Client Relations Specialist" ${currentTitle==='Client Relations Specialist'?'selected':''}>Client Relations Specialist</option>
+            <option value="${currentTitle}" selected>${currentTitle || 'Benefits Advisor'}</option>
+          </select>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Location <span style="color:#888;font-weight:400">(optional)</span></label>
+          <input id="gen-desc-location" style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px" placeholder="e.g., Remote, Dallas TX, Northeast Region">
+        </div>
+        <div id="gen-desc-preview" style="display:none;margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Generated Description <span style="color:#888;font-weight:400">(edit before saving)</span></label>
+          <textarea id="gen-desc-text" style="width:100%;min-height:200px;padding:12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="gen-desc-btn" class="btn btn-primary" onclick="generateDescription('${interviewId}')">🤖 Generate</button>
+          <button id="gen-desc-save-btn" class="btn btn-primary" style="display:none" onclick="saveGeneratedDescription('${interviewId}')">💾 Save to Interview</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function generateDescription(interviewId) {
+  const btn = document.getElementById('gen-desc-btn');
+  const title = document.getElementById('gen-desc-title').value;
+  const location = document.getElementById('gen-desc-location').value;
+  btn.disabled = true; btn.textContent = 'Generating...';
+  try {
+    const result = await api('/api/interviews/generate-description', 'POST', { title, location });
+    document.getElementById('gen-desc-text').value = result.description;
+    document.getElementById('gen-desc-preview').style.display = 'block';
+    document.getElementById('gen-desc-save-btn').style.display = 'inline-block';
+    btn.textContent = '🔄 Regenerate';
+    btn.disabled = false;
+    toast('Description generated!', 'success');
+  } catch (e) {
+    toast('Generation failed: ' + e.message, 'error');
+    btn.textContent = '🤖 Generate'; btn.disabled = false;
+  }
+}
+
+async function saveGeneratedDescription(interviewId) {
+  const description = document.getElementById('gen-desc-text').value;
+  if (!description.trim()) { toast('Description is empty', 'error'); return; }
+  try {
+    await api(`/api/interviews/${interviewId}/save-description`, 'PUT', { description });
+    toast('Description saved!', 'success');
+    document.getElementById('modal-gen-desc').remove();
+    // Update the description text on the page
+    const descEl = document.getElementById('iv-description-text');
+    if (descEl) descEl.textContent = description;
+  } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
 }
 
 

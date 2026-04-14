@@ -9555,6 +9555,10 @@ def page_apply_c32(interview_id):
             <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Why are you interested in this role?</label>
             <textarea name="cover_letter" rows="4" placeholder="Tell us about yourself and why you'd be a great fit..." style="width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
           </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:13px;font-weight:600;color:#333;display:block;margin-bottom:4px">Resume <span style="color:#888;font-weight:400">(optional — PDF, DOCX, or TXT)</span></label>
+            <input type="file" name="resume" accept=".pdf,.docx,.doc,.txt" style="width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;background:#fff">
+          </div>
           {custom_fields_html}
           <button type="submit" class="btn" id="submit-btn">Submit Application</button>
         </form>
@@ -9608,12 +9612,36 @@ def page_apply_c32(interview_id):
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || 'Failed to submit');
 
+        // Upload resume if provided (async — don't block the success flow)
+        const resumeFile = form.resume?.files?.[0];
+        if (resumeFile && result.candidate_id) {{
+          try {{
+            const fd = new FormData();
+            fd.append('resume', resumeFile);
+            fetch('/api/candidates/' + result.candidate_id + '/resume-public', {{
+              method: 'POST', body: fd
+            }});
+          }} catch(e) {{ /* Resume upload is best-effort */ }}
+        }}
+
         document.getElementById('apply-form-card').style.display = 'none';
         document.getElementById('success-msg').style.display = 'block';
+
+        // If auto-engaged, update the success message
+        if (result.auto_engaged) {{
+          document.getElementById('success-msg').querySelector('p').textContent =
+            'Thank you for applying! Check your email — we\\'ve sent you the next steps.';
+        }}
 
         if (result.interview_url) {{
           document.getElementById('interview-link').style.display = 'block';
           document.getElementById('start-interview-btn').href = result.interview_url;
+        }}
+        if (result.format_choice_url) {{
+          document.getElementById('interview-link').style.display = 'block';
+          document.getElementById('interview-link').querySelector('p').textContent = 'Ready to choose your interview format?';
+          document.getElementById('start-interview-btn').textContent = 'Choose Format';
+          document.getElementById('start-interview-btn').href = result.format_choice_url;
         }}
         if (result.token) {{
           document.getElementById('progress-link').href = '/status/' + result.token;
@@ -9667,13 +9695,97 @@ def api_apply_c32(interview_id):
                 data.get('phone', ''), token, data.get('linkedin_url', ''),
                 data.get('cover_letter', ''), apply_answers))
     db.commit()
+
+    # ---- Cycle 38: Auto-Engage After Apply ----
+    auto_mode = intv.get('auto_engage_mode', 'hold') or 'hold'
+    auto_engaged = False
+    format_choice_url = None
+
+    if auto_mode != 'hold':
+        try:
+            # Get user (RSC) info for email sending
+            user = db.execute('SELECT * FROM users WHERE id=?', (intv['user_id'],)).fetchone()
+            if user:
+                user_dict = dict(user)
+                agency_name = user_dict.get('agency_name') or user_dict.get('name', 'ChannelView')
+                brand_color = intv.get('brand_color') or user_dict.get('brand_color') or '#0ace0a'
+
+                if auto_mode == 'video_invite':
+                    # Check interview has questions before auto-inviting
+                    q_count = db.execute('SELECT COUNT(*) as cnt FROM questions WHERE interview_id=?',
+                                        (interview_id,)).fetchone()
+                    if q_count and q_count['cnt'] > 0:
+                        # Send interview invite email
+                        try:
+                            from email_service import send_email, build_invite_email, get_smtp_config
+                            smtp_config = get_smtp_config(db, intv['user_id'])
+                            interview_link = f"https://mychannelview.com/i/{token}"
+                            html_body = build_invite_email(
+                                f"{first_name} {last_name}", intv['title'],
+                                interview_link, agency_name, brand_color
+                            )
+                            send_email(smtp_config, email, f"You're Invited: {intv['title']} Video Interview", html_body)
+                            auto_engaged = True
+                        except Exception as e:
+                            import logging
+                            logging.getLogger(__name__).warning(f"Auto-engage video invite email failed: {e}")
+
+                elif auto_mode == 'format_choice':
+                    # Check if interview has formats enabled
+                    formats_enabled = intv.get('formats_enabled') or intv.get('format_selector_enabled')
+                    if formats_enabled:
+                        try:
+                            from email_service import send_email, get_smtp_config, _base_template
+                            smtp_config = get_smtp_config(db, intv['user_id'])
+                            fc_link = f"https://mychannelview.com/format-choice/{token}"
+                            format_choice_url = fc_link
+                            fc_html = _base_template(brand_color, agency_name, f'''
+                                <h2 style="margin-bottom:12px">Hi {first_name}!</h2>
+                                <p style="color:#555;font-size:15px;line-height:1.6;margin-bottom:20px">
+                                    Thanks for applying to <strong>{intv['title']}</strong>. We'd love to learn more about you!
+                                    Choose your preferred interview format below:
+                                </p>
+                                <div style="text-align:center;margin:24px 0">
+                                    <a href="{fc_link}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;font-size:16px">Choose Your Format</a>
+                                </div>
+                                <p style="color:#888;font-size:13px">This link is unique to you. Complete at your convenience.</p>
+                            ''')
+                            send_email(smtp_config, email, f"Next Steps: Choose Your Interview Format — {intv['title']}", fc_html)
+                            auto_engaged = True
+                        except Exception as e:
+                            import logging
+                            logging.getLogger(__name__).warning(f"Auto-engage format choice email failed: {e}")
+                    else:
+                        # Formats not enabled — fall back to video invite
+                        try:
+                            from email_service import send_email, build_invite_email, get_smtp_config
+                            smtp_config = get_smtp_config(db, intv['user_id'])
+                            interview_link = f"https://mychannelview.com/i/{token}"
+                            html_body = build_invite_email(
+                                f"{first_name} {last_name}", intv['title'],
+                                interview_link, agency_name, brand_color
+                            )
+                            send_email(smtp_config, email, f"You're Invited: {intv['title']} Video Interview", html_body)
+                            auto_engaged = True
+                        except Exception as e:
+                            import logging
+                            logging.getLogger(__name__).warning(f"Auto-engage fallback invite email failed: {e}")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Auto-engage failed: {e}")
+
     db.close()
 
-    return jsonify({
+    response_data = {
         'success': True, 'candidate_id': candidate_id, 'token': token,
         'interview_url': f"/i/{token}",
-        'progress_url': f"/status/{token}"
-    }), 201
+        'progress_url': f"/status/{token}",
+        'auto_engaged': auto_engaged
+    }
+    if format_choice_url:
+        response_data['format_choice_url'] = format_choice_url
+
+    return jsonify(response_data), 201
 
 
 @app.route('/api/interviews/<interview_id>/apply-config', methods=['GET'])
@@ -17921,6 +18033,473 @@ def api_get_message_template_c36(template_id):
         return jsonify(dict(tmpl))
     finally:
         db.close()
+
+
+# ======================== CYCLE 38: RESUME PARSER ========================
+
+# Import resume and SMS services (optional — graceful fallback if not installed)
+try:
+    from resume_service import parse_resume_file, parse_resume_with_ai, extract_text_from_file, generate_job_description
+    _resume_service_available = True
+except ImportError:
+    _resume_service_available = False
+
+try:
+    from sms_service import send_sms, normalize_phone, check_opt_out, handle_opt_out, handle_opt_in, fill_template, is_configured as sms_is_configured
+    _sms_service_available = True
+except ImportError:
+    _sms_service_available = False
+
+# Resume upload directory
+RESUME_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'resumes')
+os.makedirs(RESUME_UPLOAD_DIR, exist_ok=True)
+
+
+@app.route('/api/candidates/<candidate_id>/resume', methods=['POST'])
+@require_auth
+def api_upload_resume_c38(candidate_id):
+    """Upload and parse a resume for an existing candidate.
+    Accepts multipart/form-data with a 'resume' file field.
+    AI-parses the resume and updates the candidate record.
+    """
+    if not _resume_service_available:
+        return jsonify({'error': 'Resume parsing service not available'}), 503
+
+    db = get_db()
+    candidate = db.execute('SELECT id, user_id FROM candidates WHERE id=? AND user_id=?',
+                           (candidate_id, g.user_id)).fetchone()
+    if not candidate:
+        db.close()
+        return jsonify({'error': 'Candidate not found'}), 404
+
+    if 'resume' not in request.files:
+        db.close()
+        return jsonify({'error': 'No resume file provided'}), 400
+
+    file = request.files['resume']
+    if not file.filename:
+        db.close()
+        return jsonify({'error': 'Empty filename'}), 400
+
+    # Validate file type
+    allowed_ext = {'.pdf', '.docx', '.doc', '.txt'}
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_ext:
+        db.close()
+        return jsonify({'error': f'Invalid file type. Allowed: {", ".join(allowed_ext)}'}), 400
+
+    # Save file
+    safe_name = f"{candidate_id}_resume{ext}"
+    file_path = os.path.join(RESUME_UPLOAD_DIR, safe_name)
+    file.save(file_path)
+
+    # Store the resume URL
+    resume_url = f"/static/uploads/resumes/{safe_name}"
+    db.execute('UPDATE candidates SET resume_url=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+               (resume_url, candidate_id))
+    db.commit()
+
+    # Parse with AI (async-friendly — returns immediately with file saved, parsing results follow)
+    parsed = parse_resume_file(file_path)
+    if parsed:
+        db.execute('''UPDATE candidates SET parsed_summary=?, parsed_experience=?, parsed_skills=?,
+                      resume_parsed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                   (parsed['summary'], parsed['experience_json'], parsed['skills_json'], candidate_id))
+        db.commit()
+
+    db.close()
+
+    return jsonify({
+        'success': True,
+        'resume_url': resume_url,
+        'parsed': parsed is not None,
+        'summary': parsed['summary'] if parsed else None,
+        'experience': parsed.get('experience', []) if parsed else [],
+        'skills': parsed.get('skills', []) if parsed else [],
+        'insurance_signals': parsed.get('insurance_signals', []) if parsed else []
+    }), 200
+
+
+@app.route('/api/candidates/<candidate_id>/resume-public', methods=['POST'])
+def api_upload_resume_public_c38(candidate_id):
+    """Public endpoint for candidates to upload resume during application.
+    No auth required — validated by candidate_id existence and recency.
+    """
+    if not _resume_service_available:
+        return jsonify({'error': 'Resume parsing service not available'}), 503
+
+    db = get_db()
+    # Only allow upload for candidates created in the last hour (prevent abuse)
+    candidate = db.execute(
+        "SELECT id, user_id FROM candidates WHERE id=? AND created_at > datetime('now', '-1 hour')",
+        (candidate_id,)
+    ).fetchone()
+    if not candidate:
+        db.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    if 'resume' not in request.files:
+        db.close()
+        return jsonify({'error': 'No resume file'}), 400
+
+    file = request.files['resume']
+    if not file.filename:
+        db.close()
+        return jsonify({'error': 'Empty filename'}), 400
+
+    allowed_ext = {'.pdf', '.docx', '.doc', '.txt'}
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_ext:
+        db.close()
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    # Save file
+    safe_name = f"{candidate_id}_resume{ext}"
+    file_path = os.path.join(RESUME_UPLOAD_DIR, safe_name)
+    file.save(file_path)
+
+    resume_url = f"/static/uploads/resumes/{safe_name}"
+    db.execute('UPDATE candidates SET resume_url=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+               (resume_url, candidate_id))
+    db.commit()
+
+    # Parse with AI in background (best-effort)
+    try:
+        parsed = parse_resume_file(file_path)
+        if parsed:
+            db.execute('''UPDATE candidates SET parsed_summary=?, parsed_experience=?, parsed_skills=?,
+                          resume_parsed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                       (parsed['summary'], parsed['experience_json'], parsed['skills_json'], candidate_id))
+            db.commit()
+    except Exception:
+        pass  # Don't fail the upload if parsing fails
+
+    db.close()
+    return jsonify({'success': True, 'resume_url': resume_url}), 200
+
+
+@app.route('/api/candidates/<candidate_id>/reparse-resume', methods=['POST'])
+@require_auth
+def api_reparse_resume_c38(candidate_id):
+    """Re-parse an already-uploaded resume with AI."""
+    if not _resume_service_available:
+        return jsonify({'error': 'Resume parsing service not available'}), 503
+
+    db = get_db()
+    candidate = db.execute('SELECT id, resume_url FROM candidates WHERE id=? AND user_id=?',
+                           (candidate_id, g.user_id)).fetchone()
+    if not candidate:
+        db.close()
+        return jsonify({'error': 'Candidate not found'}), 404
+
+    cand = dict(candidate)
+    if not cand.get('resume_url'):
+        db.close()
+        return jsonify({'error': 'No resume uploaded for this candidate'}), 400
+
+    # Resolve file path
+    file_path = os.path.join(os.path.dirname(__file__), cand['resume_url'].lstrip('/'))
+    if not os.path.exists(file_path):
+        db.close()
+        return jsonify({'error': 'Resume file not found on disk'}), 404
+
+    parsed = parse_resume_file(file_path)
+    if parsed:
+        db.execute('''UPDATE candidates SET parsed_summary=?, parsed_experience=?, parsed_skills=?,
+                      resume_parsed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+                   (parsed['summary'], parsed['experience_json'], parsed['skills_json'], candidate_id))
+        db.commit()
+        db.close()
+        return jsonify({
+            'success': True,
+            'summary': parsed['summary'],
+            'experience': parsed.get('experience', []),
+            'skills': parsed.get('skills', []),
+            'insurance_signals': parsed.get('insurance_signals', [])
+        })
+
+    db.close()
+    return jsonify({'error': 'Resume parsing failed — file may be unreadable'}), 422
+
+
+# ======================== CYCLE 38: AUTO-ENGAGE AFTER APPLY ========================
+
+@app.route('/api/interviews/<interview_id>/auto-engage', methods=['GET'])
+@require_auth
+def api_get_auto_engage_c38(interview_id):
+    """Get auto-engage setting for an interview."""
+    db = get_db()
+    interview = db.execute('SELECT id, auto_engage_mode FROM interviews WHERE id=? AND user_id=?',
+                           (interview_id, g.user_id)).fetchone()
+    if not interview:
+        db.close()
+        return jsonify({'error': 'Interview not found'}), 404
+    db.close()
+    return jsonify({'auto_engage_mode': dict(interview).get('auto_engage_mode', 'hold')})
+
+
+@app.route('/api/interviews/<interview_id>/auto-engage', methods=['PUT'])
+@require_auth
+def api_set_auto_engage_c38(interview_id):
+    """Set auto-engage mode for an interview.
+    Values: 'hold' (default), 'video_invite', 'format_choice'
+    """
+    db = get_db()
+    interview = db.execute('SELECT id FROM interviews WHERE id=? AND user_id=?',
+                           (interview_id, g.user_id)).fetchone()
+    if not interview:
+        db.close()
+        return jsonify({'error': 'Interview not found'}), 404
+
+    data = request.get_json() or {}
+    mode = data.get('auto_engage_mode', 'hold')
+    if mode not in ('hold', 'video_invite', 'format_choice'):
+        db.close()
+        return jsonify({'error': 'Invalid mode. Use: hold, video_invite, or format_choice'}), 400
+
+    db.execute('UPDATE interviews SET auto_engage_mode=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+               (mode, interview_id))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'auto_engage_mode': mode})
+
+
+# ======================== CYCLE 38: SMS MESSAGING ========================
+
+@app.route('/api/sms/send', methods=['POST'])
+@require_auth
+def api_send_sms_c38():
+    """Send an SMS to a candidate.
+    Body: { candidate_id, body (or template_id + template_data), interview_id (optional) }
+    """
+    if not _sms_service_available:
+        return jsonify({'error': 'SMS service not available'}), 503
+    if not sms_is_configured():
+        return jsonify({'error': 'Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_DEFAULT_NUMBER environment variables.'}), 503
+
+    data = request.get_json() or {}
+    candidate_id = data.get('candidate_id')
+    if not candidate_id:
+        return jsonify({'error': 'candidate_id is required'}), 400
+
+    db = get_db()
+    candidate = db.execute(
+        'SELECT c.*, u.agency_name, u.twilio_phone_number FROM candidates c JOIN users u ON c.user_id = u.id WHERE c.id=? AND c.user_id=?',
+        (candidate_id, g.user_id)
+    ).fetchone()
+    if not candidate:
+        db.close()
+        return jsonify({'error': 'Candidate not found'}), 404
+
+    cand = dict(candidate)
+    phone = cand.get('phone', '')
+    if not phone:
+        db.close()
+        return jsonify({'error': 'Candidate has no phone number'}), 400
+
+    # Check opt-out
+    if check_opt_out(db, phone):
+        db.close()
+        return jsonify({'error': 'Candidate has opted out of SMS. Cannot send.'}), 403
+
+    # Build message body
+    body = data.get('body', '')
+    template_id = data.get('template_id')
+    if template_id and not body:
+        tmpl = db.execute('SELECT body FROM sms_templates WHERE id=?', (template_id,)).fetchone()
+        if tmpl:
+            template_data = {
+                'first_name': cand.get('first_name', ''),
+                'last_name': cand.get('last_name', ''),
+                'interview_link': f"https://mychannelview.com/i/{cand.get('token', '')}",
+                'custom_message': data.get('custom_message', ''),
+            }
+            agency_data = {'agency_name': cand.get('agency_name', '')}
+            body = fill_template(dict(tmpl)['body'], template_data, agency_data)
+
+    if not body:
+        db.close()
+        return jsonify({'error': 'Message body is required (or provide template_id)'}), 400
+
+    # Send via Twilio
+    from_number = cand.get('twilio_phone_number') or None
+    success, sid_or_error = send_sms(phone, body, from_number)
+
+    # Log the message
+    msg_id = str(uuid.uuid4())
+    normalized = normalize_phone(phone)
+    db.execute('''INSERT INTO sms_messages (id, user_id, candidate_id, interview_id, direction,
+                  from_number, to_number, body, status, twilio_sid, template_id, error_message)
+                  VALUES (?, ?, ?, ?, 'outbound', ?, ?, ?, ?, ?, ?, ?)''',
+               (msg_id, g.user_id, candidate_id, data.get('interview_id'),
+                from_number, normalized, body,
+                'sent' if success else 'failed',
+                sid_or_error if success else None,
+                template_id,
+                None if success else sid_or_error))
+    db.commit()
+    db.close()
+
+    if success:
+        return jsonify({'success': True, 'message_id': msg_id, 'twilio_sid': sid_or_error})
+    else:
+        return jsonify({'error': f'Failed to send SMS: {sid_or_error}', 'message_id': msg_id}), 500
+
+
+@app.route('/api/sms/conversation/<candidate_id>', methods=['GET'])
+@require_auth
+def api_sms_conversation_c38(candidate_id):
+    """Get SMS conversation history for a candidate."""
+    db = get_db()
+    messages = db.execute(
+        '''SELECT id, direction, body, status, created_at, from_number, to_number, template_id
+           FROM sms_messages WHERE candidate_id=? AND user_id=?
+           ORDER BY created_at ASC''',
+        (candidate_id, g.user_id)
+    ).fetchall()
+    db.close()
+    return jsonify([dict(m) for m in messages])
+
+
+@app.route('/api/sms/webhook/inbound', methods=['POST'])
+def api_sms_inbound_webhook_c38():
+    """Twilio webhook for inbound SMS messages.
+    Handles STOP/START keywords and logs incoming messages.
+    """
+    # Twilio sends form-encoded data
+    from_number = request.form.get('From', '')
+    body = request.form.get('Body', '').strip()
+    to_number = request.form.get('To', '')
+    message_sid = request.form.get('MessageSid', '')
+
+    if not from_number or not body:
+        return '<Response></Response>', 200
+
+    db = get_db()
+
+    # Handle opt-out keywords (TCPA compliance)
+    upper_body = body.upper().strip()
+    if upper_body in ('STOP', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'):
+        if _sms_service_available:
+            handle_opt_out(db, from_number)
+        db.close()
+        # Return TwiML with opt-out confirmation
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<Response><Message>You have been unsubscribed from ChannelView messages. Reply START to resubscribe.</Message></Response>''', 200, {'Content-Type': 'text/xml'}
+
+    if upper_body in ('START', 'YES', 'UNSTOP'):
+        if _sms_service_available:
+            handle_opt_in(db, from_number)
+        db.close()
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<Response><Message>You have been resubscribed to ChannelView messages.</Message></Response>''', 200, {'Content-Type': 'text/xml'}
+
+    # Find the candidate by phone number to log the inbound message
+    normalized = normalize_phone(from_number) if _sms_service_available else from_number
+    # Try to find a candidate with this phone number (most recent first)
+    candidate = db.execute(
+        "SELECT id, user_id, interview_id FROM candidates WHERE phone=? OR phone=? ORDER BY created_at DESC LIMIT 1",
+        (from_number, normalized or from_number)
+    ).fetchone()
+
+    if candidate:
+        cand = dict(candidate)
+        msg_id = str(uuid.uuid4())
+        db.execute('''INSERT INTO sms_messages (id, user_id, candidate_id, interview_id, direction,
+                      from_number, to_number, body, status, twilio_sid)
+                      VALUES (?, ?, ?, ?, 'inbound', ?, ?, ?, 'received', ?)''',
+                   (msg_id, cand['user_id'], cand['id'], cand.get('interview_id'),
+                    from_number, to_number, body, message_sid))
+        db.commit()
+
+    db.close()
+    return '<Response></Response>', 200, {'Content-Type': 'text/xml'}
+
+
+@app.route('/api/sms/templates', methods=['GET'])
+@require_auth
+def api_sms_templates_c38():
+    """List SMS templates (system + user-created)."""
+    db = get_db()
+    templates = db.execute(
+        'SELECT * FROM sms_templates WHERE is_system=1 OR user_id=? ORDER BY is_system DESC, name',
+        (g.user_id,)
+    ).fetchall()
+    db.close()
+    return jsonify([dict(t) for t in templates])
+
+
+@app.route('/api/sms/status', methods=['GET'])
+@require_auth
+def api_sms_status_c38():
+    """Get SMS configuration status for the current user."""
+    db = get_db()
+    user = db.execute('SELECT twilio_phone_number, sms_enabled FROM users WHERE id=?',
+                      (g.user_id,)).fetchone()
+    db.close()
+    u = dict(user) if user else {}
+    return jsonify({
+        'twilio_configured': _sms_service_available and sms_is_configured() if _sms_service_available else False,
+        'phone_number': u.get('twilio_phone_number', ''),
+        'sms_enabled': bool(u.get('sms_enabled', 0)),
+    })
+
+
+# ======================== CYCLE 38: AI JOB DESCRIPTION GENERATOR ========================
+
+@app.route('/api/interviews/generate-description', methods=['POST'])
+@require_auth
+def api_generate_job_description_c38():
+    """Generate an AI-powered job description for insurance recruiting.
+    Body: { title, agency_name (optional), location (optional), job_type (optional) }
+    """
+    if not _resume_service_available:
+        return jsonify({'error': 'AI service not available'}), 503
+
+    data = request.get_json() or {}
+    title = data.get('title', '').strip()
+    if not title:
+        return jsonify({'error': 'Job title is required'}), 400
+
+    # Get agency info for context
+    db = get_db()
+    user = db.execute('SELECT agency_name FROM users WHERE id=?', (g.user_id,)).fetchone()
+    db.close()
+    agency_name = data.get('agency_name') or (dict(user).get('agency_name', '') if user else '')
+
+    description = generate_job_description(
+        title=title,
+        agency_name=agency_name,
+        location=data.get('location', ''),
+        job_type=data.get('job_type', 'Full-time')
+    )
+
+    if description:
+        return jsonify({'success': True, 'description': description})
+    else:
+        return jsonify({'error': 'Failed to generate description. Check ANTHROPIC_API_KEY configuration.'}), 500
+
+
+@app.route('/api/interviews/<interview_id>/save-description', methods=['PUT'])
+@require_auth
+def api_save_generated_description_c38(interview_id):
+    """Save a generated job description to an interview."""
+    db = get_db()
+    interview = db.execute('SELECT id FROM interviews WHERE id=? AND user_id=?',
+                           (interview_id, g.user_id)).fetchone()
+    if not interview:
+        db.close()
+        return jsonify({'error': 'Interview not found'}), 404
+
+    data = request.get_json() or {}
+    description = data.get('description', '')
+    # Save to both generated_description (for tracking) and description (for display)
+    db.execute('''UPDATE interviews SET description=?, generated_description=?,
+                  updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+               (description, description, interview_id))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
 
 
 # ======================== INIT & RUN ========================
