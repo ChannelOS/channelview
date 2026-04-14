@@ -1206,7 +1206,7 @@ def api_remove_interview_intro_video(interview_id):
             try: os.remove(old_file)
             except: pass
 
-    db.execute('UPDATE interviews SET intro_video_path=NULL, intro_type="none", intro_template_id=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?', (interview_id,))
+    db.execute('UPDATE interviews SET intro_video_path=NULL, intro_type=?, intro_template_id=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?', ('none', interview_id))
     db.commit()
     db.close()
     return jsonify({'success': True})
@@ -1243,13 +1243,13 @@ def api_set_intro_template_c35(interview_id):
             db.close()
             return jsonify({'error': 'Template not found'}), 404
         db.execute(
-            'UPDATE interviews SET intro_type="template", intro_template_id=?, intro_video_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-            (template_id, tmpl['html_path'], interview_id)
+            'UPDATE interviews SET intro_type=?, intro_template_id=?, intro_video_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            ('template', template_id, tmpl['html_path'], interview_id)
         )
     else:
         db.execute(
-            'UPDATE interviews SET intro_type="none", intro_template_id=NULL, intro_video_path=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-            (interview_id,)
+            'UPDATE interviews SET intro_type=?, intro_template_id=NULL, intro_video_path=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            ('none', interview_id)
         )
     db.commit()
     db.close()
