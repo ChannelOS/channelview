@@ -16158,7 +16158,8 @@ def api_update_formats_c29(interview_id):
         updates = []
         values = []
         if 'formats_enabled' in data:
-            valid_formats = {'video', 'group_session', 'one_on_one', 'ai_phone'}
+            valid_formats = {'video', 'group_session', 'one_on_one', 'ai_phone',
+                            'group_virtual', 'group_in_person', 'ono_virtual', 'ono_in_person'}
             fmts = [f for f in data['formats_enabled'] if f in valid_formats]
             if 'video' not in fmts:
                 fmts.insert(0, 'video')
@@ -16449,33 +16450,56 @@ def candidate_format_choice_c29(token):
             return render_template('candidate_done.html', candidate=cd)
         import json as _json
         formats = _json.loads(cd.get('formats_enabled') or '["video"]')
-        # Get upcoming group sessions if group_session is enabled
-        upcoming_sessions = []
-        if 'group_session' in formats:
+        # Backward compat: map old keys to new granular keys
+        from database import USE_POSTGRES
+        has_group_virtual = 'group_virtual' in formats or 'group_session' in formats
+        has_group_inperson = 'group_in_person' in formats or 'group_session' in formats
+        has_ono_virtual = 'ono_virtual' in formats or 'one_on_one' in formats
+        has_ono_inperson = 'ono_in_person' in formats or 'one_on_one' in formats
+        # Get upcoming group sessions, split by type
+        group_virtual_sessions = []
+        group_inperson_sessions = []
+        if has_group_virtual or has_group_inperson:
+            now_expr = "NOW()" if USE_POSTGRES else "datetime('now')"
             rows = db.execute(
-                '''SELECT gs.*, (SELECT COUNT(*) FROM session_rsvps sr WHERE sr.session_id=gs.id AND sr.status != 'cancelled') as rsvp_count
+                f'''SELECT gs.*, (SELECT COUNT(*) FROM session_rsvps sr WHERE sr.session_id=gs.id AND sr.status != 'cancelled') as rsvp_count
                    FROM group_sessions gs
-                   WHERE gs.interview_id=? AND gs.status='scheduled' AND gs.session_date > datetime('now')
-                   ORDER BY gs.session_date ASC LIMIT 10''',
+                   WHERE gs.interview_id=? AND gs.status='scheduled' AND gs.session_date > {now_expr}
+                   ORDER BY gs.session_date ASC LIMIT 20''',
                 (cd['interview_id'],)
             ).fetchall()
             for r in rows:
                 sd = dict(r)
                 sd['spots_remaining'] = max(0, sd['capacity'] - sd['rsvp_count']) if sd['capacity'] > 0 else None
-                upcoming_sessions.append(sd)
-        # Get available booking slots if one_on_one is enabled
-        available_slots = []
-        if 'one_on_one' in formats:
+                if sd.get('session_type') == 'in_person':
+                    group_inperson_sessions.append(sd)
+                else:
+                    group_virtual_sessions.append(sd)
+        # Get available booking slots, split by type
+        ono_virtual_slots = []
+        ono_inperson_slots = []
+        if has_ono_virtual or has_ono_inperson:
+            now_expr = "NOW()" if USE_POSTGRES else "datetime('now')"
             rows = db.execute(
-                '''SELECT * FROM booking_slots
-                   WHERE interview_id=? AND is_booked=0 AND status='available' AND slot_date > datetime('now')
+                f'''SELECT * FROM booking_slots
+                   WHERE interview_id=? AND is_booked=0 AND status='available' AND slot_date > {now_expr}
                    ORDER BY slot_date ASC LIMIT 20''',
                 (cd['interview_id'],)
             ).fetchall()
-            available_slots = [dict(r) for r in rows]
+            for r in rows:
+                sd = dict(r)
+                if sd.get('slot_type') == 'in_person':
+                    ono_inperson_slots.append(sd)
+                else:
+                    ono_virtual_slots.append(sd)
         return render_template('candidate_format_choice.html',
             candidate=cd, token=token, formats=formats,
-            upcoming_sessions=upcoming_sessions, available_slots=available_slots,
+            has_group_virtual=has_group_virtual, has_group_inperson=has_group_inperson,
+            has_ono_virtual=has_ono_virtual, has_ono_inperson=has_ono_inperson,
+            group_virtual_sessions=group_virtual_sessions,
+            group_inperson_sessions=group_inperson_sessions,
+            ono_virtual_slots=ono_virtual_slots,
+            ono_inperson_slots=ono_inperson_slots,
             brand_color=cd.get('brand_color', '#0ace0a'),
             agency_name=cd.get('agency_name', ''))
     finally:

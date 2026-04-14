@@ -61,21 +61,17 @@ h1{font-size:28px;text-align:center;margin-bottom:6px}
     <h1>How Would You Like to Connect?</h1>
     <p class="subtitle">Hi {{ candidate.first_name }}, choose the interview format that works best for you.</p>
 
-    {% if 'group_session' in formats and upcoming_sessions %}
-    <div class="format-card" id="card-group">
-      <div class="format-icon">👥</div>
-      <div class="format-title">Group Info Session</div>
-      <div class="format-desc">{{ candidate.group_session_description or 'Join a group presentation to learn about the opportunity and meet the team.' }}</div>
+    {% if has_group_virtual and group_virtual_sessions %}
+    <div class="format-card" id="card-group-virtual">
+      <div class="format-icon">👥💻</div>
+      <div class="format-title">Group Virtual Session</div>
+      <div class="format-desc">{{ candidate.group_session_description or 'Join a virtual group presentation to learn about the opportunity and meet the team.' }}</div>
       <div class="sessions-list">
-        {% for session in upcoming_sessions %}
+        {% for session in group_virtual_sessions %}
         <div class="session-option">
           <div>
-            <div class="session-date">{{ session.title or 'Info Session' }}</div>
-            <div class="session-detail">
-              {{ session.session_type|capitalize }} &middot;
-              {% if session.session_type == 'virtual' and session.meeting_url %}Virtual Meeting{% elif session.location %}{{ session.location }}{% endif %}
-              &middot; {{ session.duration_minutes }} min
-            </div>
+            <div class="session-date">{{ session.title or 'Virtual Info Session' }}</div>
+            <div class="session-detail">Virtual Meeting {% if session.meeting_url %}&middot; Online{% endif %} &middot; {{ session.duration_minutes }} min</div>
           </div>
           <div style="text-align:right">
             {% if session.spots_remaining is not none %}
@@ -87,25 +83,68 @@ h1{font-size:28px;text-align:center;margin-bottom:6px}
         {% endfor %}
       </div>
     </div>
-    <div class="or-divider">— or —</div>
+    <div class="or-divider">&mdash; or &mdash;</div>
     {% endif %}
 
-    {% if 'one_on_one' in formats and available_slots %}
-    <div class="format-card" id="card-ono">
-      <div class="format-icon">📞</div>
-      <div class="format-title">1-on-1 Meeting</div>
-      <div class="format-desc">{{ candidate.one_on_one_description or 'Schedule a personal conversation to discuss the opportunity and ask questions.' }}</div>
+    {% if has_group_inperson and group_inperson_sessions %}
+    <div class="format-card" id="card-group-inperson">
+      <div class="format-icon">👥🏢</div>
+      <div class="format-title">Group In-Person Session</div>
+      <div class="format-desc">{{ candidate.group_session_description or 'Attend an in-person group presentation to learn about the opportunity and meet the team.' }}</div>
+      <div class="sessions-list">
+        {% for session in group_inperson_sessions %}
+        <div class="session-option">
+          <div>
+            <div class="session-date">{{ session.title or 'In-Person Info Session' }}</div>
+            <div class="session-detail">In-Person {% if session.location %}&middot; {{ session.location }}{% endif %} &middot; {{ session.duration_minutes }} min</div>
+          </div>
+          <div style="text-align:right">
+            {% if session.spots_remaining is not none %}
+            <div class="session-spots">{{ session.spots_remaining }} spot{{ 's' if session.spots_remaining != 1 }} left</div>
+            {% endif %}
+            <button class="btn-select" onclick="rsvpSession('{{ session.id }}')">Select</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="or-divider">&mdash; or &mdash;</div>
+    {% endif %}
+
+    {% if has_ono_virtual and ono_virtual_slots %}
+    <div class="format-card" id="card-ono-virtual">
+      <div class="format-icon">📞💻</div>
+      <div class="format-title">1-on-1 Virtual Meeting</div>
+      <div class="format-desc">{{ candidate.one_on_one_description or 'Schedule a phone or video call to discuss the opportunity and ask questions.' }}</div>
       <div class="slots-grid">
-        {% for slot in available_slots %}
+        {% for slot in ono_virtual_slots %}
         <div class="slot-card" onclick="bookSlot('{{ slot.id }}')">
-          <div class="slot-date">{{ slot.slot_type|replace('_', ' ')|capitalize }}</div>
+          <div class="slot-date">Phone / Video Call</div>
           <div class="slot-time">{{ slot.duration_minutes }} min</div>
           <button class="btn-select" style="margin-top:8px;font-size:12px;padding:6px 12px">Book</button>
         </div>
         {% endfor %}
       </div>
     </div>
-    <div class="or-divider">— or —</div>
+    <div class="or-divider">&mdash; or &mdash;</div>
+    {% endif %}
+
+    {% if has_ono_inperson and ono_inperson_slots %}
+    <div class="format-card" id="card-ono-inperson">
+      <div class="format-icon">🤝🏢</div>
+      <div class="format-title">1-on-1 In-Person Meeting</div>
+      <div class="format-desc">{{ candidate.one_on_one_description or 'Meet face-to-face to discuss the opportunity and get your questions answered.' }}</div>
+      <div class="slots-grid">
+        {% for slot in ono_inperson_slots %}
+        <div class="slot-card" onclick="bookSlot('{{ slot.id }}')">
+          <div class="slot-date">In-Person Meeting</div>
+          <div class="slot-time">{{ slot.duration_minutes }} min</div>
+          <button class="btn-select" style="margin-top:8px;font-size:12px;padding:6px 12px">Book</button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="or-divider">&mdash; or &mdash;</div>
     {% endif %}
 
     {% if 'video' in formats %}

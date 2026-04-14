@@ -1601,45 +1601,72 @@ async function renderInterviewDetail() {
                 <input type="checkbox" checked disabled> <span style="font-size:20px">🎥</span>
                 <div><div style="font-weight:600;font-size:13px">Async Video Interview</div><div style="font-size:11px;color:#888">Candidates record video answers on their own time</div></div>
               </label>
-              <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-group-label">
-                <input type="checkbox" id="fmt-group" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:20px">👥</span>
-                <div><div style="font-weight:600;font-size:13px">Group Info Session</div><div style="font-size:11px;color:#888">Virtual or in-person group presentation</div></div>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-ono-label">
-                <input type="checkbox" id="fmt-ono" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:20px">📞</span>
-                <div><div style="font-weight:600;font-size:13px">1-on-1 Meeting</div><div style="font-size:11px;color:#888">Phone call, virtual meeting, or in-person</div></div>
-              </label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-gv-label">
+                  <input type="checkbox" id="fmt-gv" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:18px">👥💻</span>
+                  <div><div style="font-weight:600;font-size:12px">Group Virtual</div><div style="font-size:10px;color:#888">Zoom, Teams, etc.</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-gip-label">
+                  <input type="checkbox" id="fmt-gip" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:18px">👥🏢</span>
+                  <div><div style="font-weight:600;font-size:12px">Group In-Person</div><div style="font-size:10px;color:#888">On-site presentation</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-ov-label">
+                  <input type="checkbox" id="fmt-ov" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:18px">📞💻</span>
+                  <div><div style="font-weight:600;font-size:12px">1-on-1 Virtual</div><div style="font-size:10px;color:#888">Phone or video call</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;transition:all .15s" id="fmt-oip-label">
+                  <input type="checkbox" id="fmt-oip" onchange="saveFormatOptions('${iv.id}')"> <span style="font-size:18px">🤝🏢</span>
+                  <div><div style="font-weight:600;font-size:12px">1-on-1 In-Person</div><div style="font-size:10px;color:#888">Face-to-face meeting</div></div>
+                </label>
+              </div>
             </div>
-            <div id="fmt-group-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
-              <div style="font-weight:600;font-size:13px;margin-bottom:8px">👥 Group Session Details</div>
+            <div id="fmt-gv-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">👥💻 Group Virtual Sessions</div>
               <div class="form-group" style="margin-bottom:8px">
                 <label style="font-size:12px;font-weight:500">Description shown to candidates</label>
-                <textarea id="fmt-group-desc" class="form-control" rows="2" placeholder="e.g. Join our weekly info session to learn about the opportunity and meet the team" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
+                <textarea id="fmt-gv-desc" class="form-control" rows="2" placeholder="e.g. Join our virtual info session via Zoom to learn about the opportunity" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-                <span style="font-size:12px;color:#888">Manage sessions below after saving</span>
-                <button class="btn btn-sm btn-outline" onclick="showGroupSessionModal('${iv.id}')">+ Add Session</button>
+                <span style="font-size:12px;color:#888">Virtual sessions you've scheduled</span>
+                <button class="btn btn-sm btn-outline" onclick="showGroupSessionModal('${iv.id}','virtual')">+ Add Virtual Session</button>
               </div>
-              <div id="fmt-group-sessions-list" style="margin-top:8px"></div>
+              <div id="fmt-gv-sessions-list" style="margin-top:8px"></div>
             </div>
-            <div id="fmt-ono-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
-              <div style="font-weight:600;font-size:13px;margin-bottom:8px">📞 1-on-1 Meeting Details</div>
-              <div class="form-group" style="margin-bottom:8px">
-                <label style="font-size:12px;font-weight:500">Meeting type</label>
-                <select id="fmt-ono-type" class="form-control" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')">
-                  <option value="recruiter_call">Phone / Video Call</option>
-                  <option value="in_person">In-Person Meeting</option>
-                </select>
-              </div>
+            <div id="fmt-gip-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">👥🏢 Group In-Person Sessions</div>
               <div class="form-group" style="margin-bottom:8px">
                 <label style="font-size:12px;font-weight:500">Description shown to candidates</label>
-                <textarea id="fmt-ono-desc" class="form-control" rows="2" placeholder="e.g. Schedule a quick call to discuss next steps and answer your questions" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
+                <textarea id="fmt-gip-desc" class="form-control" rows="2" placeholder="e.g. Come meet the team in person at our office info session" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-                <span style="font-size:12px;color:#888">Add time slots for candidates to book</span>
-                <button class="btn btn-sm btn-outline" onclick="showBookingSlotModal('${iv.id}')">+ Add Slot</button>
+                <span style="font-size:12px;color:#888">In-person sessions you've scheduled</span>
+                <button class="btn btn-sm btn-outline" onclick="showGroupSessionModal('${iv.id}','in_person')">+ Add In-Person Session</button>
               </div>
-              <div id="fmt-ono-slots-list" style="margin-top:8px"></div>
+              <div id="fmt-gip-sessions-list" style="margin-top:8px"></div>
+            </div>
+            <div id="fmt-ov-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">📞💻 1-on-1 Virtual Slots</div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="font-size:12px;font-weight:500">Description shown to candidates</label>
+                <textarea id="fmt-ov-desc" class="form-control" rows="2" placeholder="e.g. Schedule a quick phone or video call to discuss next steps" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+                <span style="font-size:12px;color:#888">Virtual time slots for candidates to book</span>
+                <button class="btn btn-sm btn-outline" onclick="showBookingSlotModal('${iv.id}','recruiter_call')">+ Add Virtual Slot</button>
+              </div>
+              <div id="fmt-ov-slots-list" style="margin-top:8px"></div>
+            </div>
+            <div id="fmt-oip-settings" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-bottom:12px">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">🤝🏢 1-on-1 In-Person Slots</div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="font-size:12px;font-weight:500">Description shown to candidates</label>
+                <textarea id="fmt-oip-desc" class="form-control" rows="2" placeholder="e.g. Meet in person to discuss the opportunity face-to-face" style="font-size:13px" onchange="saveFormatOptions('${iv.id}')"></textarea>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+                <span style="font-size:12px;color:#888">In-person time slots for candidates to book</span>
+                <button class="btn btn-sm btn-outline" onclick="showBookingSlotModal('${iv.id}','in_person')">+ Add In-Person Slot</button>
+              </div>
+              <div id="fmt-oip-slots-list" style="margin-top:8px"></div>
             </div>
           </div>
         </div>
@@ -1676,12 +1703,19 @@ async function renderInterviewDetail() {
     <div class="modal-overlay" id="modal-booking-slot" onclick="if(event.target===this)this.classList.remove('show')">
       <div class="modal">
         <div class="modal-header"><h2>Add Time Slot</h2><button class="modal-close" onclick="document.getElementById('modal-booking-slot').classList.remove('show')">×</button></div>
+        <div class="form-group"><label>Slot Type</label>
+          <select id="bs-type" class="form-control" onchange="document.getElementById('bs-url-row').style.display=this.value!=='in_person'?'':'none';document.getElementById('bs-phone-row').style.display=this.value!=='in_person'?'':'none';document.getElementById('bs-location-row').style.display=this.value==='in_person'?'':'none'">
+            <option value="recruiter_call">Phone / Video Call</option>
+            <option value="in_person">In-Person Meeting</option>
+          </select>
+        </div>
         <div class="form-row" style="display:flex;gap:12px">
           <div class="form-group" style="flex:1"><label>Date & Time</label><input id="bs-date" type="datetime-local" class="form-control"></div>
           <div class="form-group" style="flex:1"><label>Duration (minutes)</label><input id="bs-duration" type="number" class="form-control" value="30" min="15" step="15"></div>
         </div>
-        <div class="form-group"><label>Meeting URL (for virtual)</label><input id="bs-url" class="form-control" placeholder="https://zoom.us/j/..."></div>
-        <div class="form-group"><label>Phone Number (for calls)</label><input id="bs-phone" class="form-control" placeholder="(555) 123-4567"></div>
+        <div class="form-group" id="bs-url-row"><label>Meeting URL (for virtual)</label><input id="bs-url" class="form-control" placeholder="https://zoom.us/j/..."></div>
+        <div class="form-group" id="bs-phone-row"><label>Phone Number (for calls)</label><input id="bs-phone" class="form-control" placeholder="(555) 123-4567"></div>
+        <div class="form-group" id="bs-location-row" style="display:none"><label>Location / Address</label><input id="bs-location" class="form-control" placeholder="123 Main St, Suite 200"></div>
         <div class="modal-footer">
           <button class="btn btn-outline" onclick="document.getElementById('modal-booking-slot').classList.remove('show')">Cancel</button>
           <button class="btn btn-primary" onclick="createBookingSlot('${iv.id}')">Add Slot</button>
@@ -1849,21 +1883,30 @@ async function loadFormatOptions(interviewId) {
     loading.style.display = 'none';
     body.style.display = 'block';
     const fmts = cfg.formats_enabled || ['video'];
-    document.getElementById('fmt-group').checked = fmts.includes('group_session');
-    document.getElementById('fmt-ono').checked = fmts.includes('one_on_one');
-    document.getElementById('fmt-group-settings').style.display = fmts.includes('group_session') ? 'block' : 'none';
-    document.getElementById('fmt-ono-settings').style.display = fmts.includes('one_on_one') ? 'block' : 'none';
-    document.getElementById('fmt-group-desc').value = cfg.group_session_description || '';
-    document.getElementById('fmt-ono-desc').value = cfg.one_on_one_description || '';
-    document.getElementById('fmt-ono-type').value = cfg.one_on_one_type || 'recruiter_call';
-    // Highlight checked labels
-    document.getElementById('fmt-group-label').style.borderColor = fmts.includes('group_session') ? 'var(--primary)' : '#e5e7eb';
-    document.getElementById('fmt-group-label').style.background = fmts.includes('group_session') ? '#f0fdf0' : '#fff';
-    document.getElementById('fmt-ono-label').style.borderColor = fmts.includes('one_on_one') ? 'var(--primary)' : '#e5e7eb';
-    document.getElementById('fmt-ono-label').style.background = fmts.includes('one_on_one') ? '#f0fdf0' : '#fff';
-    // Load group sessions list
-    if (fmts.includes('group_session')) loadGroupSessions(interviewId);
-    if (fmts.includes('one_on_one')) loadBookingSlots(interviewId);
+    // Backward compat: old 'group_session' enables both group checkboxes
+    const gv = fmts.includes('group_virtual') || fmts.includes('group_session');
+    const gip = fmts.includes('group_in_person') || fmts.includes('group_session');
+    const ov = fmts.includes('ono_virtual') || fmts.includes('one_on_one');
+    const oip = fmts.includes('ono_in_person') || fmts.includes('one_on_one');
+    document.getElementById('fmt-gv').checked = gv;
+    document.getElementById('fmt-gip').checked = gip;
+    document.getElementById('fmt-ov').checked = ov;
+    document.getElementById('fmt-oip').checked = oip;
+    // Show/hide settings panels
+    ['gv','gip','ov','oip'].forEach(k => {
+      const on = document.getElementById('fmt-'+k).checked;
+      document.getElementById('fmt-'+k+'-settings').style.display = on ? 'block' : 'none';
+      document.getElementById('fmt-'+k+'-label').style.borderColor = on ? 'var(--primary)' : '#e5e7eb';
+      document.getElementById('fmt-'+k+'-label').style.background = on ? '#f0fdf0' : '#fff';
+    });
+    // Load descriptions (reuse existing fields for backward compat)
+    document.getElementById('fmt-gv-desc').value = cfg.group_session_description || '';
+    document.getElementById('fmt-gip-desc').value = cfg.group_session_description || '';
+    document.getElementById('fmt-ov-desc').value = cfg.one_on_one_description || '';
+    document.getElementById('fmt-oip-desc').value = cfg.one_on_one_description || '';
+    // Load session/slot lists
+    if (gv || gip) loadGroupSessions(interviewId);
+    if (ov || oip) loadBookingSlots(interviewId);
   } catch (e) {
     const loading = document.getElementById('format-options-loading');
     if (loading) loading.textContent = 'Could not load format settings';
@@ -1872,19 +1915,23 @@ async function loadFormatOptions(interviewId) {
 
 let _fmtSaveTimer = null;
 async function saveFormatOptions(interviewId) {
-  const groupOn = document.getElementById('fmt-group').checked;
-  const onoOn = document.getElementById('fmt-ono').checked;
-  document.getElementById('fmt-group-settings').style.display = groupOn ? 'block' : 'none';
-  document.getElementById('fmt-ono-settings').style.display = onoOn ? 'block' : 'none';
-  document.getElementById('fmt-group-label').style.borderColor = groupOn ? 'var(--primary)' : '#e5e7eb';
-  document.getElementById('fmt-group-label').style.background = groupOn ? '#f0fdf0' : '#fff';
-  document.getElementById('fmt-ono-label').style.borderColor = onoOn ? 'var(--primary)' : '#e5e7eb';
-  document.getElementById('fmt-ono-label').style.background = onoOn ? '#f0fdf0' : '#fff';
+  const gv = document.getElementById('fmt-gv').checked;
+  const gip = document.getElementById('fmt-gip').checked;
+  const ov = document.getElementById('fmt-ov').checked;
+  const oip = document.getElementById('fmt-oip').checked;
+  ['gv','gip','ov','oip'].forEach(k => {
+    const on = document.getElementById('fmt-'+k).checked;
+    document.getElementById('fmt-'+k+'-settings').style.display = on ? 'block' : 'none';
+    document.getElementById('fmt-'+k+'-label').style.borderColor = on ? 'var(--primary)' : '#e5e7eb';
+    document.getElementById('fmt-'+k+'-label').style.background = on ? '#f0fdf0' : '#fff';
+  });
   clearTimeout(_fmtSaveTimer);
   _fmtSaveTimer = setTimeout(async () => {
     const fmts = ['video'];
-    if (groupOn) fmts.push('group_session');
-    if (onoOn) fmts.push('one_on_one');
+    if (gv) fmts.push('group_virtual');
+    if (gip) fmts.push('group_in_person');
+    if (ov) fmts.push('ono_virtual');
+    if (oip) fmts.push('ono_in_person');
     const status = document.getElementById('format-save-status');
     status.textContent = 'Saving...';
     try {
@@ -1892,16 +1939,15 @@ async function saveFormatOptions(interviewId) {
         method: 'PUT',
         body: JSON.stringify({
           formats_enabled: fmts,
-          group_session_description: document.getElementById('fmt-group-desc').value,
-          one_on_one_description: document.getElementById('fmt-ono-desc').value,
-          one_on_one_type: document.getElementById('fmt-ono-type').value
+          group_session_description: document.getElementById('fmt-gv-desc').value || document.getElementById('fmt-gip-desc').value,
+          one_on_one_description: document.getElementById('fmt-ov-desc').value || document.getElementById('fmt-oip-desc').value,
         })
       });
       status.textContent = 'Saved';
       status.style.color = '#0ace0a';
       setTimeout(() => { status.textContent = ''; }, 2000);
-      if (groupOn) loadGroupSessions(interviewId);
-      if (onoOn) loadBookingSlots(interviewId);
+      if (gv || gip) loadGroupSessions(interviewId);
+      if (ov || oip) loadBookingSlots(interviewId);
     } catch (e) {
       status.textContent = 'Error saving';
       status.style.color = '#dc2626';
@@ -1909,8 +1955,14 @@ async function saveFormatOptions(interviewId) {
   }, 600);
 }
 
-function showGroupSessionModal() { document.getElementById('modal-group-session').classList.add('show'); }
-function showBookingSlotModal() { document.getElementById('modal-booking-slot').classList.add('show'); }
+function showGroupSessionModal(interviewId, presetType) {
+  if (presetType) document.getElementById('gs-type').value = presetType;
+  document.getElementById('modal-group-session').classList.add('show');
+}
+function showBookingSlotModal(interviewId, presetType) {
+  if (presetType) document.getElementById('bs-type').value = presetType;
+  document.getElementById('modal-booking-slot').classList.add('show');
+}
 
 async function createGroupSession(interviewId) {
   const title = document.getElementById('gs-title').value.trim();
@@ -1934,30 +1986,38 @@ async function createGroupSession(interviewId) {
 }
 
 async function loadGroupSessions(interviewId) {
-  const el = document.getElementById('fmt-group-sessions-list');
-  if (!el) return;
   try {
     const res = await api(`/api/interviews/${interviewId}/group-sessions`);
     const sessions = Array.isArray(res) ? res : (res.sessions || []);
-    if (!sessions.length) {
-      el.innerHTML = '<div style="font-size:12px;color:#999;padding:6px 0">No sessions scheduled yet</div>';
-      return;
+    const virtualSessions = sessions.filter(s => s.session_type === 'virtual');
+    const inPersonSessions = sessions.filter(s => s.session_type === 'in_person');
+    function renderList(list, elId) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      if (!list.length) { el.innerHTML = '<div style="font-size:12px;color:#999;padding:6px 0">No sessions scheduled yet</div>'; return; }
+      el.innerHTML = list.map(s => {
+        const d = new Date(s.session_date);
+        const dateStr = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+        const timeStr = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+        const spots = s.capacity > 0 ? `${s.capacity - (s.rsvp_count||0)}/${s.capacity} spots` : 'Unlimited';
+        const icon = s.session_type === 'virtual' ? '💻' : '📍';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px;font-size:12px">
+          <div>${icon} <strong>${s.title || 'Info Session'}</strong> — ${dateStr} at ${timeStr} (${s.duration_minutes}min)</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="color:#888">${spots}</span>
+            <button class="btn btn-sm btn-outline" style="font-size:11px;padding:2px 6px;color:#dc2626;border-color:#dc2626" onclick="deleteGroupSession('${interviewId}','${s.id}')">×</button>
+          </div>
+        </div>`;
+      }).join('');
     }
-    el.innerHTML = sessions.map(s => {
-      const d = new Date(s.session_date);
-      const dateStr = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
-      const timeStr = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
-      const spots = s.capacity > 0 ? `${s.capacity - (s.rsvp_count||0)}/${s.capacity} spots` : 'Unlimited';
-      const icon = s.session_type === 'virtual' ? '💻' : '📍';
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px;font-size:12px">
-        <div>${icon} <strong>${s.title || 'Info Session'}</strong> — ${dateStr} at ${timeStr} (${s.duration_minutes}min)</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="color:#888">${spots}</span>
-          <button class="btn btn-sm btn-outline" style="font-size:11px;padding:2px 6px;color:#dc2626;border-color:#dc2626" onclick="deleteGroupSession('${interviewId}','${s.id}')">×</button>
-        </div>
-      </div>`;
-    }).join('');
-  } catch (e) { el.innerHTML = '<div style="font-size:12px;color:#dc2626">Error loading sessions</div>'; }
+    renderList(virtualSessions, 'fmt-gv-sessions-list');
+    renderList(inPersonSessions, 'fmt-gip-sessions-list');
+  } catch (e) {
+    ['fmt-gv-sessions-list','fmt-gip-sessions-list'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<div style="font-size:12px;color:#dc2626">Error loading sessions</div>';
+    });
+  }
 }
 
 async function deleteGroupSession(interviewId, sessionId) {
@@ -1979,7 +2039,7 @@ async function createBookingSlot(interviewId) {
         duration_minutes: parseInt(document.getElementById('bs-duration').value) || 30,
         meeting_url: document.getElementById('bs-url').value,
         phone_number: document.getElementById('bs-phone').value,
-        slot_type: document.getElementById('fmt-ono-type').value || 'recruiter_call'
+        slot_type: document.getElementById('bs-type').value || 'recruiter_call'
       }]
     });
     document.getElementById('modal-booking-slot').classList.remove('show');
@@ -1989,30 +2049,38 @@ async function createBookingSlot(interviewId) {
 }
 
 async function loadBookingSlots(interviewId) {
-  const el = document.getElementById('fmt-ono-slots-list');
-  if (!el) return;
   try {
     const res = await api(`/api/interviews/${interviewId}/booking-slots`);
     const slots = Array.isArray(res) ? res : (res.slots || []);
-    if (!slots.length) {
-      el.innerHTML = '<div style="font-size:12px;color:#999;padding:6px 0">No time slots added yet</div>';
-      return;
+    const virtualSlots = slots.filter(s => s.slot_type !== 'in_person');
+    const inPersonSlots = slots.filter(s => s.slot_type === 'in_person');
+    function renderList(list, elId) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      if (!list.length) { el.innerHTML = '<div style="font-size:12px;color:#999;padding:6px 0">No time slots added yet</div>'; return; }
+      el.innerHTML = list.map(s => {
+        const d = new Date(s.slot_date);
+        const dateStr = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+        const timeStr = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+        const booked = s.is_booked ? '<span style="color:#0ace0a;font-weight:600">Booked</span>' : '<span style="color:#888">Open</span>';
+        const typeIcon = s.slot_type === 'in_person' ? '📍' : '📞';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px;font-size:12px">
+          <div>${typeIcon} ${dateStr} at ${timeStr} (${s.duration_minutes}min)</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${booked}
+            ${!s.is_booked ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:2px 6px;color:#dc2626;border-color:#dc2626" onclick="deleteBookingSlot('${interviewId}','${s.id}')">×</button>` : ''}
+          </div>
+        </div>`;
+      }).join('');
     }
-    el.innerHTML = slots.map(s => {
-      const d = new Date(s.slot_date);
-      const dateStr = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
-      const timeStr = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
-      const booked = s.is_booked ? '<span style="color:#0ace0a;font-weight:600">Booked</span>' : '<span style="color:#888">Open</span>';
-      const typeIcon = s.slot_type === 'in_person' ? '📍' : '📞';
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px;font-size:12px">
-        <div>${typeIcon} ${dateStr} at ${timeStr} (${s.duration_minutes}min)</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${booked}
-          ${!s.is_booked ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:2px 6px;color:#dc2626;border-color:#dc2626" onclick="deleteBookingSlot('${interviewId}','${s.id}')">×</button>` : ''}
-        </div>
-      </div>`;
-    }).join('');
-  } catch (e) { el.innerHTML = '<div style="font-size:12px;color:#dc2626">Error loading slots</div>'; }
+    renderList(virtualSlots, 'fmt-ov-slots-list');
+    renderList(inPersonSlots, 'fmt-oip-slots-list');
+  } catch (e) {
+    ['fmt-ov-slots-list','fmt-oip-slots-list'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<div style="font-size:12px;color:#dc2626">Error loading slots</div>';
+    });
+  }
 }
 
 async function deleteBookingSlot(interviewId, slotId) {
