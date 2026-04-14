@@ -16377,12 +16377,13 @@ def api_create_booking_slots_c29(interview_id):
         for slot in slots:
             sid = str(uuid.uuid4())
             db.execute("""INSERT INTO booking_slots
-                (id, interview_id, user_id, slot_date, duration_minutes, slot_type, meeting_url, phone_number, status)
-                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (id, interview_id, user_id, slot_date, duration_minutes, slot_type, meeting_url, phone_number, location, status)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (sid, interview_id, g.user_id, slot['date'],
                  slot.get('duration_minutes', 30),
                  slot.get('slot_type', 'recruiter_call'),
-                 slot.get('meeting_url', ''), slot.get('phone_number', ''), 'available'))
+                 slot.get('meeting_url', ''), slot.get('phone_number', ''),
+                 slot.get('location', ''), 'available'))
             created.append(sid)
         db.commit()
         return jsonify({'message': f'{len(created)} slot(s) created', 'slot_ids': created})
@@ -16600,8 +16601,9 @@ def candidate_book_slot_c29(token, slot_id):
                 'date': sd['slot_date'],
                 'duration_minutes': sd['duration_minutes'],
                 'slot_type': sd['slot_type'],
-                'meeting_url': sd['meeting_url'],
-                'phone_number': sd['phone_number']
+                'meeting_url': sd.get('meeting_url', ''),
+                'phone_number': sd.get('phone_number', ''),
+                'location': sd.get('location', '')
             }
         })
     finally:

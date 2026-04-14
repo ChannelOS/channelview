@@ -7,8 +7,8 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;overflow:hidden;height:100vh;width:100vw}
-.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transform:scale(.97);transition:opacity .8s ease,transform .8s ease;padding:40px;text-align:center}
-.slide.active{opacity:1;transform:scale(1)}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transform:scale(.97);transition:opacity .8s ease,transform .8s ease;padding:40px 40px 100px;text-align:center;pointer-events:none}
+.slide.active{opacity:1;transform:scale(1);pointer-events:auto}
 .slide.exit{opacity:0;transform:scale(1.03)}
 
 /* Slide 1 - Hook */
@@ -47,10 +47,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .s5 h2{font-size:clamp(22px,4vw,38px);font-weight:800;margin-bottom:12px}
 .s5 p{font-size:clamp(14px,2vw,18px);color:#888;max-width:500px;line-height:1.6}
 
-.progress{position:fixed;bottom:0;left:0;height:4px;background:#0ace0a;transition:width .8s ease;z-index:10}
-.brand{position:fixed;top:20px;left:24px;display:flex;align-items:center;gap:10px;opacity:.6}
+.progress{position:fixed;bottom:0;left:0;height:4px;background:#0ace0a;transition:width .5s ease;z-index:10}
+.brand{position:fixed;top:20px;left:24px;display:flex;align-items:center;gap:10px;opacity:.6;z-index:20}
 .brand .logo{background:#0ace0a;color:#000;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
 .brand span{font-size:13px;color:#888;font-weight:500}
+
+/* Navigation */
+.nav-bar{position:fixed;bottom:20px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:16px;z-index:20;padding:0 24px}
+.nav-btn{background:#0ace0a;color:#000;border:none;padding:14px 36px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s ease;display:flex;align-items:center;gap:8px}
+.nav-btn:hover{background:#08e608;transform:scale(1.03)}
+.nav-btn:active{transform:scale(.98)}
+.slide-counter{font-size:13px;color:#666;position:fixed;bottom:28px;right:24px;z-index:20}
 
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 </style>
@@ -60,31 +67,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="brand"><div class="logo">C</div><span id="brandName">ChannelView</span></div>
 
 <!-- Slide 1: Hook -->
-<div class="slide s1 active" data-duration="5000">
+<div class="slide s1 active">
   <h1>A Career Where You <span>Help People</span> and Build Something of Your Own</h1>
   <p>This isn't just a job — it's a chance to make a real difference in people's lives while building long-term income and flexibility.</p>
 </div>
 
 <!-- Slide 2: What You'll Do -->
-<div class="slide s2" data-duration="7000">
+<div class="slide s2">
   <h2>What Your Day Looks Like</h2>
   <div class="cards">
-    <div class="card" data-delay="300">
+    <div class="card" data-delay="200">
       <div class="emoji">🤝</div>
       <h3>Meet with Clients</h3>
       <p>Connect with businesses and families to understand what they need</p>
     </div>
-    <div class="card" data-delay="600">
+    <div class="card" data-delay="400">
       <div class="emoji">💡</div>
       <h3>Educate & Advise</h3>
       <p>Help people understand their options and find the right coverage</p>
     </div>
-    <div class="card" data-delay="900">
+    <div class="card" data-delay="600">
       <div class="emoji">📈</div>
       <h3>Grow Your Book</h3>
       <p>Build relationships that turn into referrals and long-term revenue</p>
     </div>
-    <div class="card" data-delay="1200">
+    <div class="card" data-delay="800">
       <div class="emoji">🎯</div>
       <h3>Set Your Pace</h3>
       <p>Work on your own schedule with the freedom to run your business your way</p>
@@ -93,43 +100,49 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <!-- Slide 3: What You Get -->
-<div class="slide s3" data-duration="6000">
+<div class="slide s3">
   <h2>What's In It For You</h2>
   <div class="perks">
-    <div class="perk" data-delay="300"><div class="perk-inner"><span class="check">✓</span><span>Comprehensive training from day one</span></div></div>
-    <div class="perk" data-delay="500"><div class="perk-inner"><span class="check">✓</span><span>Flexible schedule — real work-life balance</span></div></div>
-    <div class="perk" data-delay="700"><div class="perk-inner"><span class="check">✓</span><span>Competitive first-year earning potential</span></div></div>
-    <div class="perk" data-delay="900"><div class="perk-inner"><span class="check">✓</span><span>Residual income that grows over time</span></div></div>
-    <div class="perk" data-delay="1100"><div class="perk-inner"><span class="check">✓</span><span>Career growth into leadership roles</span></div></div>
-    <div class="perk" data-delay="1300"><div class="perk-inner"><span class="check">✓</span><span>Bonuses, incentive trips, and recognition</span></div></div>
+    <div class="perk" data-delay="200"><div class="perk-inner"><span class="check">✓</span><span>Comprehensive training from day one</span></div></div>
+    <div class="perk" data-delay="350"><div class="perk-inner"><span class="check">✓</span><span>Flexible schedule — real work-life balance</span></div></div>
+    <div class="perk" data-delay="500"><div class="perk-inner"><span class="check">✓</span><span>Competitive first-year earning potential</span></div></div>
+    <div class="perk" data-delay="650"><div class="perk-inner"><span class="check">✓</span><span>Residual income that grows over time</span></div></div>
+    <div class="perk" data-delay="800"><div class="perk-inner"><span class="check">✓</span><span>Career growth into leadership roles</span></div></div>
+    <div class="perk" data-delay="950"><div class="perk-inner"><span class="check">✓</span><span>Bonuses, incentive trips, and recognition</span></div></div>
   </div>
 </div>
 
 <!-- Slide 4: Who Thrives -->
-<div class="slide s4" data-duration="6000">
+<div class="slide s4">
   <h2>People Who Thrive Here</h2>
   <div class="traits">
-    <div class="trait" data-delay="300"><div class="dot"></div><span>Self-starters who like being in charge of their own success</span></div>
-    <div class="trait" data-delay="600"><div class="dot"></div><span>People who genuinely enjoy helping others</span></div>
-    <div class="trait" data-delay="900"><div class="dot"></div><span>Strong communicators who build trust quickly</span></div>
-    <div class="trait" data-delay="1200"><div class="dot"></div><span>Driven individuals looking for unlimited growth potential</span></div>
-    <div class="trait" data-delay="1500"><div class="dot"></div><span>No experience required — just the right mindset</span></div>
+    <div class="trait" data-delay="200"><div class="dot"></div><span>Self-starters who like being in charge of their own success</span></div>
+    <div class="trait" data-delay="400"><div class="dot"></div><span>People who genuinely enjoy helping others</span></div>
+    <div class="trait" data-delay="600"><div class="dot"></div><span>Strong communicators who build trust quickly</span></div>
+    <div class="trait" data-delay="800"><div class="dot"></div><span>Driven individuals looking for unlimited growth potential</span></div>
+    <div class="trait" data-delay="1000"><div class="dot"></div><span>No experience required — just the right mindset</span></div>
   </div>
 </div>
 
 <!-- Slide 5: CTA -->
-<div class="slide s5" data-duration="4000">
+<div class="slide s5">
   <div class="emoji-big">🚀</div>
   <h2>Sound Like You?</h2>
   <p>Great — that's why you're here. The next step is a few quick interview questions so we can get to know you better. Let's go!</p>
 </div>
 
+<div class="nav-bar">
+  <button class="nav-btn" id="nextBtn" onclick="advance()">Next →</button>
+</div>
+<div class="slide-counter" id="counter">1 / 5</div>
 <div class="progress" id="progress"></div>
 
 <script>
 (function(){
   var slides = document.querySelectorAll('.slide');
   var progress = document.getElementById('progress');
+  var counter = document.getElementById('counter');
+  var btn = document.getElementById('nextBtn');
   var current = 0;
   var total = slides.length;
 
@@ -137,7 +150,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     if(e.data && e.data.agencyName) document.getElementById('brandName').textContent = e.data.agencyName;
   });
 
-  function updateProgress(){ progress.style.width = ((current+1)/total*100)+'%'; }
+  function updateProgress(){
+    progress.style.width = ((current+1)/total*100)+'%';
+    counter.textContent = (current+1)+' / '+total;
+  }
 
   function animateChildren(){
     var els = slides[current].querySelectorAll('[data-delay]');
@@ -146,9 +162,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     });
   }
 
-  function next(){
+  window.advance = function(){
     if(current >= total-1){
-      setTimeout(function(){ window.parent && window.parent.postMessage({introComplete:true},'*'); }, 3500);
+      window.parent && window.parent.postMessage({introComplete:true},'*');
       return;
     }
     slides[current].classList.remove('active');
@@ -157,12 +173,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     slides[current].classList.add('active');
     updateProgress();
     animateChildren();
-    setTimeout(next, parseInt(slides[current].dataset.duration||5000));
-  }
+
+    if(current === total-1){
+      btn.textContent = 'Start Interview →';
+    }
+  };
 
   updateProgress();
   animateChildren();
-  setTimeout(next, parseInt(slides[0].dataset.duration||5000));
 })();
 </script>
 </body>

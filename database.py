@@ -913,6 +913,7 @@ def init_db():
         description TEXT,
         thumbnail_emoji TEXT DEFAULT '👋',
         html_path TEXT NOT NULL,
+        media_type TEXT DEFAULT 'html',
         category TEXT DEFAULT 'general',
         is_system INTEGER DEFAULT 1,
         user_id TEXT,
@@ -933,6 +934,35 @@ def init_db():
             VALUES (?, ?, ?, ?, ?, ?, 1, ?)""", ('intro_opportunity', 'The Opportunity', 'Paints the picture - what the role looks like day-to-day, benefits, flexibility, and growth potential.', '\U0001f680', '/static/intros/opportunity.html', 'opportunity', 30))
             conn.execute("""INSERT INTO intro_templates (id, name, description, thumbnail_emoji, html_path, category, is_system, duration_seconds)
             VALUES (?, ?, ?, ?, ?, ?, 1, ?)""", ('intro_team', 'Why Our Team', 'Culture, support system, training path, and what makes this team different.', '\U0001f91d', '/static/intros/team.html', 'culture', 30))
+            conn.commit()
+    except:
+        try:
+            conn.rollback()
+        except:
+            pass
+
+    # Seed pro video intro templates (Cycle 37)
+    try:
+        existing_pro = conn.execute("SELECT id FROM intro_templates WHERE id LIKE 'pro_%'").fetchall()
+        if len(existing_pro) == 0:
+            conn.execute("""INSERT OR IGNORE INTO intro_templates
+                (id, name, description, thumbnail_emoji, html_path, media_type, category, is_system, duration_seconds)
+                VALUES (?, ?, ?, ?, ?, 'video', ?, 1, ?)""",
+                ('pro_welcome', 'Pro: Welcome Message',
+                 'Professionally produced welcome video — polished, warm, and sets the right tone for candidates.',
+                 '🎬', '/static/intros/pro_welcome.mp4', 'general', 60))
+            conn.execute("""INSERT OR IGNORE INTO intro_templates
+                (id, name, description, thumbnail_emoji, html_path, media_type, category, is_system, duration_seconds)
+                VALUES (?, ?, ?, ?, ?, 'video', ?, 1, ?)""",
+                ('pro_opportunity', 'Pro: The Opportunity',
+                 'Professionally produced overview of the career opportunity — benefits, flexibility, and earning potential.',
+                 '🎬', '/static/intros/pro_opportunity.mp4', 'opportunity', 90))
+            conn.execute("""INSERT OR IGNORE INTO intro_templates
+                (id, name, description, thumbnail_emoji, html_path, media_type, category, is_system, duration_seconds)
+                VALUES (?, ?, ?, ?, ?, 'video', ?, 1, ?)""",
+                ('pro_culture', 'Pro: Team & Culture',
+                 'Professionally produced team culture video — real stories, real people, why this team is different.',
+                 '🎬', '/static/intros/pro_culture.mp4', 'culture', 90))
             conn.commit()
     except:
         try:
@@ -1061,6 +1091,8 @@ def init_db():
         ("candidates", "interest_rating", "INTEGER"),
         ("candidates", "interest_comment", "TEXT"),
         ("candidates", "interest_rated_at", "TIMESTAMP"),
+        # Cycle 37: Pro video intros
+        ("intro_templates", "media_type", "TEXT DEFAULT 'html'"),
     ]
     for table, col, coltype in migrations:
         try:
@@ -2367,6 +2399,7 @@ def init_db():
             slot_type TEXT DEFAULT 'recruiter_call',
             meeting_url TEXT,
             phone_number TEXT,
+            location TEXT,
             is_booked INTEGER DEFAULT 0,
             booked_by_candidate_id TEXT,
             booked_at TIMESTAMP,
@@ -2405,6 +2438,12 @@ def init_db():
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
         except:
             pass
+
+    # Cycle 37: Add location column to booking_slots for in-person meetings
+    try:
+        conn.execute("ALTER TABLE booking_slots ADD COLUMN location TEXT")
+    except:
+        pass
 
     # ======================== CYCLE 29B: SCHEDULING & 2ND INTERVIEWS ========================
     # Recurring availability patterns, conflict detection, 2nd interview scheduling

@@ -213,6 +213,7 @@ async function bookSlot(slotId) {
     details += `<div style="color:#aaa">${s.duration_minutes || 30} minutes</div>`;
     if (s.meeting_url) details += `<div style="margin-top:8px"><a href="${s.meeting_url}" style="color:var(--brand)" target="_blank">Meeting Link</a></div>`;
     if (s.phone_number) details += `<div style="color:#aaa;margin-top:4px">📞 ${s.phone_number}</div>`;
+    if (s.location) details += `<div style="color:#aaa;margin-top:4px">📍 ${s.location}</div>`;
     showConfirm("Meeting Booked!", "Your time slot has been confirmed. We'll be in touch!", details);
   } catch(e) { alert('Something went wrong. Please try again.'); }
 }

@@ -1,5 +1,5 @@
 #!/bin/bash
-# ChannelView Production Deploy Script — Cycle 36+
+# ChannelView Production Deploy Script — Cycle 37+
 # Location on server: /opt/channelview/deploy.sh
 # This script pulls latest code from GitHub and deploys to Docker container
 
@@ -35,7 +35,7 @@ echo ""
 echo "[3/4] Copying additional files..."
 
 # Templates (candidate-facing pages)
-for tmpl in candidate_interview.html candidate_format_choice.html; do
+for tmpl in candidate_interview.html candidate_format_choice.html candidate_done.html candidate_error.html; do
     if [ -f "templates/$tmpl" ]; then
         docker cp "templates/$tmpl" $CONTAINER:/app/templates/$tmpl
         echo "  + templates/$tmpl"
@@ -69,8 +69,20 @@ echo ""
 echo "=========================================="
 echo "  Deployment Verification"
 echo "=========================================="
-echo "File sizes inside container:"
+echo "Core file sizes inside container:"
 docker exec $CONTAINER sh -c 'wc -c /app/app.py /app/database.py /app/voice_service.py /app/static/js/app.js /app/static/css/app.css /app/templates/app.html 2>/dev/null || true'
+echo ""
+echo "Additional files:"
+docker exec $CONTAINER sh -c 'wc -c /app/email_service.py /app/seed_rsc_defaults.py 2>/dev/null || true'
+echo ""
+echo "Templates:"
+docker exec $CONTAINER sh -c 'wc -c /app/templates/candidate_interview.html /app/templates/candidate_format_choice.html /app/templates/candidate_done.html /app/templates/candidate_error.html 2>/dev/null || true'
+echo ""
+echo "Intro files:"
+docker exec $CONTAINER sh -c 'ls -la /app/static/intros/ 2>/dev/null || echo "  No intros directory"'
+echo ""
+echo "Container status:"
+docker ps --filter name=channelview --format "table {{.Names}}\t{{.Status}}"
 echo ""
 echo "Deployment complete! Check https://mychannelview.com"
 echo "=========================================="

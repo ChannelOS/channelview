@@ -1817,14 +1817,33 @@ async function loadIntroTemplates(interviewId) {
     // Get current interview to check which template is selected
     const iv = await api('/api/interviews/' + interviewId);
     const selectedId = iv.intro_template_id || '';
-    grid.innerHTML = templates.map(t => `
-      <div onclick="selectIntroTemplate('${interviewId}','${t.id}')" style="cursor:pointer;border:2px solid ${t.id===selectedId?'#0ace0a':'#e5e7eb'};border-radius:12px;padding:16px;text-align:center;transition:border-color .2s;background:${t.id===selectedId?'rgba(10,206,10,.05)':'#fff'}">
-        <div style="font-size:32px;margin-bottom:8px">${t.thumbnail_emoji || '👋'}</div>
-        <div style="font-size:14px;font-weight:600;margin-bottom:4px">${t.name}</div>
-        <div style="font-size:12px;color:#888;line-height:1.4">${t.description || ''}</div>
-        <div style="margin-top:8px;font-size:11px;color:${t.id===selectedId?'#0ace0a':'#aaa'}">${t.id===selectedId?'✓ Selected':'~'+t.duration_seconds+'s'}</div>
-      </div>
-    `).join('') + `
+    // Separate HTML animated intros and pro video intros
+    const htmlTemplates = templates.filter(t => t.media_type !== 'video');
+    const videoTemplates = templates.filter(t => t.media_type === 'video');
+    let html = '';
+    if (htmlTemplates.length) {
+      html += '<div style="grid-column:1/-1;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:-4px">Animated Intros</div>';
+      html += htmlTemplates.map(t => `
+        <div onclick="selectIntroTemplate('${interviewId}','${t.id}')" style="cursor:pointer;border:2px solid ${t.id===selectedId?'#0ace0a':'#e5e7eb'};border-radius:12px;padding:16px;text-align:center;transition:border-color .2s;background:${t.id===selectedId?'rgba(10,206,10,.05)':'#fff'}">
+          <div style="font-size:32px;margin-bottom:8px">${t.thumbnail_emoji || '👋'}</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">${t.name}</div>
+          <div style="font-size:12px;color:#888;line-height:1.4">${t.description || ''}</div>
+          <div style="margin-top:8px;font-size:11px;color:${t.id===selectedId?'#0ace0a':'#aaa'}">${t.id===selectedId?'✓ Selected':'~'+t.duration_seconds+'s'}</div>
+        </div>
+      `).join('');
+    }
+    if (videoTemplates.length) {
+      html += '<div style="grid-column:1/-1;font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:1px;margin-top:8px;margin-bottom:-4px">Pro Video Intros</div>';
+      html += videoTemplates.map(t => `
+        <div onclick="selectIntroTemplate('${interviewId}','${t.id}')" style="cursor:pointer;border:2px solid ${t.id===selectedId?'#0ace0a':'#e5e7eb'};border-radius:12px;padding:16px;text-align:center;transition:border-color .2s;background:${t.id===selectedId?'rgba(10,206,10,.05)':'#fff'}">
+          <div style="font-size:32px;margin-bottom:8px">${t.thumbnail_emoji || '🎬'}</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">${t.name}</div>
+          <div style="font-size:12px;color:#888;line-height:1.4">${t.description || ''}</div>
+          <div style="margin-top:8px;font-size:11px;color:${t.id===selectedId?'#0ace0a':'#aaa'}">${t.id===selectedId?'✓ Selected':'~'+t.duration_seconds+'s'}</div>
+        </div>
+      `).join('');
+    }
+    grid.innerHTML = html + `
       <div onclick="selectIntroTemplate('${interviewId}','')" style="cursor:pointer;border:2px solid ${!selectedId||selectedId===''?'#0ace0a':'#e5e7eb'};border-radius:12px;padding:16px;text-align:center;transition:border-color .2s;background:${!selectedId?'rgba(10,206,10,.05)':'#fff'}">
         <div style="font-size:32px;margin-bottom:8px">⏭️</div>
         <div style="font-size:14px;font-weight:600;margin-bottom:4px">No Intro</div>
@@ -1960,7 +1979,13 @@ function showGroupSessionModal(interviewId, presetType) {
   document.getElementById('modal-group-session').classList.add('show');
 }
 function showBookingSlotModal(interviewId, presetType) {
-  if (presetType) document.getElementById('bs-type').value = presetType;
+  const typeSelect = document.getElementById('bs-type');
+  if (presetType) typeSelect.value = presetType;
+  // Toggle field visibility to match the selected type
+  const isInPerson = typeSelect.value === 'in_person';
+  document.getElementById('bs-url-row').style.display = isInPerson ? 'none' : '';
+  document.getElementById('bs-phone-row').style.display = isInPerson ? 'none' : '';
+  document.getElementById('bs-location-row').style.display = isInPerson ? '' : 'none';
   document.getElementById('modal-booking-slot').classList.add('show');
 }
 
@@ -2033,15 +2058,19 @@ async function createBookingSlot(interviewId) {
   const sDate = document.getElementById('bs-date').value;
   if (!sDate) { toast('Please select a date and time', 'error'); return; }
   try {
-    await api('POST', `/api/interviews/${interviewId}/booking-slots`, {
-      slots: [{
-        date: sDate,
-        duration_minutes: parseInt(document.getElementById('bs-duration').value) || 30,
-        meeting_url: document.getElementById('bs-url').value,
-        phone_number: document.getElementById('bs-phone').value,
-        slot_type: document.getElementById('bs-type').value || 'recruiter_call'
-      }]
-    });
+    const slotType = document.getElementById('bs-type').value || 'recruiter_call';
+    const slotData = {
+      date: sDate,
+      duration_minutes: parseInt(document.getElementById('bs-duration').value) || 30,
+      slot_type: slotType
+    };
+    if (slotType === 'in_person') {
+      slotData.location = document.getElementById('bs-location').value;
+    } else {
+      slotData.meeting_url = document.getElementById('bs-url').value;
+      slotData.phone_number = document.getElementById('bs-phone').value;
+    }
+    await api('POST', `/api/interviews/${interviewId}/booking-slots`, { slots: [slotData] });
     document.getElementById('modal-booking-slot').classList.remove('show');
     toast('Time slot added!', 'success');
     loadBookingSlots(interviewId);

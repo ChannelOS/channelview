@@ -7,8 +7,8 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#111;color:#fff;overflow:hidden;height:100vh;width:100vw}
-.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transform:translateY(30px);transition:opacity .8s ease,transform .8s ease;padding:40px;text-align:center}
-.slide.active{opacity:1;transform:translateY(0)}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transform:translateY(30px);transition:opacity .8s ease,transform .8s ease;padding:40px 40px 100px;text-align:center;pointer-events:none}
+.slide.active{opacity:1;transform:translateY(0);pointer-events:auto}
 .slide.exit{opacity:0;transform:translateY(-30px)}
 
 /* Slide 1 - Big Welcome */
@@ -37,12 +37,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .s4 p{font-size:clamp(15px,2vw,20px);color:#aaa;max-width:500px;line-height:1.5}
 
 /* Progress bar */
-.progress{position:fixed;bottom:0;left:0;height:4px;background:#0ace0a;transition:width .8s ease;z-index:10}
+.progress{position:fixed;bottom:0;left:0;height:4px;background:#0ace0a;transition:width .5s ease;z-index:10}
 
 /* Branding */
-.brand{position:fixed;top:20px;left:24px;display:flex;align-items:center;gap:10px;opacity:.6}
+.brand{position:fixed;top:20px;left:24px;display:flex;align-items:center;gap:10px;opacity:.6;z-index:20}
 .brand .logo{background:#0ace0a;color:#000;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
 .brand span{font-size:13px;color:#888;font-weight:500}
+
+/* Navigation */
+.nav-bar{position:fixed;bottom:20px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:16px;z-index:20;padding:0 24px}
+.nav-btn{background:#0ace0a;color:#000;border:none;padding:14px 36px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s ease;display:flex;align-items:center;gap:8px}
+.nav-btn:hover{background:#08e608;transform:scale(1.03)}
+.nav-btn:active{transform:scale(.98)}
+.slide-counter{font-size:13px;color:#666;position:fixed;bottom:28px;right:24px;z-index:20}
 
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
 </style>
@@ -52,27 +59,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="brand"><div class="logo">C</div><span id="brandName">ChannelView</span></div>
 
 <!-- Slide 1: Welcome -->
-<div class="slide s1 active" data-duration="4000">
+<div class="slide s1 active">
   <div class="icon">👋</div>
   <h1>Thanks for Being Here</h1>
   <p>We're excited you're interested. This short video interview is a chance for us to get to know each other a little better.</p>
 </div>
 
 <!-- Slide 2: How It Works -->
-<div class="slide s2" data-duration="6000">
+<div class="slide s2">
   <h2>Here's How This Works</h2>
   <div class="steps">
-    <div class="step-card" data-delay="400">
+    <div class="step-card" data-delay="200">
       <div class="num">1</div>
       <h3>Watch & Read</h3>
       <p>You'll see each question on screen with time to think before answering</p>
     </div>
-    <div class="step-card" data-delay="800">
+    <div class="step-card" data-delay="400">
       <div class="num">2</div>
       <h3>Record</h3>
       <p>Hit record and answer in your own words — keep it natural</p>
     </div>
-    <div class="step-card" data-delay="1200">
+    <div class="step-card" data-delay="600">
       <div class="num">3</div>
       <h3>Review</h3>
       <p>Watch your answer back and re-record if you'd like</p>
@@ -81,53 +88,54 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <!-- Slide 3: Encouragement -->
-<div class="slide s3" data-duration="5000">
+<div class="slide s3">
   <div class="quote">There are <span>no wrong answers</span>. We just want to hear your story and see if this could be a great fit.</div>
   <div class="subtext">Be yourself. Talk like you're having a conversation. That's all we're looking for.</div>
 </div>
 
 <!-- Slide 4: Ready -->
-<div class="slide s4" data-duration="3500">
+<div class="slide s4">
   <div class="ready-icon">
     <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
   </div>
   <h2>You're All Set</h2>
-  <p>When you're ready, close this intro and start your interview. Good luck!</p>
+  <p>When you're ready, click below to start your interview. Good luck!</p>
 </div>
 
+<div class="nav-bar">
+  <button class="nav-btn" id="nextBtn" onclick="advance()">Next →</button>
+</div>
+<div class="slide-counter" id="counter">1 / 4</div>
 <div class="progress" id="progress"></div>
 
 <script>
 (function(){
-  const slides = document.querySelectorAll('.slide');
-  const progress = document.getElementById('progress');
-  let current = 0;
-  const total = slides.length;
+  var slides = document.querySelectorAll('.slide');
+  var progress = document.getElementById('progress');
+  var counter = document.getElementById('counter');
+  var btn = document.getElementById('nextBtn');
+  var current = 0;
+  var total = slides.length;
 
-  // Accept brand name from parent
   window.addEventListener('message', function(e){
-    if(e.data && e.data.agencyName){
-      document.getElementById('brandName').textContent = e.data.agencyName;
-    }
+    if(e.data && e.data.agencyName) document.getElementById('brandName').textContent = e.data.agencyName;
   });
 
   function updateProgress(){
-    progress.style.width = ((current + 1) / total * 100) + '%';
+    progress.style.width = ((current+1)/total*100)+'%';
+    counter.textContent = (current+1)+' / '+total;
   }
 
-  function showCards(){
-    const cards = slides[current].querySelectorAll('.step-card');
-    cards.forEach(function(c){
-      setTimeout(function(){ c.classList.add('show'); }, parseInt(c.dataset.delay || 0));
+  function animateChildren(){
+    var els = slides[current].querySelectorAll('[data-delay]');
+    els.forEach(function(el){
+      setTimeout(function(){ el.classList.add('show'); }, parseInt(el.dataset.delay||0));
     });
   }
 
-  function next(){
-    if(current >= total - 1){
-      // Done — notify parent
-      setTimeout(function(){
-        window.parent && window.parent.postMessage({introComplete: true}, '*');
-      }, 3000);
+  window.advance = function(){
+    if(current >= total-1){
+      window.parent && window.parent.postMessage({introComplete:true},'*');
       return;
     }
     slides[current].classList.remove('active');
@@ -135,15 +143,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     current++;
     slides[current].classList.add('active');
     updateProgress();
-    showCards();
+    animateChildren();
 
-    var dur = parseInt(slides[current].dataset.duration || 4000);
-    setTimeout(next, dur);
-  }
+    if(current === total-1){
+      btn.textContent = 'Start Interview →';
+    }
+  };
 
   updateProgress();
-  var dur = parseInt(slides[0].dataset.duration || 4000);
-  setTimeout(next, dur);
+  animateChildren();
 })();
 </script>
 </body>
