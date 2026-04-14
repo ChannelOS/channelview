@@ -88,6 +88,7 @@ def csrf_protect():
     exempt = [
         '/api/auth/register', '/api/auth/login', '/api/auth/logout',
         '/api/interview/',  # Candidate-facing (no auth cookie context)
+        '/i/',  # Candidate-facing format choice (RSVP, book, choose-video)
         '/api/stripe/webhook',  # Stripe webhook uses its own signature verification
         '/api/v1/',  # Public API uses API key auth, not cookies
         '/api/integrations/zapier/webhook',  # Zapier inbound webhook
