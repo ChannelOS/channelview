@@ -2618,7 +2618,7 @@ def init_db():
     try:
         count = conn.execute("SELECT COUNT(*) FROM screening_scripts WHERE is_system=1").fetchone()[0]
         if count == 0:
-            conn.execute("""INSERT OR IGNORE INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
+            conn.execute("""INSERT INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""", (
                 'script_warm_lead', 'Warm Lead Script', 'warm_lead',
                 'Hi [CANDIDATE_NAME], this is [RSC_NAME] with [AGENCY_NAME]. Thanks so much for your interest in our Benefits Advisor opportunity! I saw you came across our opening and wanted to connect personally. Do you have a few minutes to chat about what we do and see if it might be a fit?',
@@ -2627,7 +2627,7 @@ def init_db():
                 'Here is what I would love to do  --  I would like to invite you to a short virtual information session where you can learn more, meet some of our team, and ask any questions. No commitment, no pressure. If after that you are excited, we will talk about next steps. Does [DATE] at [TIME] work for you?',
                 'I totally understand the hesitation around commission-based work. What I can tell you is that our training program is designed to get you producing quickly  --  most new team members see their first paycheck within 2-3 weeks. And you are not doing this alone  --  you will have a mentor and a full support system. Why not come to the info session, get all your questions answered, and then decide?'
             ))
-            conn.execute("""INSERT OR IGNORE INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
+            conn.execute("""INSERT INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""", (
                 'script_cold_outreach', 'Cold Outreach Script', 'cold_outreach',
                 'Hi [CANDIDATE_NAME], this is [RSC_NAME] with [AGENCY_NAME]. I know I am catching you out of the blue, and I appreciate you taking the call. I am reaching out because we are expanding our team of Benefits Advisors in the [AREA] area, and your background caught my attention. Do you have just two minutes? I promise I will be respectful of your time.',
@@ -2636,7 +2636,7 @@ def init_db():
                 'I know cold calls can feel random, so here is what I would suggest  --  let me send you a quick 3-minute video overview that explains what we do. No commitment, no follow-up pressure. If it resonates, you can book a time to chat further. Can I grab your email to send that over?',
                 'I get it  --  unsolicited calls are not everyone is favorite thing, and I respect that. All I am asking for is 3 minutes of your time to watch a short video. If it is not for you, no hard feelings at all. But I would hate for you to miss out on something that could be a great fit just because of how you heard about it. Fair enough?'
             ))
-            conn.execute("""INSERT OR IGNORE INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
+            conn.execute("""INSERT INTO screening_scripts (id, name, script_type, opening, qualifying_questions, opportunity_pitch, next_steps, objection_handling, is_system)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""", (
                 'script_referral', 'Referral Script', 'referral',
                 'Hi [CANDIDATE_NAME], this is [RSC_NAME] with [AGENCY_NAME]. I am calling because [REFERRER_NAME] mentioned you might be a great fit for an opportunity on our team. They spoke really highly of you! Do you have a couple minutes? I would love to tell you what this is about.',
@@ -2652,25 +2652,25 @@ def init_db():
     try:
         count = conn.execute("SELECT COUNT(*) FROM scheduling_templates WHERE is_system=1").fetchone()[0]
         if count == 0:
-            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            conn.execute("""INSERT INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
             VALUES (?, ?, ?, ?, ?, 1)""", (
                 'sched_group_virtual', 'Group Virtual Session', 'group_virtual',
                 'You are Invited: Virtual Benefits Advisor Info Session  --  [DATE]',
                 'Hi [CANDIDATE_NAME],\n\nThank you for your interest in learning more about the Benefits Advisor opportunity with [AGENCY_NAME]!\n\nI would like to invite you to our upcoming virtual information session:\n\nDate: [DATE]\nTime: [TIME]\nFormat: Virtual (Zoom/Video Call)\nLink: [MEETING_LINK]\nDuration: Approximately [DURATION] minutes\n\nDuring this session, you will:\n- Learn about the role and what a typical day looks like\n- Hear from current team members about their experience\n- Get your questions answered in a relaxed, no-pressure setting\n\nNo preparation needed  --  just show up with an open mind and any questions you have.\n\nLooking forward to seeing you there!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
             ))
-            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            conn.execute("""INSERT INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
             VALUES (?, ?, ?, ?, ?, 1)""", (
                 'sched_group_inperson', 'Group In-Person Session', 'group_inperson',
                 'You are Invited: In-Person Benefits Advisor Info Session  --  [DATE]',
                 'Hi [CANDIDATE_NAME],\n\nThank you for your interest in the Benefits Advisor opportunity with [AGENCY_NAME]!\n\nI would like to invite you to our upcoming in-person information session:\n\nDate: [DATE]\nTime: [TIME]\nLocation: [LOCATION]\nDuration: Approximately [DURATION] minutes\nParking: [PARKING_DETAILS]\n\nDuring this session, you will:\n- Tour our office and meet the team\n- Learn about the role and career path\n- Get your questions answered face-to-face in a relaxed setting\n\nPlease arrive 5-10 minutes early. Business casual attire is fine  --  no need to dress up.\n\nLooking forward to meeting you!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
             ))
-            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            conn.execute("""INSERT INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
             VALUES (?, ?, ?, ?, ?, 1)""", (
                 'sched_1on1_virtual', '1-on-1 Virtual Meeting', 'one_on_one_virtual',
                 'Let us Connect: Virtual Chat About the Benefits Advisor Role',
                 'Hi [CANDIDATE_NAME],\n\nThank you for taking the time to learn about what we do! I would love to set up a quick 1-on-1 virtual chat to answer your questions and tell you more about the Benefits Advisor opportunity.\n\nHere are the details:\n\nDate: [DATE]\nTime: [TIME]\nFormat: Virtual (Video Call)\nLink: [MEETING_LINK]\nDuration: About [DURATION] minutes\n\nThis is a casual conversation  --  no interview, no pressure. I just want to learn a bit about you and share what makes this opportunity unique.\n\nIf the time does not work, just reply and we will find something better.\n\nTalk soon!\n\n[RSC_NAME]\n[AGENCY_NAME]\n[PHONE]'
             ))
-            conn.execute("""INSERT OR IGNORE INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
+            conn.execute("""INSERT INTO scheduling_templates (id, name, format_type, subject_line, body_text, is_system)
             VALUES (?, ?, ?, ?, ?, 1)""", (
                 'sched_1on1_inperson', '1-on-1 In-Person Meeting', 'one_on_one_inperson',
                 'Let us Meet: Coffee Chat About the Benefits Advisor Role',
@@ -2707,7 +2707,7 @@ def init_db():
                  'Hey [CANDIDATE_NAME],\n\nI noticed you were not able to make it to our session on [DATE]. No worries at all  --  life happens!\n\nI still think you would be a great fit for our team and I would love to reschedule. We have another session coming up on [NEW_DATE]  --  would that work better for you?\n\nIf your schedule has changed or you are no longer interested, totally understand. Just let me know either way.\n\nHope to hear from you!\n[RSC_NAME]\n[AGENCY_NAME]'),
             ]
             for seed in msg_seeds:
-                conn.execute("""INSERT OR IGNORE INTO message_templates (id, name, category, tone, subject_line, body_text, is_system)
+                conn.execute("""INSERT INTO message_templates (id, name, category, tone, subject_line, body_text, is_system)
                 VALUES (?, ?, ?, ?, ?, ?, 1)""", seed)
     except:
         pass
