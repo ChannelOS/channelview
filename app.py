@@ -9687,14 +9687,31 @@ def api_apply_c32(interview_id):
     token = str(uuid.uuid4())
     apply_answers = json.dumps(data.get('apply_answers', {}))
 
+    # Cycle 40: Detect campaign source from ref parameter
+    ref = data.get('ref') or request.args.get('ref', '')
+    campaign_id = data.get('campaign_id') or request.args.get('campaign_id', '')
+    crid = data.get('crid') or request.args.get('crid', '')
+    source = 'campaign' if ref == 'campaign' else 'apply_page'
+
     db.execute('''INSERT INTO candidates (id, user_id, interview_id, first_name, last_name, email,
                   phone, token, status, source, portal_status, linkedin_url, cover_letter,
-                  apply_answers_json, pipeline_stage)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'invited', 'apply_page', 'not_started', ?, ?, ?, 'new')''',
+                  apply_answers_json, pipeline_stage, campaign_id, campaign_recipient_id)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'invited', ?, 'not_started', ?, ?, ?, 'new', ?, ?)''',
                (candidate_id, intv['user_id'], interview_id, first_name, last_name, email,
-                data.get('phone', ''), token, data.get('linkedin_url', ''),
-                data.get('cover_letter', ''), apply_answers))
+                data.get('phone', ''), token, source, data.get('linkedin_url', ''),
+                data.get('cover_letter', ''), apply_answers,
+                campaign_id if campaign_id else None, crid if crid else None))
     db.commit()
+
+    # Cycle 40: Update campaign recipient status to 'applied'
+    if crid and campaign_id:
+        try:
+            db.execute("""UPDATE campaign_recipients SET status='applied', applied_at=CURRENT_TIMESTAMP,
+                candidate_id=? WHERE id=? AND campaign_id=?""", (candidate_id, crid, campaign_id))
+            db.execute("UPDATE campaigns SET applied_count = applied_count + 1 WHERE id=?", (campaign_id,))
+            db.commit()
+        except:
+            pass
 
     # ---- Cycle 38: Auto-Engage After Apply ----
     auto_mode = intv.get('auto_engage_mode', 'hold') or 'hold'
@@ -18500,6 +18517,440 @@ def api_save_generated_description_c38(interview_id):
     db.commit()
     db.close()
     return jsonify({'success': True})
+
+
+# ======================== CYCLE 40: OUTBOUND CAMPAIGN ENGINE ========================
+
+@app.route('/campaigns')
+@require_auth
+def campaigns_page_c40():
+    return render_template('app.html', page='campaigns', user=g.user)
+
+@app.route('/api/campaigns', methods=['GET'])
+@require_auth
+def api_list_campaigns_c40():
+    """List all campaigns for the authenticated user."""
+    db = get_db()
+    rows = db.execute('''SELECT c.*, i.title as interview_title
+        FROM campaigns c LEFT JOIN interviews i ON c.interview_id = i.id
+        WHERE c.user_id=? ORDER BY c.created_at DESC''', (g.user_id,)).fetchall()
+    campaigns = [dict(r) for r in rows]
+    db.close()
+    return jsonify({'campaigns': campaigns})
+
+@app.route('/api/campaigns', methods=['POST'])
+@require_auth
+def api_create_campaign_c40():
+    """Create a new campaign."""
+    data = request.get_json() or {}
+    db = get_db()
+    interview_id = data.get('interview_id')
+    if not interview_id:
+        db.close()
+        return jsonify({'error': 'interview_id is required'}), 400
+    interview = db.execute('SELECT id, title FROM interviews WHERE id=? AND user_id=?',
+                           (interview_id, g.user_id)).fetchone()
+    if not interview:
+        db.close()
+        return jsonify({'error': 'Interview not found'}), 404
+
+    cid = str(uuid.uuid4())
+    name = data.get('name', f'Campaign - {dict(interview)["title"]}')
+    subject = data.get('subject_line', 'An Exciting Career Opportunity')
+    headline = data.get('headline', "We Think You'd Be a Great Fit")
+    body_html = data.get('body_html', '')
+    cta_text = data.get('cta_text', "I'm Interested — Tell Me More")
+
+    db.execute('''INSERT INTO campaigns (id, user_id, interview_id, name, subject_line, headline, body_html, cta_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+        (cid, g.user_id, interview_id, name, subject, headline, body_html, cta_text))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'campaign': {'id': cid, 'name': name, 'status': 'draft'}}), 201
+
+@app.route('/api/campaigns/<campaign_id>', methods=['GET'])
+@require_auth
+def api_get_campaign_c40(campaign_id):
+    """Get campaign details with recipient stats."""
+    db = get_db()
+    campaign = db.execute('''SELECT c.*, i.title as interview_title
+        FROM campaigns c LEFT JOIN interviews i ON c.interview_id = i.id
+        WHERE c.id=? AND c.user_id=?''', (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    result = dict(campaign)
+    recip_count = db.execute('SELECT COUNT(*) as cnt FROM campaign_recipients WHERE campaign_id=?',
+                             (campaign_id,)).fetchone()['cnt']
+    result['recipient_count'] = recip_count
+    db.close()
+    return jsonify({'campaign': result})
+
+@app.route('/api/campaigns/<campaign_id>', methods=['PUT'])
+@require_auth
+def api_update_campaign_c40(campaign_id):
+    """Update a draft campaign."""
+    db = get_db()
+    campaign = db.execute('SELECT id, status FROM campaigns WHERE id=? AND user_id=?',
+                           (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    if dict(campaign)['status'] != 'draft':
+        db.close()
+        return jsonify({'error': 'Only draft campaigns can be edited'}), 400
+
+    data = request.get_json() or {}
+    fields = []
+    values = []
+    for f in ['name', 'subject_line', 'headline', 'body_html', 'cta_text', 'interview_id']:
+        if f in data:
+            fields.append(f'{f}=?')
+            values.append(data[f])
+    if fields:
+        fields.append('updated_at=CURRENT_TIMESTAMP')
+        values.append(campaign_id)
+        db.execute(f'UPDATE campaigns SET {", ".join(fields)} WHERE id=?', values)
+        db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/campaigns/<campaign_id>', methods=['DELETE'])
+@require_auth
+def api_delete_campaign_c40(campaign_id):
+    """Delete a campaign and its recipients."""
+    db = get_db()
+    campaign = db.execute('SELECT id FROM campaigns WHERE id=? AND user_id=?',
+                           (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    db.execute('DELETE FROM campaign_recipients WHERE campaign_id=?', (campaign_id,))
+    db.execute('DELETE FROM campaigns WHERE id=?', (campaign_id,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/campaigns/<campaign_id>/recipients', methods=['GET'])
+@require_auth
+def api_list_campaign_recipients_c40(campaign_id):
+    """List recipients for a campaign."""
+    db = get_db()
+    campaign = db.execute('SELECT id FROM campaigns WHERE id=? AND user_id=?',
+                           (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    rows = db.execute('SELECT * FROM campaign_recipients WHERE campaign_id=? ORDER BY created_at DESC',
+                      (campaign_id,)).fetchall()
+    recipients = [dict(r) for r in rows]
+    db.close()
+    return jsonify({'recipients': recipients})
+
+@app.route('/api/campaigns/<campaign_id>/recipients', methods=['POST'])
+@require_auth
+def api_add_campaign_recipients_c40(campaign_id):
+    """Add recipients to a campaign (bulk). Accepts array of {first_name, last_name, email, phone}."""
+    db = get_db()
+    campaign = db.execute('SELECT id, status FROM campaigns WHERE id=? AND user_id=?',
+                           (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    if dict(campaign)['status'] not in ('draft', 'ready'):
+        db.close()
+        return jsonify({'error': 'Cannot add recipients to a sent campaign'}), 400
+
+    data = request.get_json() or {}
+    contacts = data.get('recipients', [])
+    if not contacts:
+        db.close()
+        return jsonify({'error': 'No recipients provided'}), 400
+
+    existing = set()
+    rows = db.execute('SELECT email FROM campaign_recipients WHERE campaign_id=?', (campaign_id,)).fetchall()
+    for r in rows:
+        existing.add(dict(r)['email'].lower().strip())
+
+    added = 0
+    skipped = 0
+    for c in contacts:
+        email = (c.get('email') or '').lower().strip()
+        if not email or email in existing:
+            skipped += 1
+            continue
+        rid = str(uuid.uuid4())
+        db.execute('''INSERT INTO campaign_recipients (id, campaign_id, user_id, first_name, last_name, email, phone)
+            VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (rid, campaign_id, g.user_id, c.get('first_name',''), c.get('last_name',''), email, c.get('phone','')))
+        existing.add(email)
+        added += 1
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'added': added, 'skipped_duplicates': skipped}), 201
+
+@app.route('/api/campaigns/<campaign_id>/recipients/from-leads', methods=['POST'])
+@require_auth
+def api_add_recipients_from_leads_c40(campaign_id):
+    """Import recipients from the Lead Hub into a campaign."""
+    db = get_db()
+    campaign = db.execute('SELECT id, status FROM campaigns WHERE id=? AND user_id=?',
+                           (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+
+    data = request.get_json() or {}
+    lead_ids = data.get('lead_ids', [])
+    filters = data.get('filters', {})
+
+    if lead_ids:
+        placeholders = ','.join(['?'] * len(lead_ids))
+        leads = db.execute(f'SELECT * FROM sourced_leads WHERE id IN ({placeholders}) AND user_id=?',
+                           lead_ids + [g.user_id]).fetchall()
+    elif filters:
+        query = 'SELECT * FROM sourced_leads WHERE user_id=?'
+        params = [g.user_id]
+        if filters.get('status'):
+            query += ' AND status=?'
+            params.append(filters['status'])
+        if filters.get('state'):
+            query += ' AND state=?'
+            params.append(filters['state'])
+        if filters.get('source'):
+            query += ' AND source=?'
+            params.append(filters['source'])
+        leads = db.execute(query, params).fetchall()
+    else:
+        leads = db.execute('SELECT * FROM sourced_leads WHERE user_id=?', (g.user_id,)).fetchall()
+
+    existing = set()
+    rows = db.execute('SELECT email FROM campaign_recipients WHERE campaign_id=?', (campaign_id,)).fetchall()
+    for r in rows:
+        existing.add(dict(r)['email'].lower().strip())
+
+    added = 0
+    for lead in leads:
+        ld = dict(lead)
+        email = (ld.get('email') or '').lower().strip()
+        if not email or email in existing:
+            continue
+        rid = str(uuid.uuid4())
+        db.execute('''INSERT INTO campaign_recipients (id, campaign_id, user_id, first_name, last_name, email, phone)
+            VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (rid, campaign_id, g.user_id, ld.get('first_name',''), ld.get('last_name',''), email, ld.get('phone','')))
+        existing.add(email)
+        added += 1
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'added': added})
+
+@app.route('/api/campaigns/<campaign_id>/send', methods=['POST'])
+@require_auth
+def api_send_campaign_c40(campaign_id):
+    """Send a campaign to all pending recipients."""
+    db = get_db()
+    campaign = db.execute('''SELECT c.*, i.title as interview_title, i.id as iid
+        FROM campaigns c LEFT JOIN interviews i ON c.interview_id = i.id
+        WHERE c.id=? AND c.user_id=?''', (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    camp = dict(campaign)
+    if camp['status'] == 'sent':
+        db.close()
+        return jsonify({'error': 'Campaign has already been sent'}), 400
+
+    user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    recipients = db.execute('SELECT * FROM campaign_recipients WHERE campaign_id=? AND status=?',
+                            (campaign_id, 'pending')).fetchall()
+    if not recipients:
+        db.close()
+        return jsonify({'error': 'No pending recipients to send to'}), 400
+
+    brand_color = user.get('brand_color') or '#0ace0a'
+    agency_name = user.get('agency_name') or user.get('name', 'Our Team')
+    domain = request.host_url.rstrip('/')
+    interview_id = camp['interview_id']
+
+    smtp_config = {
+        'host': user.get('smtp_host', ''),
+        'port': int(user.get('smtp_port', 587) or 587),
+        'username': user.get('smtp_username', ''),
+        'password': user.get('smtp_password', ''),
+        'from_email': user.get('smtp_from_email') or user.get('email', 'noreply@mychannelview.com'),
+        'from_name': agency_name,
+        'sendgrid_api_key': user.get('sendgrid_api_key') or os.environ.get('SENDGRID_API_KEY', ''),
+    }
+
+    sent = 0
+    failed = 0
+    for row in recipients:
+        recip = dict(row)
+        first = recip.get('first_name') or 'there'
+        apply_link = f"{domain}/apply/{interview_id}?ref=campaign&crid={recip['id']}"
+        try:
+            from email_service import build_campaign_email
+            html = build_campaign_email(
+                recipient_name=first,
+                headline=camp['headline'],
+                body_html=camp['body_html'],
+                cta_text=camp['cta_text'],
+                apply_link=apply_link,
+                agency_name=agency_name,
+                brand_color=brand_color,
+                interview_title=camp.get('interview_title')
+            )
+            success, err = send_email(smtp_config, recip['email'], camp['subject_line'], html)
+            if success:
+                db.execute("UPDATE campaign_recipients SET status='sent', sent_at=CURRENT_TIMESTAMP WHERE id=?",
+                           (recip['id'],))
+                sent += 1
+            else:
+                db.execute("UPDATE campaign_recipients SET status='failed', error_message=? WHERE id=?",
+                           (str(err)[:500], recip['id']))
+                failed += 1
+        except Exception as e:
+            db.execute("UPDATE campaign_recipients SET status='failed', error_message=? WHERE id=?",
+                       (str(e)[:500], recip['id']))
+            failed += 1
+
+    db.execute('''UPDATE campaigns SET status='sent', sent_at=CURRENT_TIMESTAMP, sent_count=?,
+        updated_at=CURRENT_TIMESTAMP WHERE id=?''', (sent, campaign_id))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'sent': sent, 'failed': failed})
+
+@app.route('/api/campaigns/<campaign_id>/stats', methods=['GET'])
+@require_auth
+def api_campaign_stats_c40(campaign_id):
+    """Get detailed campaign analytics."""
+    db = get_db()
+    campaign = db.execute('SELECT * FROM campaigns WHERE id=? AND user_id=?',
+                           (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+
+    stats = {}
+    for status in ['pending', 'sent', 'delivered', 'opened', 'clicked', 'applied', 'failed']:
+        row = db.execute('SELECT COUNT(*) as cnt FROM campaign_recipients WHERE campaign_id=? AND status=?',
+                         (campaign_id, status)).fetchone()
+        stats[status] = row['cnt']
+    stats['total'] = sum(stats.values())
+
+    recent = db.execute('''SELECT first_name, last_name, email, status, applied_at, clicked_at
+        FROM campaign_recipients WHERE campaign_id=? AND status IN ('clicked','applied')
+        ORDER BY COALESCE(applied_at, clicked_at) DESC LIMIT 20''', (campaign_id,)).fetchall()
+    stats['recent_activity'] = [dict(r) for r in recent]
+    db.close()
+    return jsonify({'stats': stats})
+
+@app.route('/api/campaigns/<campaign_id>/track/click', methods=['GET'])
+def api_track_campaign_click_c40(campaign_id):
+    """Track when a recipient clicks the Apply link. Redirects to the apply page."""
+    crid = request.args.get('crid', '')
+    db = get_db()
+    if crid:
+        recip = db.execute('SELECT id, campaign_id FROM campaign_recipients WHERE id=?', (crid,)).fetchone()
+        if recip and dict(recip)['campaign_id'] == campaign_id:
+            db.execute("UPDATE campaign_recipients SET status='clicked', clicked_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('sent','delivered','opened')",
+                       (crid,))
+            db.execute("UPDATE campaigns SET clicked_count = clicked_count + 1 WHERE id=?", (campaign_id,))
+            db.commit()
+
+    campaign = db.execute('SELECT interview_id FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
+    db.close()
+    if campaign:
+        return redirect(f"/apply/{dict(campaign)['interview_id']}?ref=campaign&campaign_id={campaign_id}&crid={crid}")
+    return redirect('/')
+
+@app.route('/api/campaigns/preview', methods=['POST'])
+@require_auth
+def api_preview_campaign_email_c40():
+    """Preview campaign email HTML without sending."""
+    data = request.get_json() or {}
+    db = get_db()
+    user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    db.close()
+
+    brand_color = user.get('brand_color') or '#0ace0a'
+    agency_name = user.get('agency_name') or user.get('name', 'Our Team')
+
+    from email_service import build_campaign_email
+    html = build_campaign_email(
+        recipient_name=data.get('recipient_name', 'John'),
+        headline=data.get('headline', "We Think You'd Be a Great Fit"),
+        body_html=data.get('body_html', '<p>Check out this exciting opportunity...</p>'),
+        cta_text=data.get('cta_text', "I'm Interested — Tell Me More"),
+        apply_link='https://mychannelview.com/apply/preview',
+        agency_name=agency_name,
+        brand_color=brand_color,
+        interview_title=data.get('interview_title', 'Open Position')
+    )
+    return html, 200, {'Content-Type': 'text/html'}
+
+@app.route('/api/campaigns/<campaign_id>/generate-body', methods=['POST'])
+@require_auth
+def api_generate_campaign_body_c40(campaign_id):
+    """Use AI to generate the campaign email body from the interview's job description."""
+    db = get_db()
+    campaign = db.execute('''SELECT c.*, i.title as interview_title, i.description as interview_description,
+        i.generated_description FROM campaigns c LEFT JOIN interviews i ON c.interview_id = i.id
+        WHERE c.id=? AND c.user_id=?''', (campaign_id, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+
+    camp = dict(campaign)
+    user = dict(db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone())
+    db.close()
+
+    job_desc = camp.get('generated_description') or camp.get('interview_description') or ''
+    agency = user.get('agency_name') or user.get('name', '')
+
+    if not is_ai_available():
+        fallback = f'''<p>I came across your background and thought you might be interested in an opportunity on my team at <strong>{agency}</strong>.</p>
+<p>We're looking for motivated people who want flexibility, strong income potential, and the chance to help others protect what matters most to them.</p>
+<p><strong>What you'd be doing:</strong></p>
+<p>{job_desc if job_desc else "Working with clients to provide valuable insurance solutions, building relationships, and growing your own book of business."}</p>
+<p><strong>What's in it for you:</strong></p>
+<ul style="color:#374151;padding-left:20px">
+<li>Flexible schedule — build your own routine</li>
+<li>Uncapped earning potential with residual income</li>
+<li>Full training and mentorship provided</li>
+<li>A supportive team environment</li>
+</ul>
+<p>If this sounds interesting, I'd love to tell you more. Click below to learn about the role and let us know you're interested.</p>'''
+        return jsonify({'body_html': fallback, 'ai_generated': False})
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+        prompt = f"""Write a compelling, warm outbound recruiting email body for an insurance agency.
+The agency is {agency}. The position is {camp.get('interview_title', 'Benefits Advisor')}.
+
+Job description context: {job_desc[:1000] if job_desc else 'Insurance sales/benefits advisor role with flexibility and strong income potential.'}
+
+Requirements:
+- Write in HTML (p tags, ul/li for lists, strong for emphasis)
+- Tone: warm, personal, conversational — like a real person wrote it, not a corporate template
+- 150-250 words
+- Emphasize: flexibility, income potential, training/support, making a difference
+- Do NOT include any greeting (no "Hi" or "Dear") — that's added separately
+- Do NOT include any closing/signature — that's handled separately
+- Make it feel like an opportunity worth exploring, not a hard sell
+- End with a line that naturally leads into the CTA button"""
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        body_html = response.content[0].text
+        return jsonify({'body_html': body_html, 'ai_generated': True})
+    except Exception as e:
+        return jsonify({'error': f'AI generation failed: {str(e)}'}), 500
 
 
 # ======================== INIT & RUN ========================

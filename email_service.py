@@ -305,3 +305,43 @@ def build_completion_email(candidate_name, interview_title, agency_name, brand_c
       Feel free to reply if anything comes to mind — I'm always happy to answer questions.
     </p>'''
     return _base_template(brand_color, agency_name, content)
+
+
+# ======================== CYCLE 40: CAMPAIGN EMAIL ========================
+
+def build_campaign_email(recipient_name, headline, body_html, cta_text, apply_link, agency_name, brand_color, interview_title=None):
+    """Build an outbound campaign email with job description and Apply CTA."""
+    title_block = ''
+    if interview_title:
+        title_block = f'''
+    <div style="background:#f0fdf4;border-left:4px solid {brand_color};border-radius:0 8px 8px 0;padding:14px 20px;margin-bottom:24px">
+      <p style="margin:0 0 2px;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Position</p>
+      <p style="margin:0;font-size:17px;color:#111;font-weight:700">{interview_title}</p>
+    </div>'''
+
+    content = f'''
+    <h1 style="margin:0 0 12px;font-size:24px;color:#111;line-height:1.3">{headline}</h1>
+    <p style="color:#6b7280;font-size:15px;margin:0 0 20px;line-height:1.5">
+      Hi {recipient_name},
+    </p>
+    {title_block}
+    <div style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 28px">
+      {body_html}
+    </div>
+    <div style="text-align:center;margin:32px 0">
+      <a href="{apply_link}" style="display:inline-block;background:{brand_color};color:#000;font-weight:700;
+         font-size:16px;padding:16px 44px;border-radius:8px;text-decoration:none;letter-spacing:0.3px;
+         box-shadow:0 2px 8px rgba(10,206,10,0.3)">
+        {cta_text}
+      </a>
+    </div>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:16px 0 0">
+      If the button doesn't work, copy and paste this link:<br>
+      <a href="{apply_link}" style="color:{brand_color};word-break:break-all">{apply_link}</a>
+    </p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 16px">
+    <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0">
+      You're receiving this because {agency_name} thought you might be a great fit for this opportunity.<br>
+      No further emails will be sent unless you choose to apply.
+    </p>'''
+    return _base_template(brand_color, agency_name, content)

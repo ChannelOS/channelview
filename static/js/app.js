@@ -278,6 +278,7 @@ const pages = {
   'job-board': renderJobBoardSettings,
   'candidate-experience': renderCandidateExperience,
   'lead-sourcing': renderLeadSourcing,
+  'campaigns': renderCampaigns,
   'referral-links': renderReferralLinks,
   'job-syndication': renderJobSyndication,
   'voice-agent': renderVoiceAgent,
@@ -10361,6 +10362,348 @@ async function saveGeneratedDescription(interviewId) {
     const descEl = document.getElementById('iv-description-text');
     if (descEl) descEl.textContent = description;
   } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
+}
+
+
+// ==================== CYCLE 40: CAMPAIGNS ====================
+
+async function renderCampaigns() {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Campaigns</h1><p style="color:#6b7280;margin:0 0 24px">Send job descriptions to passive candidates. When they click Apply, they flow right into your pipeline.</p><div id="camp-content"><p style="color:#999">Loading...</p></div></div>';
+  try {
+    const res = await api('GET', '/api/campaigns');
+    const camps = res.campaigns || [];
+    const intRes = await api('GET', '/api/interviews');
+    const interviews = intRes.interviews || [];
+    const c = document.getElementById('camp-content');
+    let html = `<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+      <button onclick="showCreateCampaign()" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px">+ New Campaign</button>
+    </div>`;
+    if (!camps.length) {
+      html += `<div style="background:#f9fafb;border-radius:12px;padding:40px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">&#9993;</div>
+        <h3 style="margin:0 0 8px;color:#111">No campaigns yet</h3>
+        <p style="color:#6b7280;margin:0 0 16px">Create your first campaign to reach out to passive candidates with a job description. If they're interested, they click Apply and land right in your pipeline.</p>
+        <button onclick="showCreateCampaign()" style="background:#0ace0a;color:#000;font-weight:600;padding:10px 20px;border:none;border-radius:6px;cursor:pointer">Create Your First Campaign</button>
+      </div>`;
+    } else {
+      html += '<div style="display:grid;gap:16px">';
+      for (const camp of camps) {
+        const statusColors = {draft:'#f59e0b',ready:'#3b82f6',sending:'#8b5cf6',sent:'#10b981',failed:'#ef4444'};
+        const sc = statusColors[camp.status] || '#6b7280';
+        html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;cursor:pointer" onclick="showCampaignDetail('${camp.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:16px;color:#111">${camp.name}</h3>
+              <p style="margin:0;font-size:13px;color:#6b7280">${camp.interview_title || 'No interview linked'}</p>
+            </div>
+            <span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:4px 10px;border-radius:12px;text-transform:uppercase">${camp.status}</span>
+          </div>
+          ${camp.status === 'sent' ? `<div style="display:flex;gap:20px;margin-top:12px;font-size:13px;color:#6b7280">
+            <span>Sent: <strong style="color:#111">${camp.sent_count || 0}</strong></span>
+            <span>Clicked: <strong style="color:#111">${camp.clicked_count || 0}</strong></span>
+            <span>Applied: <strong style="color:#111">${camp.applied_count || 0}</strong></span>
+          </div>` : ''}
+        </div>`;
+      }
+      html += '</div>';
+    }
+    c.innerHTML = html;
+    window._campInterviews = interviews;
+  } catch (e) { document.getElementById('camp-content').innerHTML = '<p style="color:red">Failed to load campaigns.</p>'; }
+}
+
+async function showCreateCampaign() {
+  const interviews = window._campInterviews || [];
+  if (!interviews.length) { toast('Create an interview first — campaigns are tied to a specific position.', 'error'); return; }
+  const opts = interviews.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'modal-create-camp';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">New Campaign</h2>
+      <button onclick="document.getElementById('modal-create-camp').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Campaign Name</label>
+        <input id="camp-name" placeholder="e.g. Spring Recruiting Push" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Interview / Position</label>
+        <select id="camp-interview" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${opts}</select>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Email Subject Line</label>
+        <input id="camp-subject" value="An Exciting Career Opportunity" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Headline (in the email)</label>
+        <input id="camp-headline" value="We Think You'd Be a Great Fit" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Description / Email Body</label>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <button onclick="generateCampaignBody()" id="btn-gen-body" style="background:#111;color:#fff;padding:6px 14px;border:none;border-radius:5px;font-size:12px;cursor:pointer">Generate with AI</button>
+        </div>
+        <textarea id="camp-body" rows="10" placeholder="Describe the opportunity — what they'd be doing, what's in it for them, why they should care..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;line-height:1.6;box-sizing:border-box"></textarea>
+        <p style="margin:4px 0 0;font-size:11px;color:#9ca3af">Supports HTML. The greeting (Hi {name}) and CTA button are added automatically.</p>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Button Text</label>
+        <input id="camp-cta" value="I'm Interested — Tell Me More" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+        <button onclick="document.getElementById('modal-create-camp').remove()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>
+        <button onclick="saveCampaign()" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:6px;cursor:pointer;font-size:14px">Create Campaign</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function generateCampaignBody() {
+  const btn = document.getElementById('btn-gen-body');
+  btn.textContent = 'Generating...'; btn.disabled = true;
+  try {
+    const campId = window._editingCampaignId;
+    let res;
+    if (campId) {
+      res = await api('POST', `/api/campaigns/${campId}/generate-body`);
+    } else {
+      res = await api('POST', '/api/campaigns/preview', {});
+    }
+    if (res.body_html) {
+      document.getElementById('camp-body').value = res.body_html;
+      toast(res.ai_generated ? 'AI-generated body ready — edit as needed' : 'Template body loaded — customize it for your audience', 'success');
+    }
+  } catch (e) { toast('Failed to generate: ' + e.message, 'error'); }
+  btn.textContent = 'Generate with AI'; btn.disabled = false;
+}
+
+async function saveCampaign() {
+  const name = document.getElementById('camp-name').value.trim();
+  const interview_id = document.getElementById('camp-interview').value;
+  const subject_line = document.getElementById('camp-subject').value.trim();
+  const headline = document.getElementById('camp-headline').value.trim();
+  const body_html = document.getElementById('camp-body').value.trim();
+  const cta_text = document.getElementById('camp-cta').value.trim();
+  if (!name) { toast('Give your campaign a name', 'error'); return; }
+  if (!body_html) { toast('Add a job description or email body', 'error'); return; }
+  try {
+    const res = await api('POST', '/api/campaigns', { name, interview_id, subject_line, headline, body_html, cta_text });
+    toast('Campaign created!', 'success');
+    document.getElementById('modal-create-camp').remove();
+    window._editingCampaignId = res.campaign.id;
+    showCampaignDetail(res.campaign.id);
+  } catch (e) { toast('Failed to create: ' + e.message, 'error'); }
+}
+
+async function showCampaignDetail(campId) {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><p style="color:#999">Loading campaign...</p></div>';
+  try {
+    const res = await api('GET', `/api/campaigns/${campId}`);
+    const camp = res.campaign;
+    const recipRes = await api('GET', `/api/campaigns/${campId}/recipients`);
+    const recipients = recipRes.recipients || [];
+    window._editingCampaignId = campId;
+
+    const statusColors = {draft:'#f59e0b',ready:'#3b82f6',sending:'#8b5cf6',sent:'#10b981',failed:'#ef4444'};
+    const sc = statusColors[camp.status] || '#6b7280';
+
+    let html = `<div style="padding:32px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+        <button onclick="renderCampaigns()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#6b7280">&larr;</button>
+        <div style="flex:1">
+          <h1 style="font-size:22px;margin:0 0 4px">${camp.name}</h1>
+          <p style="margin:0;font-size:13px;color:#6b7280">${camp.interview_title || ''}</p>
+        </div>
+        <span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:4px 12px;border-radius:12px;text-transform:uppercase">${camp.status}</span>
+      </div>`;
+
+    if (camp.status === 'sent') {
+      const statsRes = await api('GET', `/api/campaigns/${campId}/stats`);
+      const s = statsRes.stats;
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:24px">
+        <div style="background:#f9fafb;border-radius:8px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:800;color:#111">${s.sent||0}</div><div style="font-size:12px;color:#6b7280">Sent</div></div>
+        <div style="background:#f9fafb;border-radius:8px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:800;color:#111">${s.opened||0}</div><div style="font-size:12px;color:#6b7280">Opened</div></div>
+        <div style="background:#f9fafb;border-radius:8px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:800;color:#3b82f6">${s.clicked||0}</div><div style="font-size:12px;color:#6b7280">Clicked</div></div>
+        <div style="background:#f9fafb;border-radius:8px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:800;color:#10b981">${s.applied||0}</div><div style="font-size:12px;color:#6b7280">Applied</div></div>
+        <div style="background:#f9fafb;border-radius:8px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:800;color:#ef4444">${s.failed||0}</div><div style="font-size:12px;color:#6b7280">Failed</div></div>
+      </div>`;
+    }
+
+    // Recipients section
+    html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="margin:0;font-size:16px">Recipients <span style="color:#6b7280;font-weight:400">(${recipients.length})</span></h3>
+        <div style="display:flex;gap:8px">
+          ${camp.status === 'draft' || camp.status === 'ready' ? `
+          <button onclick="showAddRecipients('${campId}')" style="background:#111;color:#fff;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px">+ Add Recipients</button>
+          <button onclick="showImportRecipientsCSV('${campId}')" style="background:#fff;color:#111;padding:8px 16px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-size:13px">Upload CSV</button>
+          ` : ''}
+        </div>
+      </div>`;
+
+    if (!recipients.length) {
+      html += `<p style="color:#6b7280;text-align:center;padding:20px 0">No recipients yet. Add contacts to this campaign — these are the people who'll receive your job description email.</p>`;
+    } else {
+      html += `<div style="max-height:400px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid #e5e7eb">
+          <th style="text-align:left;padding:8px 4px;color:#6b7280;font-weight:600">Name</th>
+          <th style="text-align:left;padding:8px 4px;color:#6b7280;font-weight:600">Email</th>
+          <th style="text-align:left;padding:8px 4px;color:#6b7280;font-weight:600">Status</th>
+        </tr></thead><tbody>`;
+      for (const r of recipients.slice(0, 100)) {
+        const rsc2 = {pending:'#f59e0b',sent:'#3b82f6',delivered:'#8b5cf6',opened:'#6366f1',clicked:'#3b82f6',applied:'#10b981',failed:'#ef4444'};
+        html += `<tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:8px 4px">${r.first_name||''} ${r.last_name||''}</td>
+          <td style="padding:8px 4px;color:#6b7280">${r.email}</td>
+          <td style="padding:8px 4px"><span style="color:${rsc2[r.status]||'#6b7280'};font-weight:600;font-size:12px">${r.status}</span></td>
+        </tr>`;
+      }
+      html += '</tbody></table></div>';
+      if (recipients.length > 100) html += `<p style="color:#9ca3af;font-size:12px;margin-top:8px">Showing first 100 of ${recipients.length} recipients</p>`;
+    }
+    html += '</div>';
+
+    // Action buttons
+    if (camp.status === 'draft' || camp.status === 'ready') {
+      html += `<div style="display:flex;gap:12px;margin-top:20px">
+        <button onclick="previewCampaignEmail('${campId}')" style="background:#fff;color:#111;padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-size:14px">Preview Email</button>
+        <button onclick="sendCampaign('${campId}', ${recipients.length})" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:6px;cursor:pointer;font-size:14px" ${recipients.length === 0 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>Send Campaign (${recipients.length} recipients)</button>
+        <button onclick="deleteCampaign('${campId}')" style="background:none;color:#ef4444;padding:10px 16px;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:13px;margin-left:auto">Delete</button>
+      </div>`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div style="padding:32px"><p style="color:red">Failed to load campaign: ${e.message}</p></div>`; }
+}
+
+async function showAddRecipients(campId) {
+  const modal = document.createElement('div');
+  modal.id = 'modal-add-recip';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">Add Recipients</h2>
+      <button onclick="document.getElementById('modal-add-recip').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <p style="color:#6b7280;font-size:14px;margin:0 0 16px">Paste contacts below — one per line. Format: <code>first_name, last_name, email</code></p>
+    <textarea id="recip-paste" rows="10" placeholder="John, Smith, john@example.com&#10;Jane, Doe, jane@example.com&#10;..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;box-sizing:border-box"></textarea>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
+      <button onclick="document.getElementById('modal-add-recip').remove()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">Cancel</button>
+      <button onclick="submitPastedRecipients('${campId}')" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:6px;cursor:pointer">Add Contacts</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function submitPastedRecipients(campId) {
+  const text = document.getElementById('recip-paste').value.trim();
+  if (!text) { toast('Paste some contacts first', 'error'); return; }
+  const lines = text.split('\n').filter(l => l.trim());
+  const recipients = [];
+  for (const line of lines) {
+    const parts = line.split(',').map(p => p.trim());
+    if (parts.length >= 3) {
+      recipients.push({ first_name: parts[0], last_name: parts[1], email: parts[2], phone: parts[3] || '' });
+    } else if (parts.length === 1 && parts[0].includes('@')) {
+      recipients.push({ first_name: '', last_name: '', email: parts[0] });
+    }
+  }
+  if (!recipients.length) { toast('No valid contacts found. Use format: first, last, email', 'error'); return; }
+  try {
+    const res = await api('POST', `/api/campaigns/${campId}/recipients`, { recipients });
+    toast(`Added ${res.added} recipients${res.skipped_duplicates ? ` (${res.skipped_duplicates} duplicates skipped)` : ''}`, 'success');
+    document.getElementById('modal-add-recip').remove();
+    showCampaignDetail(campId);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function showImportRecipientsCSV(campId) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.csv,.xlsx,.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    let recipients = [];
+    if (file.name.endsWith('.json')) {
+      try { recipients = JSON.parse(text); } catch { toast('Invalid JSON', 'error'); return; }
+    } else {
+      const lines = text.split('\n').filter(l => l.trim());
+      const header = lines[0].toLowerCase();
+      const hasHeader = header.includes('email') || header.includes('first') || header.includes('name');
+      const start = hasHeader ? 1 : 0;
+      for (let i = start; i < lines.length; i++) {
+        const parts = lines[i].split(',').map(p => p.trim().replace(/^"|"$/g, ''));
+        if (hasHeader) {
+          const cols = lines[0].split(',').map(c => c.trim().toLowerCase().replace(/^"|"$/g, ''));
+          const obj = {};
+          cols.forEach((col, idx) => { obj[col] = parts[idx] || ''; });
+          recipients.push({ first_name: obj.first_name||obj.first||'', last_name: obj.last_name||obj.last||'', email: obj.email||'', phone: obj.phone||'' });
+        } else if (parts.length >= 3) {
+          recipients.push({ first_name: parts[0], last_name: parts[1], email: parts[2], phone: parts[3]||'' });
+        }
+      }
+    }
+    if (!recipients.length) { toast('No contacts found in file', 'error'); return; }
+    try {
+      const res = await api('POST', `/api/campaigns/${campId}/recipients`, { recipients });
+      toast(`Imported ${res.added} recipients${res.skipped_duplicates ? ` (${res.skipped_duplicates} duplicates skipped)` : ''}`, 'success');
+      showCampaignDetail(campId);
+    } catch (e) { toast('Import failed: ' + e.message, 'error'); }
+  };
+  input.click();
+}
+
+async function previewCampaignEmail(campId) {
+  const res = await api('GET', `/api/campaigns/${campId}`);
+  const camp = res.campaign;
+  const modal = document.createElement('div');
+  modal.id = 'modal-preview-camp';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:700px;width:100%;max-height:90vh;overflow-y:auto;padding:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #e5e7eb">
+      <h3 style="margin:0;font-size:16px">Email Preview</h3>
+      <button onclick="document.getElementById('modal-preview-camp').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <iframe id="camp-preview-frame" style="width:100%;height:500px;border:none"></iframe>
+  </div>`;
+  document.body.appendChild(modal);
+  try {
+    const resp = await fetch(`/api/campaigns/preview`, {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrfToken()}, body:JSON.stringify({headline:camp.headline, body_html:camp.body_html, cta_text:camp.cta_text, interview_title:camp.interview_title, recipient_name:'John'})});
+    const html = await resp.text();
+    const frame = document.getElementById('camp-preview-frame');
+    frame.srcdoc = html;
+  } catch (e) { toast('Preview failed', 'error'); }
+}
+
+function getCsrfToken() {
+  const match = document.cookie.match(/csrf_token=([^;]+)/);
+  return match ? match[1] : '';
+}
+
+async function sendCampaign(campId, count) {
+  if (!confirm(`Send this campaign to ${count} recipients? This will send emails immediately.`)) return;
+  toast('Sending campaign...', 'info');
+  try {
+    const res = await api('POST', `/api/campaigns/${campId}/send`);
+    toast(`Campaign sent! ${res.sent} delivered${res.failed ? `, ${res.failed} failed` : ''}`, 'success');
+    showCampaignDetail(campId);
+  } catch (e) { toast('Send failed: ' + e.message, 'error'); }
+}
+
+async function deleteCampaign(campId) {
+  if (!confirm('Delete this campaign and all its recipients? This cannot be undone.')) return;
+  try {
+    await api('DELETE', `/api/campaigns/${campId}`);
+    toast('Campaign deleted', 'success');
+    renderCampaigns();
+  } catch (e) { toast('Failed to delete: ' + e.message, 'error'); }
 }
 
 

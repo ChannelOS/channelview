@@ -2891,6 +2891,76 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 40: OUTBOUND CAMPAIGN ENGINE ========================
+
+    # Campaigns table — each campaign is tied to an interview and contains the job description content
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS campaigns (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        interview_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        subject_line TEXT NOT NULL DEFAULT 'An Exciting Career Opportunity',
+        headline TEXT NOT NULL DEFAULT 'We Think You''d Be a Great Fit',
+        body_html TEXT NOT NULL,
+        cta_text TEXT NOT NULL DEFAULT 'I''m Interested — Tell Me More',
+        status TEXT NOT NULL DEFAULT 'draft',
+        sent_count INTEGER DEFAULT 0,
+        delivered_count INTEGER DEFAULT 0,
+        opened_count INTEGER DEFAULT 0,
+        clicked_count INTEGER DEFAULT 0,
+        applied_count INTEGER DEFAULT 0,
+        scheduled_at TIMESTAMP,
+        sent_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (interview_id) REFERENCES interviews(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_campaigns_user ON campaigns(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_campaigns_interview ON campaigns(interview_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status)")
+
+    # Campaign recipients — tracks each person who receives a campaign email
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS campaign_recipients (
+        id TEXT PRIMARY KEY,
+        campaign_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        first_name TEXT,
+        last_name TEXT,
+        email TEXT NOT NULL,
+        phone TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        sent_at TIMESTAMP,
+        delivered_at TIMESTAMP,
+        opened_at TIMESTAMP,
+        clicked_at TIMESTAMP,
+        applied_at TIMESTAMP,
+        candidate_id TEXT,
+        sendgrid_message_id TEXT,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (candidate_id) REFERENCES candidates(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_camp_recip_campaign ON campaign_recipients(campaign_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_camp_recip_email ON campaign_recipients(email)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_camp_recip_status ON campaign_recipients(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_camp_recip_user ON campaign_recipients(user_id)")
+
+    # Migration: add campaign_id to candidates table for source tracking
+    c40_migrations = [
+        ("candidates", "campaign_id", "TEXT"),
+        ("candidates", "campaign_recipient_id", "TEXT"),
+    ]
+    for table, col, coltype in c40_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
     try:
         conn.commit()
     except:
