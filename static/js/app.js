@@ -287,55 +287,74 @@ const pages = {
 
 // ==================== TAB DESCRIPTORS ====================
 const TAB_DESCRIPTORS = {
-  'dashboard': {title:'Dashboard', desc:"This is your home base. See what's happening across all your jobs, interviews, and candidates at a glance."},
-  'candidates': {title:'Candidates', desc:"This is where you track every candidate. See who applied, how they scored, and where they are in your hiring pipeline."},
-  'interviews': {title:'Interviews', desc:"This is where you build your interviews. Set up your questions, choose the format, and customize the experience candidates see."},
-  'jobs-manage': {title:'Jobs', desc:"This is where you create job postings. Create a position, attach an interview, and send campaigns \u2014 candidates flow in automatically."},
-  'ai-scoring': {title:'Interview Insights', desc:"AI automatically scores every candidate response. See who stood out without watching every single video."},
-  'analytics': {title:'Hiring Analytics', desc:"Track what\u2019s working. See completion rates, time-to-hire, and trends across all your interviews."},
-  'enhanced-kanban': {title:'Hiring Pipeline', desc:"Your visual hiring board. Drag candidates between stages to see your whole pipeline at a glance."},
-  'pipeline-funnel': {title:'Hiring Funnel', desc:"See where candidates drop off. Conversion rates from application to hire, broken down by stage."},
-  'source-tracking': {title:'Candidate Sources', desc:"Find out where your best candidates come from. Track which sources actually lead to hires."},
-  'job-board': {title:'Job Board', desc:"Your public job board. Candidates can browse your open positions and apply directly from a branded page."},
-  'candidate-experience': {title:'What Candidates See', desc:"Control the candidate experience. Customize your apply page, prep instructions, and thank-you messages."},
-  'campaigns': {title:'Campaigns', desc:"This is where you reach passive candidates. Send job emails at scale \u2014 when they click, they apply and land in your pipeline automatically."},
-  'lead-sourcing': {title:'Lead Hub', desc:"Your candidate sourcing engine. Import leads from spreadsheets, track where they came from, and convert the best ones into candidates."},
-  'voice-agent': {title:'AI Phone Calls', desc:"Let AI handle your screening calls. Set up voice agents that call candidates, ask your questions, and report back with results."},
-  'referral-links': {title:'Referral Links', desc:"Generate unique tracking links for each referral source. See exactly which links bring in the most candidates."},
-  'job-syndication': {title:'Post to Job Sites', desc:"Push your open positions to Indeed, Google Jobs, and more. Applications flow back into ChannelView automatically."},
-  'white-label': {title:'Your Brand Colors', desc:"Make ChannelView look like yours. Set your logo and colors so candidates see your agency\u2019s brand, not ours."},
-  'report-hub': {title:'Reports', desc:"Download ready-made reports on hiring activity, candidate stats, and interview performance. Great for sharing with leadership."},
-  'video-library': {title:'Video Library', desc:"All your candidate video responses in one place. Search, filter, and rewatch anytime without digging through individual interviews."},
-  'bulk-ops': {title:'Bulk Actions', desc:"Save time with bulk operations. Move, tag, or archive multiple candidates at once instead of one by one."},
-  'review-hub': {title:'Compare Candidates', desc:"Side-by-side candidate comparison. Stack up scores, responses, and notes for your top picks to make faster decisions."},
-  'email-templates': {title:'Email Templates', desc:"Pre-written emails for every stage \u2014 invitations, reminders, rejections, and offers. Customize them or send as-is."},
-  'profile-settings': {title:'My Profile', desc:"Update your name, email, phone number, and notification preferences."},
-  'email-delivery': {title:'Email Settings', desc:"Configure how emails get sent \u2014 your SendGrid API key, sender name, and delivery settings."},
-  'help-center': {title:'Help Center', desc:"Guides, tips, and answers to common questions. Everything you need to get the most out of ChannelView."},
-  'settings': {title:'Settings', desc:"Your agency settings and preferences. Configure how ChannelView works for your team."},
-  'team': {title:'My Team', desc:"Add people to your account, set their roles, and manage who has access to what."},
-  'billing': {title:'Billing', desc:"Manage your subscription, see your usage, and upgrade your plan when you\u2019re ready to grow."},
-  'branding': {title:'Your Brand Colors', desc:"Customize how ChannelView looks to your candidates. Upload your logo and set your brand colors."},
-  'analytics-dashboard': {title:'Hiring Analytics', desc:"Track what\u2019s working. See completion rates, time-to-hire, and trends across all your interviews."},
-  'auto-rules': {title:'Auto Rules', desc:"Set it and forget it. Create rules that automatically move candidates through your pipeline based on scores, activity, or time."},
-  'custom-stages': {title:'Pipeline Stages', desc:"Customize your hiring stages. Add, rename, or reorder the stages candidates move through in your pipeline."},
-  'security-settings': {title:'Security', desc:"Manage your password, two-factor authentication, and login security settings."},
-  'activity-log': {title:'Activity History', desc:"See everything that\u2019s happened in your account \u2014 who did what and when. Great for auditing and accountability."},
-  'data-management': {title:'Data Management', desc:"Export your data, manage storage, and handle data retention settings."},
-  'notification-settings': {title:'Notifications', desc:"Choose which alerts you get and how \u2014 email, in-app, or both. Stay informed without the noise."},
-  'ams-integrations': {title:'Agency Systems', desc:"Connect ChannelView to your existing agency management system so data flows automatically."},
-  'api-management': {title:'Developer Keys', desc:"Generate and manage API keys for integrating ChannelView with your other tools and systems."},
-  'integrations-hub': {title:'Connections & Embed', desc:"Connect ChannelView to other tools via webhooks, or embed interview widgets on your website."},
-  'audit': {title:'Activity History', desc:"A complete log of every action taken in your account. See who changed what and when."},
-  'ai-insights': {title:'AI Insights', desc:"Deep AI analysis of candidate responses. See patterns, strengths, and areas of concern across your candidate pool."},
-  'demo-manager': {title:'Demo Manager', desc:"Set up demo interviews and sample data to show prospective users how ChannelView works."},
-  'admin': {title:'FMO Admin Panel', desc:"Your platform-wide command center. See every agency, their usage, subscription status, and intro templates \u2014 all in one place."},
-  'fmo': {title:'FMO Admin Portal', desc:"Manage all your agencies from here. Add new agencies, monitor their activity, change subscription tiers, and see who\u2019s using what."},
-  'admin-analytics': {title:'Admin Analytics', desc:"Platform-wide numbers. See total interviews, candidates, completion rates, and performance trends across every agency."},
-  'system': {title:'System Monitor', desc:"Database health, server performance, and email delivery stats. Check here when something seems slow or emails aren\u2019t arriving."},
-  'security': {title:'Security Settings', desc:"Platform security controls. Manage authentication policies, session settings, and access rules across the system."},
-  'integrations': {title:'Integrations', desc:"Connect ChannelView to external tools and services. Manage API connections, webhooks, and third-party integrations."},
-  'compliance': {title:'Compliance', desc:"Data privacy and regulatory compliance tools. GDPR controls, data retention policies, and audit capabilities."},
+  // ===== HOME =====
+  'dashboard': {title:'Dashboard', desc:"This is your command center. Everything happening in your recruiting world \u2014 active jobs, recent candidates, interview completions, and key stats \u2014 all in one view so you know exactly where things stand without clicking around."},
+
+  // ===== BUILD =====
+  'jobs-manage': {title:'My Jobs', desc:"Start here. Create a job posting for each position you\u2019re hiring for, then attach an interview and launch campaigns. Every candidate who applies flows into your pipeline automatically. The more jobs you post, the more candidates you attract."},
+  'interviews': {title:'My Interviews', desc:"Build the interview your candidates will take. Add your questions, choose the format (video, in-person, phone, group), and set time limits. A great interview means better candidates \u2014 you\u2019ll see the difference in who makes it through."},
+  'candidate-experience': {title:'What Candidates See', desc:"This controls every touchpoint your candidates experience \u2014 from the apply page to the thank-you message. A polished candidate experience means more completions, better first impressions, and fewer people dropping off halfway through."},
+
+  // ===== REACH =====
+  'campaigns': {title:'Send Campaigns', desc:"This is how you reach people who aren\u2019t looking for you yet. Build an email campaign for any job, add your contact list, and send. When someone clicks \u201CI\u2019m Interested,\u201D they land on your apply page and become a candidate automatically. One campaign can fill your pipeline for weeks."},
+  'lead-sourcing': {title:'Find Leads', desc:"Import contacts from spreadsheets, networking events, or referrals and organize them here. When you\u2019re ready, convert the best leads into candidates with one click. This is your pre-pipeline \u2014 the people you\u2019re warming up before they\u2019re ready to interview."},
+  'referral-links': {title:'Referral Tracking', desc:"Create unique links for each referral source \u2014 your website, social media, business cards, or recruiting events. When someone clicks and applies, you\u2019ll see exactly which link brought them in. This tells you where to spend your time and marketing dollars."},
+  'job-board': {title:'My Job Board', desc:"Your own branded job board page that lists every open position. Share the link on your website, social media, or marketing materials. Candidates browse your jobs and apply directly \u2014 no third-party job site needed."},
+  'job-syndication': {title:'Post to Job Sites', desc:"Push your open positions to Indeed, Google Jobs, and other job boards from right here. Applications flow back into ChannelView automatically, so you get the reach of major job sites without the hassle of managing listings in multiple places."},
+  'voice-agent': {title:'AI Screening Calls', desc:"Let AI do your initial phone screens. Set up a voice agent with your screening questions, and it will call candidates, have a natural conversation, and report back with results. You save hours of phone time and still get the information you need to decide who moves forward."},
+
+  // ===== TRACK =====
+  'candidates': {title:'All Candidates', desc:"Every person who\u2019s ever applied, been invited, or been added to your system is here. Search, filter, and sort by status, score, source, or date. This is your single source of truth for where every candidate stands in your process."},
+  'enhanced-kanban': {title:'Hiring Pipeline', desc:"See your entire hiring process as a visual board. Drag candidates between stages \u2014 New, Screening, Interview, Offer, Hired \u2014 to track progress at a glance. When your pipeline is full and moving, you\u2019re hiring faster than your competition."},
+  'pipeline-funnel': {title:'Hiring Funnel', desc:"See where candidates drop off and where they convert. If 100 people apply but only 10 make it to interview, you know your screening step needs work. This data helps you fix the bottlenecks so more good candidates make it through."},
+  'source-tracking': {title:'Candidate Sources', desc:"Not all candidate sources are equal. This shows you which sources (campaigns, job boards, referrals, direct apply) actually produce hires \u2014 not just applications. Stop wasting time on sources that don\u2019t convert and double down on the ones that do."},
+  'ai-scoring': {title:'AI Scores', desc:"AI watches every video response and scores candidates on communication, enthusiasm, professionalism, and job fit. Instead of watching hours of video, scan the scores to find your top candidates in seconds. The AI catches things you might miss on a first watch."},
+  'review-hub': {title:'Compare Candidates', desc:"When you\u2019re down to your final picks, pull them up side by side. Compare AI scores, watch key responses back to back, and read notes from your team. This is where you make confident hiring decisions instead of going with your gut."},
+  'analytics': {title:'Hiring Analytics', desc:"Track what\u2019s actually working in your recruiting. Completion rates, time-to-hire, score distributions, and trends over time. When your MKD or DVP asks how recruiting is going, these are the numbers that tell the story."},
+
+  // ===== CUSTOMIZE =====
+  'branding': {title:'Brand Colors', desc:"Make ChannelView look like your agency. Set your colors and logo so every email, apply page, and interview your candidates see feels like it\u2019s coming from you \u2014 not a generic third-party tool. First impressions matter in recruiting."},
+  'white-label': {title:'Brand Colors', desc:"Make ChannelView look like your agency. Set your colors and logo so every email, apply page, and interview your candidates see feels like it\u2019s coming from you \u2014 not a generic third-party tool. First impressions matter in recruiting."},
+  'email-templates': {title:'Email Templates', desc:"Pre-written emails for every stage of recruiting \u2014 invitations, reminders, follow-ups, rejections, and offers. Customize the wording to sound like you, or use them as-is. Consistent, professional communication keeps candidates engaged and shows you\u2019re organized."},
+  'report-hub': {title:'Reports', desc:"Download polished reports on hiring activity, candidate stats, and interview performance. Great for sharing with your MKD, presenting at team meetings, or tracking your own progress over time. The data is already here \u2014 reports just package it up."},
+  'video-library': {title:'Video Library', desc:"Every candidate video response in one searchable library. Rewatch interviews, share standout responses with your team, or revisit old candidates when a new position opens. Your video library gets more valuable the more you use ChannelView."},
+  'bulk-ops': {title:'Bulk Actions', desc:"When you need to move, tag, archive, or update multiple candidates at once, do it here instead of one by one. Bulk actions save you hours when you\u2019re managing a large pipeline or cleaning up after a hiring push."},
+  'team': {title:'My Team', desc:"Add team members, set their access level, and control who can see what. Whether it\u2019s an assistant managing candidates or a partner reviewing interviews, the right access keeps everyone productive without stepping on each other\u2019s toes."},
+
+  // ===== ADMIN OVERVIEW (FMO) =====
+  'admin': {title:'FMO Admin Panel', desc:"Your bird\u2019s-eye view of the entire platform. See every agency, their subscription tier, usage stats, and activity \u2014 all from one screen. This is where you spot which agencies are thriving, which need help, and where the growth opportunities are."},
+  'fmo': {title:'Manage Agencies', desc:"Add new agencies, change subscription tiers, reset passwords, and monitor who\u2019s using what. Every agency you onboard here gets their own fully isolated ChannelView account. The more agencies actively using the platform, the stronger your case for the enterprise deal."},
+  'admin-analytics': {title:'Platform Analytics', desc:"See the numbers across every agency on your platform \u2014 total interviews, total candidates, completion rates, and performance trends. This is the data you\u2019ll use in executive presentations to show the value ChannelView is delivering across the organization."},
+  'ai-insights': {title:'AI Insights', desc:"Deep AI analysis across all candidate responses on the platform. Spot patterns in what makes candidates successful, identify common strengths and red flags, and use these insights to improve interview questions and screening criteria for all your agencies."},
+  'analytics-dashboard': {title:'Deep Analytics', desc:"Advanced analytics with drill-down capabilities. Slice data by agency, time period, interview type, and more. When you need to go beyond the summary numbers and understand what\u2019s really driving results, this is where you dig in."},
+
+  // ===== ADMIN MONITOR (FMO) =====
+  'system': {title:'System Health', desc:"Real-time server health, database stats, and email delivery metrics. Check here first when something seems off \u2014 slow page loads, missing emails, or storage warnings. Catching issues early means your 300+ agencies never notice a problem."},
+  'audit': {title:'Activity History', desc:"A complete log of every action taken across the platform \u2014 logins, data changes, settings updates. When an agency reports something unexpected, this is where you trace exactly what happened and when. Essential for accountability and troubleshooting."},
+  'activity-log': {title:'Detailed Logs', desc:"Granular event-by-event logs with timestamps, IP addresses, and user details. This goes deeper than Activity History \u2014 use it for security investigations, compliance audits, or when you need to reconstruct exactly what a user did in their session."},
+  'compliance': {title:'Compliance', desc:"Data privacy controls, GDPR compliance tools, and retention policies. Insurance recruiting involves sensitive personal information \u2014 this ensures you\u2019re handling it correctly and can prove it if anyone asks. Protects you and your agencies."},
+  'notification-settings': {title:'Notifications', desc:"Control which platform alerts you receive and how \u2014 email, in-app, or both. Stay informed about critical events (new agency signups, system issues, billing changes) without getting buried in noise from routine activity."},
+
+  // ===== ADMIN SETTINGS (FMO) =====
+  'security': {title:'Platform Security', desc:"Authentication policies, session management, and access controls for the entire platform. Set password requirements, manage login security, and ensure every agency on your platform meets baseline security standards."},
+  'integrations': {title:'Integrations', desc:"Connect ChannelView to external tools and services your agencies use. API connections, data syncs, and third-party integrations that make ChannelView work seamlessly within the broader tech stack."},
+  'integrations-hub': {title:'Webhooks & Embed', desc:"Set up webhooks to push ChannelView events to other systems in real time, or generate embed codes to put interview widgets on agency websites. This is the plumbing that connects ChannelView to everything else."},
+  'ams-integrations': {title:'Agency Systems', desc:"Connect ChannelView to agency management systems so data flows automatically between platforms. When an AMS integration is active, new hires, candidate updates, and activity sync without anyone doing manual data entry."},
+  'email-delivery': {title:'Email Settings', desc:"SendGrid configuration, sender identity, and delivery monitoring. Every invite, reminder, and campaign email goes through this. If emails aren\u2019t arriving or are landing in spam, this is where you diagnose and fix it."},
+  'api-management': {title:'Developer Keys', desc:"Generate and manage API keys for building custom integrations between ChannelView and other systems. If you have a developer or vendor building something that connects to ChannelView, they\u2019ll need a key from here."},
+  'data-management': {title:'Data Import/Export', desc:"Export platform data, manage storage, and handle data retention settings. Use this for reporting, backups, or migrating data between systems. Your data is your asset \u2014 this ensures you always have access to it."},
+  'demo-manager': {title:'Demo Manager', desc:"Set up demo accounts with sample data to show prospective agencies how ChannelView works. A great demo is the fastest way to get an agency from \u201Cwhat is this?\u201D to \u201Csign me up.\u201D Pre-load interviews, candidates, and analytics so the demo tells the story."},
+
+  // ===== ACCOUNT =====
+  'profile-settings': {title:'My Profile', desc:"Update your name, email, phone number, and notification preferences. Keep this current \u2014 it\u2019s what shows up on emails to candidates and on your team\u2019s view of who\u2019s doing what."},
+  'security-settings': {title:'Security', desc:"Manage your password and login security. Change your password regularly, review your login history, and enable extra security if you\u2019re accessing ChannelView from shared devices."},
+  'billing': {title:'Billing', desc:"See your current plan, usage stats, and upgrade options. As your recruiting grows, upgrading unlocks more interviews, candidates, and advanced features. You can also manage payment methods and view invoices here."},
+  'settings': {title:'Settings', desc:"General agency settings \u2014 your agency name, timezone, defaults, and preferences. These settings affect how ChannelView behaves across your entire account, so get them right once and you\u2019re set."},
+  'help-center': {title:'Help Center', desc:"Guides, walkthroughs, and answers to common questions. If you\u2019re not sure how something works or want to get more out of a feature, start here before reaching out to support."},
+
+  // ===== MISC =====
+  'auto-rules': {title:'Auto Rules', desc:"Create rules that automatically move candidates through your pipeline based on scores, activity, or time. For example: AI score above 8 auto-moves to \u201CHot,\u201D no response in 3 days triggers a reminder. You set the rules once and the system works for you."},
+  'custom-stages': {title:'Pipeline Stages', desc:"Customize the stages candidates move through in your hiring pipeline. Add, rename, reorder, or color-code stages to match your actual recruiting process. Every agency recruits differently \u2014 your pipeline should reflect how you work."},
 };
 
 function tabDescriptor(pageKey) {
