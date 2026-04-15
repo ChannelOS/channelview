@@ -285,6 +285,66 @@ const pages = {
   'voice-agent': renderVoiceAgent,
 };
 
+// ==================== TAB DESCRIPTORS ====================
+const TAB_DESCRIPTORS = {
+  'dashboard': {title:'Dashboard', desc:"This is your home base. See what's happening across all your jobs, interviews, and candidates at a glance."},
+  'candidates': {title:'Candidates', desc:"This is where you track every candidate. See who applied, how they scored, and where they are in your hiring pipeline."},
+  'interviews': {title:'Interviews', desc:"This is where you build your interviews. Set up your questions, choose the format, and customize the experience candidates see."},
+  'jobs-manage': {title:'Jobs', desc:"This is where you create job postings. Create a position, attach an interview, and send campaigns \u2014 candidates flow in automatically."},
+  'ai-scoring': {title:'Interview Insights', desc:"AI automatically scores every candidate response. See who stood out without watching every single video."},
+  'analytics': {title:'Hiring Analytics', desc:"Track what\u2019s working. See completion rates, time-to-hire, and trends across all your interviews."},
+  'enhanced-kanban': {title:'Hiring Pipeline', desc:"Your visual hiring board. Drag candidates between stages to see your whole pipeline at a glance."},
+  'pipeline-funnel': {title:'Hiring Funnel', desc:"See where candidates drop off. Conversion rates from application to hire, broken down by stage."},
+  'source-tracking': {title:'Candidate Sources', desc:"Find out where your best candidates come from. Track which sources actually lead to hires."},
+  'job-board': {title:'Job Board', desc:"Your public job board. Candidates can browse your open positions and apply directly from a branded page."},
+  'candidate-experience': {title:'What Candidates See', desc:"Control the candidate experience. Customize your apply page, prep instructions, and thank-you messages."},
+  'campaigns': {title:'Campaigns', desc:"This is where you reach passive candidates. Send job emails at scale \u2014 when they click, they apply and land in your pipeline automatically."},
+  'lead-sourcing': {title:'Lead Hub', desc:"Your candidate sourcing engine. Import leads from spreadsheets, track where they came from, and convert the best ones into candidates."},
+  'voice-agent': {title:'AI Phone Calls', desc:"Let AI handle your screening calls. Set up voice agents that call candidates, ask your questions, and report back with results."},
+  'referral-links': {title:'Referral Links', desc:"Generate unique tracking links for each referral source. See exactly which links bring in the most candidates."},
+  'job-syndication': {title:'Post to Job Sites', desc:"Push your open positions to Indeed, Google Jobs, and more. Applications flow back into ChannelView automatically."},
+  'white-label': {title:'Your Brand Colors', desc:"Make ChannelView look like yours. Set your logo and colors so candidates see your agency\u2019s brand, not ours."},
+  'report-hub': {title:'Reports', desc:"Download ready-made reports on hiring activity, candidate stats, and interview performance. Great for sharing with leadership."},
+  'video-library': {title:'Video Library', desc:"All your candidate video responses in one place. Search, filter, and rewatch anytime without digging through individual interviews."},
+  'bulk-ops': {title:'Bulk Actions', desc:"Save time with bulk operations. Move, tag, or archive multiple candidates at once instead of one by one."},
+  'review-hub': {title:'Compare Candidates', desc:"Side-by-side candidate comparison. Stack up scores, responses, and notes for your top picks to make faster decisions."},
+  'email-templates': {title:'Email Templates', desc:"Pre-written emails for every stage \u2014 invitations, reminders, rejections, and offers. Customize them or send as-is."},
+  'profile-settings': {title:'My Profile', desc:"Update your name, email, phone number, and notification preferences."},
+  'email-delivery': {title:'Email Settings', desc:"Configure how emails get sent \u2014 your SendGrid API key, sender name, and delivery settings."},
+  'help-center': {title:'Help Center', desc:"Guides, tips, and answers to common questions. Everything you need to get the most out of ChannelView."},
+  'settings': {title:'Settings', desc:"Your agency settings and preferences. Configure how ChannelView works for your team."},
+  'team': {title:'My Team', desc:"Add people to your account, set their roles, and manage who has access to what."},
+  'billing': {title:'Billing', desc:"Manage your subscription, see your usage, and upgrade your plan when you\u2019re ready to grow."},
+  'branding': {title:'Your Brand Colors', desc:"Customize how ChannelView looks to your candidates. Upload your logo and set your brand colors."},
+  'analytics-dashboard': {title:'Hiring Analytics', desc:"Track what\u2019s working. See completion rates, time-to-hire, and trends across all your interviews."},
+  'auto-rules': {title:'Auto Rules', desc:"Set it and forget it. Create rules that automatically move candidates through your pipeline based on scores, activity, or time."},
+  'custom-stages': {title:'Pipeline Stages', desc:"Customize your hiring stages. Add, rename, or reorder the stages candidates move through in your pipeline."},
+  'security-settings': {title:'Security', desc:"Manage your password, two-factor authentication, and login security settings."},
+  'activity-log': {title:'Activity History', desc:"See everything that\u2019s happened in your account \u2014 who did what and when. Great for auditing and accountability."},
+  'data-management': {title:'Data Management', desc:"Export your data, manage storage, and handle data retention settings."},
+  'notification-settings': {title:'Notifications', desc:"Choose which alerts you get and how \u2014 email, in-app, or both. Stay informed without the noise."},
+  'ams-integrations': {title:'Agency Systems', desc:"Connect ChannelView to your existing agency management system so data flows automatically."},
+  'api-management': {title:'Developer Keys', desc:"Generate and manage API keys for integrating ChannelView with your other tools and systems."},
+  'integrations-hub': {title:'Connections & Embed', desc:"Connect ChannelView to other tools via webhooks, or embed interview widgets on your website."},
+  'audit': {title:'Activity History', desc:"A complete log of every action taken in your account. See who changed what and when."},
+  'ai-insights': {title:'AI Insights', desc:"Deep AI analysis of candidate responses. See patterns, strengths, and areas of concern across your candidate pool."},
+  'demo-manager': {title:'Demo Manager', desc:"Set up demo interviews and sample data to show prospective users how ChannelView works."},
+  'admin': {title:'FMO Admin Panel', desc:"Your platform-wide command center. See every agency, their usage, subscription status, and intro templates \u2014 all in one place."},
+  'fmo': {title:'FMO Admin Portal', desc:"Manage all your agencies from here. Add new agencies, monitor their activity, change subscription tiers, and see who\u2019s using what."},
+  'admin-analytics': {title:'Admin Analytics', desc:"Platform-wide numbers. See total interviews, candidates, completion rates, and performance trends across every agency."},
+  'system': {title:'System Monitor', desc:"Database health, server performance, and email delivery stats. Check here when something seems slow or emails aren\u2019t arriving."},
+  'security': {title:'Security Settings', desc:"Platform security controls. Manage authentication policies, session settings, and access rules across the system."},
+  'integrations': {title:'Integrations', desc:"Connect ChannelView to external tools and services. Manage API connections, webhooks, and third-party integrations."},
+  'compliance': {title:'Compliance', desc:"Data privacy and regulatory compliance tools. GDPR controls, data retention policies, and audit capabilities."},
+};
+
+function tabDescriptor(pageKey) {
+  const d = TAB_DESCRIPTORS[pageKey];
+  if (!d) return '';
+  return '<div style="background:linear-gradient(135deg,#f0fdf0 0%,#f8fffe 100%);border:1px solid #d1fad1;border-radius:12px;padding:20px 24px;margin-bottom:24px">' +
+    '<p style="font-size:15px;color:#374151;margin:0;line-height:1.6"><strong style="color:#000;font-size:16px">' + d.desc.split('.')[0] + '.</strong> ' + d.desc.split('.').slice(1).join('.').trim() + '</p></div>';
+}
+
 async function loadPage() {
   // Check for first-login onboarding before loading normal page
   try {
@@ -422,6 +482,7 @@ async function renderDashboard() {
           <button class="btn btn-primary" onclick="window.location.href='/interviews/new'">+ New Interview</button>
         </div>
       </div>
+      ${tabDescriptor('dashboard')}
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-label">Active Interviews</div><div class="stat-value">${s.active_interviews}</div></div>
         <div class="stat-card"><div class="stat-label">Total Candidates</div><div class="stat-value">${s.total_candidates}</div></div>
@@ -486,6 +547,7 @@ async function renderInterviews() {
       <div><h1>Interviews</h1><p class="subtitle">Your interview templates</p></div>
       <div class="page-actions"><a href="/interviews/new" class="btn btn-primary">+ New Interview</a></div>
     </div>
+    ${tabDescriptor('interviews')}
     ${interviews.length ? `<div class="card" style="padding:0;overflow:hidden">
       <table><thead><tr><th>Interview</th><th>Position</th><th>Candidates</th><th>Completed</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>
       ${interviews.map(i => `<tr>
@@ -2245,6 +2307,7 @@ async function renderCandidates() {
       </div>
       <div></div>
     </div>
+    ${tabDescriptor('candidates')}
 
     <!-- Search & Filter Bar -->
     <div class="card" style="padding:12px 16px;margin-bottom:16px">
@@ -3050,6 +3113,7 @@ async function renderSettings() {
 
   content.innerHTML = `
     <div class="page-header"><div><h1>Settings</h1><p class="subtitle">Your agency settings and preferences</p></div></div>
+    ${tabDescriptor('settings')}
     <div style="max-width:600px">
       <div class="card">
         <h3 style="margin-bottom:16px">Agency Profile</h3>
@@ -3804,6 +3868,7 @@ async function renderAdmin() {
       <div class="page-header">
         <div><h1>FMO Admin Panel</h1><p class="subtitle">Platform-wide overview of all agency accounts</p></div>
       </div>
+      ${tabDescriptor('admin')}
 
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-label">Total Agencies</div><div class="stat-value">${stats.total_accounts}</div></div>
@@ -4149,6 +4214,7 @@ async function renderIntegrations() {
         <p style="color:#666;margin-top:4px">Link ChannelView with the other tools your agency uses</p>
       </div>
     </div>
+    ${tabDescriptor('integrations')}
 
     <div class="card" style="margin-bottom:20px">
       <h3 style="margin-bottom:16px">Zapier Integration</h3>
@@ -4260,6 +4326,7 @@ async function renderCompliance() {
         <button class="btn btn-outline" onclick="exportComplianceLog()">Export CSV</button>
       </div>
     </div>
+    ${tabDescriptor('compliance')}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px">
       <div class="card" style="text-align:center">
@@ -4430,6 +4497,9 @@ async function renderSystem() {
       <div>
         <h1 style="font-size:24px;font-weight:700">System Monitor</h1>
         <p style="color:#666;margin-top:4px">Database health, performance metrics, and email delivery</p>
+      </div>
+    </div>
+    ${tabDescriptor('system')}
       </div>
       <div style="display:flex;gap:12px">
         <button class="btn btn-outline" onclick="createBackup()">Create Backup</button>
@@ -4674,6 +4744,7 @@ async function renderSecurity() {
     <div class="page-header">
       <div><h1>Security</h1><p class="subtitle">Password, login history, and account safety</p></div>
     </div>
+    ${tabDescriptor('security')}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="card">
@@ -4818,6 +4889,7 @@ async function renderTeam() {
       <div><h1>My Team</h1><p class="subtitle">Add people, set their roles, and manage access</p></div>
       <button class="btn btn-primary" onclick="showInviteModal()">Invite Member</button>
     </div>
+    ${tabDescriptor('team')}
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
       <div class="card">
         <h3 style="margin-bottom:16px">Team Members</h3>
@@ -5048,6 +5120,7 @@ async function renderAdminAnalytics() {
           <button class="btn btn-primary" onclick="exportData()">Export CSV</button>
         </div>
       </div>
+      ${tabDescriptor('admin-analytics')}
 
       <div class="stats-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
         <div class="stat-card"><div class="stat-value">${m.total_interviews||0}</div><div class="stat-label">Total Interviews</div></div>
@@ -5155,6 +5228,7 @@ async function renderAiScoring() {
       <div class="page-header"><h2>AI Scoring</h2>
         <button class="btn btn-primary" onclick="showCreateRubricModal()">Create Rubric</button>
       </div>
+      ${tabDescriptor('ai-scoring')}
 
       <div class="stats-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">
         <div class="stat-card">
@@ -5382,6 +5456,7 @@ async function renderReviewHub() {
       <div class="page-header"><h2>Compare Candidates</h2>
         <button class="btn btn-primary" onclick="showCreateShortlistModal()">New Shortlist</button>
       </div>
+      ${tabDescriptor('review-hub')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
         <div class="card">
           <h3 style="margin-bottom:12px">Shortlists</h3>
@@ -5506,6 +5581,7 @@ async function renderFmoPortal() {
         </div>
         <button class="btn btn-primary" onclick="showAddAgencyModal()">+ Add Agency</button>
       </div>
+      ${tabDescriptor('fmo')}
 
       <div class="stats-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
         <div class="stat-card" style="border-left:4px solid #0ace0a">
@@ -5687,6 +5763,7 @@ async function renderEmailTemplates() {
       <div class="page-header"><h2>Email Templates</h2>
         <button class="btn btn-primary" onclick="showCreateTemplateModal()">New Template</button>
       </div>
+      ${tabDescriptor('email-templates')}
       <div class="stats-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
         <div class="stat-card"><div class="stat-value">${stats.total||0}</div><div class="stat-label">Total Emails</div></div>
         <div class="stat-card"><div class="stat-value">${stats.sent||0}</div><div class="stat-label">Delivered</div></div>
@@ -5793,6 +5870,7 @@ async function renderWhiteLabel() {
   content.innerHTML = `
     <div class="page-header"><h1>Custom Look &amp; Feel</h1>
       <button class="btn btn-primary" onclick="showCreateBrandModal()">+ New Brand Profile</button></div>
+    ${tabDescriptor('white-label')}
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px">
       <div class="stat-card"><div class="stat-value">${profiles.length}</div><div class="stat-label">Brand Profiles</div></div>
       <div class="stat-card"><div class="stat-value">${profiles.filter(p=>p.is_active).length}</div><div class="stat-label">Active</div></div>
@@ -5866,6 +5944,7 @@ async function renderReportHub() {
 
   content.innerHTML = `
     <div class="page-header"><h1>All Reports</h1></div>
+    ${tabDescriptor('report-hub')}
     <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
       <div class="stat-card"><div class="stat-value">${reports.length}</div><div class="stat-label">Total Reports</div></div>
       <div class="stat-card"><div class="stat-value">${reports.filter(r=>r.recommendation==='Strong Hire').length}</div><div class="stat-label">Strong Hires</div></div>
@@ -5918,6 +5997,7 @@ async function renderBulkOps() {
 
   content.innerHTML = `
     <div class="page-header"><h1>Bulk Actions</h1></div>
+    ${tabDescriptor('bulk-ops')}
     <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
       <div class="stat-card"><div class="stat-value">${ops.length}</div><div class="stat-label">Operations Run</div></div>
       <div class="stat-card"><div class="stat-value">${ops.reduce((a,o)=>a+(o.processed_items||0),0)}</div><div class="stat-label">Items Processed</div></div>
@@ -6150,6 +6230,7 @@ async function renderBilling() {
 
   el.innerHTML = `
     <div class="page-header"><div><h1>Billing & Subscription</h1><p class="subtitle">Manage your plan and usage</p></div></div>
+    ${tabDescriptor('billing')}
 
     <!-- Current Plan Banner -->
     <div class="card" style="background:linear-gradient(135deg,#111 0%,#1a1a1a 100%);color:#fff;margin-bottom:24px">
@@ -6293,6 +6374,7 @@ async function renderVideoLibrary() {
         <span class="badge badge-gray">${stats.total_mb||0} MB used</span>
       </div>
     </div>
+    ${tabDescriptor('video-library')}
 
     <!-- Intro Templates Section -->
     ${introTemplates.length ? `
@@ -6404,6 +6486,7 @@ async function renderAiInsightsC20() {
 
   el.innerHTML = `
     <div class="page-header"><h1>AI Scoring</h1></div>
+    ${tabDescriptor('ai-insights')}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px">
       <div class="card" style="border-left:4px solid #0ace0a">
@@ -6974,6 +7057,7 @@ async function renderEmailDelivery() {
         </div>
         <button class="btn btn-primary" onclick="showSendEmailModal()">Send Test Email</button>
       </div>
+      ${tabDescriptor('email-delivery')}
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
         ${emailStatCard('Total Sent', stats.total_sent || 0, '#0ace0a')}
@@ -7184,6 +7268,7 @@ async function renderHelpCenter() {
     <div style="max-width:900px;margin:0 auto;padding:24px">
       <div style="text-align:center;margin-bottom:32px">
         <h1 style="font-size:28px;font-weight:700;margin-bottom:8px">Help Center</h1>
+        ${tabDescriptor('help-center')}
         <p style="color:#666">Find answers, guides, and tips for getting the most out of ChannelView</p>
         <div style="max-width:500px;margin:16px auto 0">
           <input id="help-search" type="text" placeholder="Search help articles..." style="width:100%;padding:12px 16px;border:1px solid #e5e7eb;border-radius:8px;font-size:15px" oninput="searchHelp(this.value)">
@@ -7313,6 +7398,7 @@ async function renderProfileSettings() {
   document.getElementById('page-content').innerHTML = `
     <div style="max-width:900px;margin:0 auto;padding:24px">
       <h1 style="font-size:24px;font-weight:700;margin-bottom:24px">Profile & Preferences</h1>
+      ${tabDescriptor('profile-settings')}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
         <div class="card" style="padding:20px">
@@ -7681,6 +7767,7 @@ async function renderCandidateExperience() {
           ${interviews.map(i => `<option value="${i.id}" ${i.id===selectedId?'selected':''}>${i.title}</option>`).join('')}
         </select>
       </div>
+      ${tabDescriptor('candidate-experience')}
 
       <!-- Public Apply Toggle -->
       <div class="card" style="padding:20px 24px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
@@ -7829,6 +7916,7 @@ async function renderPipelineFunnel() {
           </select>
         </div>
       </div>
+      ${tabDescriptor('pipeline-funnel')}
 
       <!-- Funnel Visualization -->
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;margin-bottom:24px">
@@ -7937,6 +8025,7 @@ async function renderEnhancedKanban() {
         <button class="btn btn-sm btn-outline" onclick="renderAutoRules()" title="Configure auto-stage rules">⚡ Rules</button>
       </div>
     </div>
+    ${tabDescriptor('enhanced-kanban')}
 
     <!-- Bulk Action Bar -->
     <div id="c31-bulk-bar" style="display:none;background:#111;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:12px;align-items:center;gap:12px">
@@ -8335,6 +8424,7 @@ async function renderSourceTracking() {
           ${(interviews||[]).map(i => `<option value="${i.id}" ${i.id===interviewId?'selected':''}>${i.title}</option>`).join('')}
         </select>
       </div>
+      ${tabDescriptor('source-tracking')}
 
       <!-- Source Bar Chart -->
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-bottom:24px">
@@ -8410,6 +8500,7 @@ async function renderJobBoardSettings() {
           ${interviews.map(i => `<option value="${i.id}" ${i.id===selectedId?'selected':''}>${i.title}</option>`).join('')}
         </select>
       </div>
+      ${tabDescriptor('job-board')}
 
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
@@ -8726,6 +8817,7 @@ async function renderLeadSourcing() {
           <p style="color:#666;font-size:13px">${total} lead${total!==1?'s':''} in database</p>
         </div>
       </div>
+      ${tabDescriptor('lead-sourcing')}
 
       <!-- Analytics Cards -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px">
@@ -9123,6 +9215,7 @@ async function renderReferralLinks() {
           <p style="color:#666;font-size:13px">Create trackable referral links for your interviews</p>
         </div>
       </div>
+      ${tabDescriptor('referral-links')}
 
       <!-- Create New -->
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-bottom:24px">
@@ -9266,6 +9359,7 @@ async function renderJobSyndication() {
           <p style="color:#666;font-size:13px">Push your open positions to Indeed, Google Jobs, and more</p>
         </div>
       </div>
+      ${tabDescriptor('job-syndication')}
 
       <!-- Syndicate New -->
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin-bottom:24px">
@@ -9403,6 +9497,7 @@ async function renderVoiceAgent() {
           </button>` : ''}
         </div>
       </div>
+      ${tabDescriptor('voice-agent')}
 
       ${!isConfigured ? `
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:48px;text-align:center;margin-bottom:24px">
@@ -10370,7 +10465,7 @@ async function saveGeneratedDescription(interviewId) {
 
 async function renderJobsManage() {
   const el = document.getElementById('page-content');
-  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Jobs</h1><p style="color:#6b7280;margin:0 0 24px">Your open positions. Create a job posting, then attach an interview and send campaigns.</p><div id="jobs-content"><p style="color:#999">Loading...</p></div></div>';
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Jobs</h1>' + tabDescriptor('jobs-manage') + '<div id="jobs-content"><p style="color:#999">Loading...</p></div></div>';
   try {
     const jobs = await api('GET', '/api/jobs');
     const list = Array.isArray(jobs) ? jobs : [];
@@ -10629,7 +10724,7 @@ async function deleteJob(jobId) {
 
 async function renderCampaigns() {
   const el = document.getElementById('page-content');
-  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Campaigns</h1><p style="color:#6b7280;margin:0 0 24px">Send job descriptions to passive candidates. When they click Apply, they flow right into your pipeline.</p><div id="camp-content"><p style="color:#999">Loading...</p></div></div>';
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Campaigns</h1>' + tabDescriptor('campaigns') + '<div id="camp-content"><p style="color:#999">Loading...</p></div></div>';
   try {
     const res = await api('GET', '/api/campaigns');
     const camps = res.campaigns || [];
