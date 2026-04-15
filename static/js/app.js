@@ -364,6 +364,28 @@ function tabDescriptor(pageKey) {
     '<p style="font-size:15px;color:#374151;margin:0;line-height:1.6"><strong style="color:#000;font-size:16px">' + d.desc.split('.')[0] + '.</strong> ' + d.desc.split('.').slice(1).join('.').trim() + '</p></div>';
 }
 
+// ==================== CYCLE 42: INLINE GUIDANCE SYSTEM ====================
+// Tier 1: fieldHint() — small gray helper text below any field/setting
+// Tier 2: helpExpander() — collapsible "Learn more" with detailed explanation
+
+function fieldHint(text) {
+  return '<p style="font-size:12px;color:#9ca3af;margin:4px 0 0 0;line-height:1.4">' + text + '</p>';
+}
+
+function helpExpander(label, detail) {
+  const id = 'hx-' + Math.random().toString(36).substr(2, 8);
+  return '<div style="margin:8px 0 4px 0">' +
+    '<button onclick="var p=document.getElementById(\'' + id + '\');p.style.display=p.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=p.style.display===\'none\'?\'\u25B6\':\'\u25BC\'" ' +
+    'style="background:none;border:none;cursor:pointer;font-size:12px;color:#0ace0a;font-weight:600;padding:0;display:inline-flex;align-items:center;gap:4px">' +
+    '<span style="font-size:9px">\u25B6</span> ' + label + '</button>' +
+    '<div id="' + id + '" style="display:none;margin-top:6px;padding:12px 16px;background:#f9fafb;border-left:3px solid #d1fad1;border-radius:0 8px 8px 0;font-size:13px;color:#4b5563;line-height:1.5">' + detail + '</div></div>';
+}
+
+function sectionHint(title, text) {
+  return '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:12px">' +
+    '<p style="font-size:13px;color:#6b7280;margin:0;line-height:1.5"><strong style="color:#374151">' + title + '</strong> — ' + text + '</p></div>';
+}
+
 async function loadPage() {
   // Check for first-login onboarding before loading normal page
   try {
@@ -1617,12 +1639,14 @@ async function renderInterviewDetail() {
           <h3 style="margin-bottom:8px">Description</h3>
           <p style="color:#666;font-size:14px" id="iv-description-text">${iv.description || 'No description'}</p>
           <button class="btn btn-sm btn-outline" style="margin-top:8px;font-size:12px" onclick="showGenerateDescriptionModal('${iv.id}','${(iv.position||iv.title||'').replace(/'/g,"\\'")}')">🤖 Generate with AI</button>
+          ${fieldHint('This description shows on your job board and in campaign emails. Click "Generate with AI" to auto-write one based on the position title.')}
         </div>
         <div class="card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
             <h3>Auto-Engage</h3>
           </div>
           <p style="color:#888;font-size:13px;margin-bottom:10px">When a candidate applies, automatically send them the next step — no manual action needed.</p>
+          ${helpExpander('Which mode should I pick?', '<strong>Hold for review</strong> — You manually look at each application and decide who to invite. Best when you get fewer applicants and want to be selective.<br><br><strong>Auto-send video invite</strong> — Every applicant instantly gets the video interview link. Best when you want to cast a wide net and let the AI scoring filter for you.<br><br><strong>Auto-send format choice</strong> — Applicants choose their preferred format (video, phone, in-person). Best when you offer multiple interview types.')}
           <select id="auto-engage-select" onchange="updateAutoEngage('${iv.id}',this.value)"
             style="width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px">
             <option value="hold" ${(iv.auto_engage_mode||'hold')==='hold'?'selected':''}>Hold for review (manual)</option>
@@ -1633,7 +1657,9 @@ async function renderInterviewDetail() {
         </div>
         <div class="card">
           <h3 style="margin-bottom:4px">Candidate Intro</h3>
-          <p style="color:#888;font-size:13px;margin-bottom:14px">Plays before the first question — sets the tone and sells the opportunity</p>
+          <p style="color:#888;font-size:13px;margin-bottom:6px">Plays before the first question — sets the tone and sells the opportunity</p>
+          ${fieldHint('Candidates watch this before answering questions. Pick a template to get started or upload your own. A good intro makes candidates feel welcome and excited about the role.')}
+          <div style="margin-bottom:14px"></div>
           <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #e5e7eb;padding-bottom:8px">
             <button class="btn btn-sm ${iv.intro_type==='template'||!iv.intro_type||iv.intro_type==='none'?'btn-primary':'btn-outline'}" onclick="showIntroTab('templates','${iv.id}')" id="intro-tab-templates">Choose a Template</button>
             <button class="btn btn-sm ${iv.intro_type==='uploaded'?'btn-primary':'btn-outline'}" onclick="showIntroTab('upload','${iv.id}')" id="intro-tab-upload">Upload Video</button>
@@ -3136,9 +3162,12 @@ async function renderSettings() {
     <div style="max-width:600px">
       <div class="card">
         <h3 style="margin-bottom:16px">Agency Profile</h3>
-        <div class="form-group"><label>Your Name</label><input type="text" id="set-name" value="${profile.name || ''}"></div>
-        <div class="form-group"><label>Agency Name</label><input type="text" id="set-agency" value="${profile.agency_name || ''}"></div>
-        <div class="form-group"><label>Brand Color</label><input type="color" id="set-color" value="${profile.brand_color || '#0ace0a'}" style="height:42px;width:100px"></div>
+        <div class="form-group"><label>Your Name</label><input type="text" id="set-name" value="${profile.name || ''}">
+          ${fieldHint('Shows on emails sent to candidates and in your team view.')}</div>
+        <div class="form-group"><label>Agency Name</label><input type="text" id="set-agency" value="${profile.agency_name || ''}">
+          ${fieldHint('Your agency name appears throughout ChannelView — on the job board, email templates, and candidate pages.')}</div>
+        <div class="form-group"><label>Brand Color</label><input type="color" id="set-color" value="${profile.brand_color || '#0ace0a'}" style="height:42px;width:100px">
+          ${fieldHint('This color is used for buttons and accents in candidate-facing pages. For more branding options, visit Brand Colors under Customize.')}</div>
         <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
       </div>
 
@@ -3146,7 +3175,7 @@ async function renderSettings() {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
           <div>
             <h3>Email Configuration (SMTP)</h3>
-            <p style="font-size:13px;color:#999;margin-top:4px">Required to send report links and candidate emails</p>
+            <p style="font-size:13px;color:#999;margin-top:4px">Required to send interview invites, campaign emails, and candidate reminders</p>
           </div>
           ${profile.smtp_configured
             ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#d1fae5;color:#059669;border-radius:6px;font-size:12px;font-weight:600">Connected</span>'
@@ -3960,6 +3989,7 @@ async function renderBranding() {
       <div class="page-header">
         <div><h1>My Branding</h1><p class="subtitle">Make it look like yours — logo, colors, and style</p></div>
       </div>
+      ${tabDescriptor('branding')}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
@@ -3983,9 +4013,11 @@ async function renderBranding() {
           <div class="form-group">
             <label><input type="checkbox" id="br-wl-enabled" ${b.white_label_enabled ? 'checked' : ''}> Use My Own Branding</label>
             <p style="font-size:13px;color:#666;margin-top:4px">When enabled, candidates see your brand name and logo instead of ChannelView.</p>
+            ${fieldHint('Turn this on so every email, apply page, and interview looks like it comes from your agency — not a third-party tool.')}
           </div>
           <div class="form-group"><label>Candidate-Facing Brand Name</label>
             <input id="br-brand-name" class="form-control" value="${b.candidate_brand_name || ''}" placeholder="Your Agency Name">
+            ${fieldHint('This name appears in email headers and the interview experience. Use your agency name or the name candidates would recognize.')}
           </div>
           <div class="form-group"><label>Agency Logo</label>
             <div style="display:flex;align-items:center;gap:12px">
@@ -7793,6 +7825,7 @@ async function renderCandidateExperience() {
         <div>
           <h3 style="font-size:15px;font-weight:600;margin-bottom:2px">Public Apply Page</h3>
           <p style="font-size:13px;color:#666">Allow candidates to apply directly at <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">/apply/${selectedId.substring(0,8)}...</code></p>
+          ${fieldHint('When ON, anyone with this link can submit an application. Share it on job boards, social media, or your website. When OFF, only candidates you manually invite can access the interview.')}
         </div>
         <label style="position:relative;width:44px;height:24px;cursor:pointer">
           <input type="checkbox" id="ce-public-enabled" ${config.public_apply_enabled ? 'checked' : ''} style="opacity:0;width:0;height:0">
@@ -7803,17 +7836,20 @@ async function renderCandidateExperience() {
 
       <!-- Apply Page Config -->
       <div class="card" style="padding:24px;margin-bottom:16px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:16px">Apply Page Settings</h3>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:4px">Apply Page Settings</h3>
+        ${sectionHint('This is the first thing candidates see.', 'A clear apply page with the right information gets more people to actually complete their application instead of bouncing.')}
         <div style="margin-bottom:16px">
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Apply Instructions</label>
           <textarea id="ce-apply-instructions" rows="3" placeholder="Additional context shown to applicants..."
             style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.apply_instructions||''}</textarea>
+          ${fieldHint('Shown at the top of the apply page. Use this to set expectations — "Takes about 10 minutes" or "No experience needed" makes people more likely to start.')}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
           <div>
             <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Estimated Duration (min)</label>
             <input type="number" id="ce-duration" value="${config.estimated_duration_min||15}" min="5" max="120"
               style="width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px">
+            ${fieldHint('Candidates see this before they start. Shorter estimates (10-15 min) get more completions.')}
           </div>
           <div>
             <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Show Progress Tracker</label>
@@ -7821,37 +7857,45 @@ async function renderCandidateExperience() {
               <option value="1" ${config.show_progress_tracker!==0?'selected':''}>Yes - candidates can track status</option>
               <option value="0" ${config.show_progress_tracker===0?'selected':''}>No - hide progress page</option>
             </select>
+            ${fieldHint('Gives candidates a status page where they can check if their application was received and where they are in the process.')}
           </div>
         </div>
       </div>
 
       <!-- Interview Prep Config -->
       <div class="card" style="padding:24px;margin-bottom:16px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:16px">Interview Prep Page</h3>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:4px">Interview Prep Page</h3>
+        ${sectionHint('Candidates see this right before the interview starts.', 'Good prep instructions reduce anxiety and improve response quality. Tell them what to expect, how long it takes, and that they can re-record.')}
         <div style="margin-bottom:16px">
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Prep Instructions</label>
           <textarea id="ce-prep-instructions" rows="3" placeholder="Tips and instructions shown before the interview starts..."
             style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.prep_instructions||''}</textarea>
+          ${fieldHint('Example: "Find a quiet spot with good lighting. You can re-record any answer up to 3 times. There are no wrong answers — just be yourself."')}
         </div>
         <div>
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Prep Video URL (optional)</label>
           <input type="url" id="ce-prep-video" value="${config.prep_video_url||''}" placeholder="https://youtube.com/embed/..."
             style="width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px">
+          ${fieldHint('A short YouTube or Vimeo link. If set, candidates watch this video before starting the interview. Great for a personal welcome or showing them your office.')}
         </div>
+        ${helpExpander('Why does interview prep matter?', 'Candidates who feel prepared give better responses. When someone knows what to expect, they focus on answering your questions instead of worrying about the technology. Agencies that add prep instructions see 20-30% fewer abandoned interviews.')}
       </div>
 
       <!-- Thank You Config -->
       <div class="card" style="padding:24px;margin-bottom:16px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:16px">Thank You / Next Steps</h3>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:4px">Thank You / Next Steps</h3>
+        ${sectionHint('The last thing candidates see after finishing.', 'This is your chance to leave a great impression and set expectations for what happens next. Candidates who know the timeline are more patient and less likely to ghost you.')}
         <div style="margin-bottom:16px">
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Thank You Message</label>
           <textarea id="ce-thank-you" rows="2" placeholder="Message shown after interview completion..."
             style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.thank_you_message||''}</textarea>
+          ${fieldHint('Keep it warm and personal. "Thank you for taking the time — we really appreciate you sharing your story with us."')}
         </div>
         <div>
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Next Steps</label>
           <textarea id="ce-next-steps" rows="2" placeholder="What happens after submission, expected timeline..."
             style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.thank_you_next_steps||''}</textarea>
+          ${fieldHint('Tell them what to expect: "We review all interviews within 48 hours. You\\'ll hear from us by email with next steps."')}
         </div>
       </div>
 
@@ -8526,6 +8570,7 @@ async function renderJobBoardSettings() {
           <div>
             <h3 style="font-size:16px;font-weight:600">Publish to Job Board</h3>
             <p style="font-size:13px;color:#666">When enabled, this position appears on your public careers page</p>
+            ${fieldHint('Your job board is a branded page listing all your open positions. Share the URL on your website or social media. Candidates can browse and apply directly.')}
           </div>
           <label style="position:relative;width:44px;height:24px;cursor:pointer">
             <input type="checkbox" id="jb-enabled" ${interview.job_board_enabled ? 'checked' : ''} style="opacity:0;width:0;height:0"
@@ -8710,7 +8755,8 @@ async function renderLeadSourcing() {
     <div style="text-align:center;padding:60px 20px;background:#fff;border:1px solid #e5e7eb;border-radius:12px">
       <div style="font-size:48px;margin-bottom:16px">&#x1F50D;</div>
       <h3 style="font-size:18px;font-weight:600;margin-bottom:8px">No leads yet</h3>
-      <p style="color:#666;font-size:14px;margin-bottom:20px">Import a CSV, add leads manually, or search by ZIP code to get started.</p>
+      <p style="color:#666;font-size:14px;margin-bottom:12px">Import a CSV, add leads manually, or search by ZIP code to get started.</p>
+      <p style="color:#9ca3af;font-size:13px;margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">Leads are people you're interested in but haven't formally invited to interview yet. Think of this as your prospect list. When you're ready, convert them to candidates with one click.</p>
     </div>`}
   `;
 
@@ -9253,6 +9299,7 @@ async function renderReferralLinks() {
           </div>
           <button onclick="c33CreateRefLink()" style="background:#0ace0a;color:#000;font-weight:600;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;height:38px">Create Link</button>
         </div>
+        ${fieldHint('Create a unique link for each place you share it — your website, a specific social media post, a networking event flyer. This way you can see exactly which source is bringing in the most candidates.')}
       </div>
 
       <!-- Existing Links -->
@@ -9502,7 +9549,7 @@ async function renderVoiceAgent() {
     <div style="max-width:1200px;margin:0 auto">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
         <div>
-          <h2 style="margin:0;font-size:24px;font-weight:700">Phone Screening</h2>
+          <h2 style="margin:0;font-size:24px;font-weight:700">AI Screening Calls</h2>
           <p style="color:#666;margin:4px 0 0">AI makes phone calls to pre-screen candidates before you spend time interviewing</p>
         </div>
         <div style="display:flex;gap:8px">
@@ -10550,6 +10597,7 @@ async function showCreateJob() {
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Title *</label>
         <input id="job-title" placeholder="e.g. Benefits Advisor" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">Use a title candidates will search for. "Benefits Advisor" and "Insurance Sales Rep" work better than internal titles.</p>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div>
@@ -10656,6 +10704,8 @@ async function showJobDetail(jobId) {
           <input readonly value="https://mychannelview.com/apply/job/${jobId}" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f9fafb;box-sizing:border-box" id="job-apply-link">
           <button onclick="navigator.clipboard.writeText(document.getElementById('job-apply-link').value);toast('Link copied!','success')" style="background:#111;color:#fff;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">Copy</button>
         </div>
+        ${fieldHint('Share this link anywhere — job boards, social media, business cards, your website. Anyone who clicks it can apply directly and becomes a candidate in your pipeline.')}
+        ${helpExpander('Where should I share this link?', 'Post it on Indeed, ZipRecruiter, LinkedIn, and Facebook. Add it to your email signature. Print it on recruiting flyers. The more places this link appears, the more candidates flow into your pipeline automatically. Every application lands here in ChannelView — no manual data entry needed.')}
       </div>
     </div>`;
   } catch (e) { el.innerHTML = '<div style="padding:32px"><p style="color:red">Failed to load job.</p></div>'; }
@@ -10676,31 +10726,37 @@ async function editJob(jobId) {
     </div>
     <div style="display:grid;gap:16px">
       <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Title *</label>
-        <input id="edit-job-title" value="${job.title || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box"></div>
+        <input id="edit-job-title" value="${job.title || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">Use a title candidates will search for: "Benefits Advisor," "Insurance Sales Rep," "Financial Services Representative"</p></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Location</label>
-          <input id="edit-job-location" value="${job.location || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box"></div>
+          <input id="edit-job-location" value="${job.location || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+          <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">City, state, or "Remote" — shown on job boards and the apply page</p></div>
         <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Type</label>
           <select id="edit-job-type" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
             <option value="full_time" ${job.job_type==='full_time'?'selected':''}>Full Time</option><option value="part_time" ${job.job_type==='part_time'?'selected':''}>Part Time</option><option value="contract" ${job.job_type==='contract'?'selected':''}>Contract</option><option value="flexible" ${job.job_type==='flexible'?'selected':''}>Flexible</option>
           </select></div>
       </div>
       <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Salary Range</label>
-        <input id="edit-job-salary" value="${job.salary_range || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box"></div>
+        <input id="edit-job-salary" value="${job.salary_range || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">Example: "$50,000 - $80,000" or "Commission-based, $60K+ average." Listings with salary get 2x more applicants.</p></div>
       <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Status</label>
         <select id="edit-job-status" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
           <option value="active" ${job.status==='active'?'selected':''}>Active</option><option value="draft" ${job.status==='draft'?'selected':''}>Draft</option><option value="paused" ${job.status==='paused'?'selected':''}>Paused</option><option value="closed" ${job.status==='closed'?'selected':''}>Closed</option>
         </select></div>
       <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Description</label>
-        <textarea id="edit-job-desc" rows="5" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;line-height:1.6;box-sizing:border-box">${job.description || ''}</textarea></div>
+        <textarea id="edit-job-desc" rows="5" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;line-height:1.6;box-sizing:border-box">${job.description || ''}</textarea>
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">This shows on your job board and in campaign emails. You can also generate one with AI from the job detail page.</p></div>
       <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Attach Interview</label>
-        <select id="edit-job-interview" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${ivOpts}</select></div>
+        <select id="edit-job-interview" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${ivOpts}</select>
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">Link this job to an interview so applicants automatically get invited. You can create interviews from the My Interviews tab.</p></div>
       <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Auto-Engage After Apply</label>
         <select id="edit-job-auto-engage" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
           <option value="hold" ${job.auto_engage_mode==='hold'?'selected':''}>Hold for review</option>
           <option value="video_invite" ${job.auto_engage_mode==='video_invite'?'selected':''}>Auto-send interview link</option>
           <option value="format_choice" ${job.auto_engage_mode==='format_choice'?'selected':''}>Auto-send format choice</option>
-        </select></div>
+        </select>
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">"Hold" = you review first. "Auto-send" = candidates get the interview link immediately after applying — great for high-volume hiring.</p></div>
       <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
         <button onclick="document.getElementById('modal-edit-job').remove()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>
         <button onclick="updateJob('${jobId}')" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:6px;cursor:pointer;font-size:14px">Save Changes</button>
@@ -10813,14 +10869,17 @@ async function showCreateCampaign() {
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Campaign Name</label>
         <input id="camp-name" placeholder="e.g. Spring Recruiting Push" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">For your reference only — recipients won't see this name.</p>
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job</label>
         <select id="camp-job" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${opts}</select>
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">When someone clicks "I'm Interested," they'll land on this job's apply page.</p>
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Email Subject Line</label>
         <input id="camp-subject" value="An Exciting Career Opportunity" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">This is what appears in the recipient's inbox. Make it personal and compelling — avoid sounding like spam.</p>
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Headline (in the email)</label>
@@ -10936,7 +10995,8 @@ async function showCampaignDetail(campId) {
       </div>`;
 
     if (!recipients.length) {
-      html += `<p style="color:#6b7280;text-align:center;padding:20px 0">No recipients yet. Add contacts to this campaign — these are the people who'll receive your job description email.</p>`;
+      html += `<p style="color:#6b7280;text-align:center;padding:20px 0">No recipients yet. Add contacts to this campaign — these are the people who\\'ll receive your job description email.</p>
+        ${helpExpander('How do I add recipients?', 'Click <strong>+ Add Recipients</strong> to paste names and emails, or <strong>Upload CSV</strong> to import a spreadsheet. You can also import directly from your Lead Hub. Each person will receive one email with your job description and a button to apply. Duplicates are automatically filtered out.')}`;
     } else {
       html += `<div style="max-height:400px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="border-bottom:2px solid #e5e7eb">
@@ -10979,7 +11039,8 @@ async function showAddRecipients(campId) {
       <h2 style="margin:0;font-size:20px">Add Recipients</h2>
       <button onclick="document.getElementById('modal-add-recip').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
     </div>
-    <p style="color:#6b7280;font-size:14px;margin:0 0 16px">Paste contacts below — one per line. Format: <code>first_name, last_name, email</code></p>
+    <p style="color:#6b7280;font-size:14px;margin:0 0 8px">Paste contacts below — one per line. Format: <code>first_name, last_name, email</code></p>
+    <p style="font-size:12px;color:#9ca3af;margin:0 0 16px">Tip: Copy rows from a spreadsheet and paste them here. Each person gets one email. Same email won\\'t be added twice.</p>
     <textarea id="recip-paste" rows="10" placeholder="John, Smith, john@example.com&#10;Jane, Doe, jane@example.com&#10;..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;box-sizing:border-box"></textarea>
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
       <button onclick="document.getElementById('modal-add-recip').remove()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">Cancel</button>
