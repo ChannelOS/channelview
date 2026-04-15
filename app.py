@@ -10295,6 +10295,7 @@ def _send_agency_welcome_email(agency_email, agency_name, contact_name, temp_pas
 
 
 @app.route('/review')
+@app.route('/review-hub')
 @require_auth
 def page_review_hub():
     return render_template('app.html', user=g.user, page='review-hub')
