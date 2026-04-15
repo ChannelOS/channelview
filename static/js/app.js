@@ -7806,12 +7806,20 @@ async function renderCandidateExperience() {
 
   const fields = config.apply_fields || [];
 
+  // Smart defaults — pre-fill if the RSC hasn't customized yet
+  const defaultApplyInstructions = "Thank you for your interest! This quick application takes about 10 minutes. No prior experience in our industry is required \u2014 we are looking for great people, and we will teach you the rest.";
+  const defaultPrepInstructions = "Here are a few tips before you begin:\n\n\u2022 Find a quiet spot with good lighting\n\u2022 You can re-record any answer up to 3 times \u2014 no pressure to be perfect\n\u2022 There are no wrong answers. Just be yourself and tell us your story\n\u2022 The whole interview takes about 10-15 minutes";
+  const defaultThankYou = "Thank you so much for taking the time to complete this interview! We really appreciate you sharing your story with us. It means a lot that you are considering this opportunity.";
+  const defaultNextSteps = "Here is what happens next: Our team reviews all interviews within 48 hours. You will hear from us by email or phone with next steps. In the meantime, feel free to reach out if you have any questions \u2014 we are happy to help.";
+
+  const applyLink = window.location.origin + '/apply/' + selectedId;
+
   content.innerHTML = `
     <div style="max-width:800px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Candidate Portal</h2>
-          <p style="color:#666;font-size:13px">Set up what candidates see when they apply, interview, and finish</p>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">What Candidates See</h2>
+          <p style="color:#666;font-size:13px">Control every step of the candidate experience \u2014 from application to thank-you</p>
         </div>
         <select id="ce-interview-select" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
           onchange="history.replaceState(null,'','/candidate-experience?interview_id='+this.value);renderCandidateExperience()">
@@ -7820,106 +7828,95 @@ async function renderCandidateExperience() {
       </div>
       ${tabDescriptor('candidate-experience')}
 
-      <!-- Public Apply Toggle -->
-      <div class="card" style="padding:20px 24px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <h3 style="font-size:15px;font-weight:600;margin-bottom:2px">Public Apply Page</h3>
-          <p style="font-size:13px;color:#666">Allow candidates to apply directly at <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">/apply/${selectedId.substring(0,8)}...</code></p>
-          ${fieldHint('When ON, anyone with this link can submit an application. Share it on job boards, social media, or your website. When OFF, only candidates you manually invite can access the interview.')}
+      <!-- Apply Link — big, prominent, easy to copy -->
+      <div class="card" style="padding:20px 24px;margin-bottom:16px;background:linear-gradient(135deg,#f0fdf0 0%,#f8fffe 100%);border:1px solid #d1fad1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <h3 style="font-size:15px;font-weight:600;margin:0">Your Apply Link</h3>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151">
+            <input type="checkbox" id="ce-public-enabled" ${config.public_apply_enabled ? 'checked' : ''} style="width:16px;height:16px;accent-color:#0ace0a">
+            Public
+          </label>
         </div>
-        <label style="position:relative;width:44px;height:24px;cursor:pointer">
-          <input type="checkbox" id="ce-public-enabled" ${config.public_apply_enabled ? 'checked' : ''} style="opacity:0;width:0;height:0">
-          <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:${config.public_apply_enabled?'#0ace0a':'#ccc'};border-radius:12px;transition:0.3s"></div>
-          <div style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:0.3s;transform:${config.public_apply_enabled?'translateX(20px)':'translateX(0)'}"></div>
-        </label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input readonly value="${applyLink}" id="ce-apply-link"
+            style="flex:1;padding:10px 14px;border:1px solid #d1fad1;border-radius:8px;font-size:14px;background:#fff;color:#111;font-family:monospace;box-sizing:border-box">
+          <button onclick="navigator.clipboard.writeText(document.getElementById('ce-apply-link').value);toast('Link copied!','success')"
+            style="background:#0ace0a;color:#000;font-weight:700;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;white-space:nowrap">Copy Link</button>
+          <a href="/apply/${selectedId}" target="_blank"
+            style="background:#111;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;white-space:nowrap">Preview</a>
+        </div>
+        ${fieldHint('Share this link on job boards, social media, your website, or in emails. Anyone who clicks it can apply and enters your pipeline automatically.')}
       </div>
 
-      <!-- Apply Page Config -->
+      <!-- STEP 1: When They Apply -->
       <div class="card" style="padding:24px;margin-bottom:16px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:4px">Apply Page Settings</h3>
-        ${sectionHint('This is the first thing candidates see.', 'A clear apply page with the right information gets more people to actually complete their application instead of bouncing.')}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <span style="background:#0ace0a;color:#000;font-weight:800;font-size:12px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center">1</span>
+          <h3 style="font-size:16px;font-weight:600;margin:0">When They Apply</h3>
+        </div>
+        ${sectionHint('The first thing candidates see.', 'A warm, clear message gets more people to actually complete the application instead of bouncing.')}
         <div style="margin-bottom:16px">
-          <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Apply Instructions</label>
-          <textarea id="ce-apply-instructions" rows="3" placeholder="Additional context shown to applicants..."
-            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.apply_instructions||''}</textarea>
-          ${fieldHint('Shown at the top of the apply page. Use this to set expectations — "Takes about 10 minutes" or "No experience needed" makes people more likely to start.')}
+          <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Welcome Message on Apply Page</label>
+          <textarea id="ce-apply-instructions" rows="3"
+            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.apply_instructions || defaultApplyInstructions}</textarea>
+          ${fieldHint('This shows at the top of your apply page. Sets the tone and tells candidates what to expect.')}
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Estimated Duration (min)</label>
-            <input type="number" id="ce-duration" value="${config.estimated_duration_min||15}" min="5" max="120"
-              style="width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px">
-            ${fieldHint('Candidates see this before they start. Shorter estimates (10-15 min) get more completions.')}
-          </div>
-          <div>
-            <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Show Progress Tracker</label>
-            <select id="ce-show-progress" style="width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px">
-              <option value="1" ${config.show_progress_tracker!==0?'selected':''}>Yes - candidates can track status</option>
-              <option value="0" ${config.show_progress_tracker===0?'selected':''}>No - hide progress page</option>
-            </select>
-            ${fieldHint('Gives candidates a status page where they can check if their application was received and where they are in the process.')}
-          </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Estimated Duration (minutes)</label>
+          <input type="number" id="ce-duration" value="${config.estimated_duration_min||15}" min="5" max="120"
+            style="width:160px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px">
+          ${fieldHint('Shown to candidates before they start. Shorter estimates (10-15 min) get more completions.')}
         </div>
+        <input type="hidden" id="ce-show-progress" value="1">
       </div>
 
-      <!-- Interview Prep Config -->
+      <!-- STEP 2: Before the Interview -->
       <div class="card" style="padding:24px;margin-bottom:16px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:4px">Interview Prep Page</h3>
-        ${sectionHint('Candidates see this right before the interview starts.', 'Good prep instructions reduce anxiety and improve response quality. Tell them what to expect, how long it takes, and that they can re-record.')}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <span style="background:#0ace0a;color:#000;font-weight:800;font-size:12px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center">2</span>
+          <h3 style="font-size:16px;font-weight:600;margin:0">Before the Interview</h3>
+        </div>
+        ${sectionHint('Candidates see this right before they start recording.', 'Good prep instructions reduce anxiety, improve response quality, and prevent abandoned interviews.')}
         <div style="margin-bottom:16px">
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Prep Instructions</label>
-          <textarea id="ce-prep-instructions" rows="3" placeholder="Tips and instructions shown before the interview starts..."
-            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.prep_instructions||''}</textarea>
-          ${fieldHint('Example: "Find a quiet spot with good lighting. You can re-record any answer up to 3 times. There are no wrong answers — just be yourself."')}
+          <textarea id="ce-prep-instructions" rows="5"
+            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.prep_instructions || defaultPrepInstructions}</textarea>
+          ${fieldHint('Shown right before the interview begins. Helps candidates feel prepared and confident.')}
         </div>
-        <div>
-          <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Prep Video URL (optional)</label>
-          <input type="url" id="ce-prep-video" value="${config.prep_video_url||''}" placeholder="https://youtube.com/embed/..."
-            style="width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px">
-          ${fieldHint('A short YouTube or Vimeo link. If set, candidates watch this video before starting the interview. Great for a personal welcome or showing them your office.')}
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:16px">\uD83C\uDFAC</span>
+            <strong style="font-size:14px;color:#374151">Candidate Intro Video</strong>
+          </div>
+          <p style="font-size:13px;color:#6b7280;margin:0 0 10px">Your intro video (template, uploaded, or recorded) plays before the first question. You can choose or change it on the interview settings page.</p>
+          <a href="/interviews/${selectedId}" style="font-size:13px;color:#0ace0a;font-weight:600;text-decoration:none">Go to Interview Settings \u2192</a>
         </div>
-        ${helpExpander('Why does interview prep matter?', 'Candidates who feel prepared give better responses. When someone knows what to expect, they focus on answering your questions instead of worrying about the technology. Agencies that add prep instructions see 20-30% fewer abandoned interviews.')}
+        <input type="hidden" id="ce-prep-video" value="${config.prep_video_url||''}">
       </div>
 
-      <!-- Thank You Config -->
+      <!-- STEP 3: After the Interview -->
       <div class="card" style="padding:24px;margin-bottom:16px">
-        <h3 style="font-size:16px;font-weight:600;margin-bottom:4px">Thank You / Next Steps</h3>
-        ${sectionHint('The last thing candidates see after finishing.', 'This is your chance to leave a great impression and set expectations for what happens next. Candidates who know the timeline are more patient and less likely to ghost you.')}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <span style="background:#0ace0a;color:#000;font-weight:800;font-size:12px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center">3</span>
+          <h3 style="font-size:16px;font-weight:600;margin:0">After the Interview</h3>
+        </div>
+        ${sectionHint('The last thing candidates see.', 'A warm thank-you and clear next steps leave a great impression. Candidates who know the timeline are more patient and less likely to ghost you.')}
         <div style="margin-bottom:16px">
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Thank You Message</label>
-          <textarea id="ce-thank-you" rows="2" placeholder="Message shown after interview completion..."
-            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.thank_you_message||''}</textarea>
-          ${fieldHint('Keep it warm and personal. "Thank you for taking the time — we really appreciate you sharing your story with us."')}
+          <textarea id="ce-thank-you" rows="3"
+            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.thank_you_message || defaultThankYou}</textarea>
+          ${fieldHint('Shown immediately after they finish. Keep it warm and personal.')}
         </div>
         <div>
-          <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Next Steps</label>
-          <textarea id="ce-next-steps" rows="2" placeholder="What happens after submission, expected timeline..."
-            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.thank_you_next_steps||''}</textarea>
-          ${fieldHint('Tell them what to expect: "We review all interviews within 48 hours. You will hear from us by email with next steps."')}
+          <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">What Happens Next</label>
+          <textarea id="ce-next-steps" rows="3"
+            style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.thank_you_next_steps || defaultNextSteps}</textarea>
+          ${fieldHint('Tell them the timeline and what to expect so they are not left wondering.')}
         </div>
       </div>
 
       <button class="btn btn-primary" onclick="c32SaveExperienceConfig('${selectedId}')" style="width:100%;padding:14px;font-size:15px;margin-bottom:16px">Save All Settings</button>
-
-      <!-- Quick Links -->
-      <div class="card" style="padding:20px 24px;background:#f9fafb">
-        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;color:#666">Preview Links</h3>
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <a href="/apply/${selectedId}" target="_blank" style="font-size:13px;color:#0ace0a;text-decoration:none;font-weight:600">Apply Page &#x2197;</a>
-          <span style="color:#ddd">|</span>
-          <a href="/job-board?interview_id=${selectedId}" style="font-size:13px;color:#0ace0a;text-decoration:none;font-weight:600">Job Board Settings</a>
-        </div>
-      </div>
     </div>`;
-
-  // Wire up toggle
-  const toggle = document.getElementById('ce-public-enabled');
-  if (toggle) {
-    toggle.addEventListener('change', function() {
-      this.parentElement.querySelector('div:nth-child(2)').style.background = this.checked ? '#0ace0a' : '#ccc';
-      this.parentElement.querySelector('div:nth-child(3)').style.transform = this.checked ? 'translateX(20px)' : 'translateX(0)';
-    });
-  }
 }
 
 async function c32SaveExperienceConfig(interviewId) {
