@@ -494,6 +494,121 @@ def api_email_backend_info():
         'active_backend': 'sendgrid' if sg_key else ('smtp' if smtp else 'log'),
     })
 
+# ======================== PRE-LOADED DEFAULT JOBS (Cycle 46) ========================
+
+DEFAULT_JOBS = [
+    {
+        'title': 'Benefits Advisor',
+        'job_type': 'full_time',
+        'salary_range': '$55,000 - $125,000 per year',
+        'description': (
+            "This is a truly rewarding Business-to-Business position that offers one of the strongest "
+            "compensation structures in the industry, flexible schedules with no nights, weekends or holidays. "
+            "Are you ready to start a career where you work for YOU?\n\n"
+            "We are seeking motivated individuals to join our growing team.\n\n"
+            "We're looking for enthusiastic, motivated, creative team members to come build their own business. "
+            "If you feel you have these qualities, you might be a great fit.\n\n"
+            "Our associates work directly with business owners to deliver voluntary benefits solutions for their "
+            "employees while helping to solve key issues facing small businesses today. It's a key role that helps "
+            "business owners ensure their employees can receive direct cash benefits, unless otherwise assigned, "
+            "should covered medical events occur.\n\n"
+            "Advantages:\n"
+            "• Work-Life Balance\n"
+            "• Advancement Opportunities\n"
+            "• Sales Training Provided — Experience a Plus but Not Required\n"
+            "• Represent the #1 provider of supplemental health insurance in the U.S.\n"
+            "• Financial Strength & Brand Reputation\n"
+            "• Competitive Commissions, Bonuses, Renewals & Stock\n\n"
+            "Role Responsibilities:\n"
+            "• Communicate the value of our products & services to business owners\n"
+            "• Generate sales via networking, referrals & cold calls\n"
+            "• Schedule & conduct employer presentations\n"
+            "• Educate employees on benefit options & support enrollment needs\n"
+            "• Provide claims support to new & existing clients\n\n"
+            "Requirements:\n"
+            "• Must be at least 18 years old\n"
+            "• Authorized to work in the US\n"
+            "• No experience necessary — all career backgrounds welcome\n"
+            "• Training provided"
+        ),
+    },
+    {
+        'title': 'Benefits Enrollment Specialist',
+        'job_type': 'full_time',
+        'salary_range': '$50,000 - $90,000 per year',
+        'description': (
+            "Are you a people person? Do you work well in a team environment? If so, please give us a look! "
+            "We are searching for reliable, motivated individuals to support our growing sales team. This is a "
+            "Benefits Enrollment Specialist role that offers a wide range of growth.\n\n"
+            "We work directly with employers to help expand their employee benefit options, while helping to "
+            "solve key issues many companies face.\n\n"
+            "Advantages:\n"
+            "• Work-Life Balance\n"
+            "• Advancement Opportunities\n"
+            "• Sales Training Provided — Experience a Plus but Not Required\n"
+            "• Represent the #1 provider of supplemental health insurance in the U.S.\n"
+            "• Financial Strength & Brand Reputation\n"
+            "• Competitive Commissions, Bonuses, Renewals & Stock\n\n"
+            "Role Responsibilities:\n"
+            "• Communicate the value of our products & services\n"
+            "• Generate sales via networking, referrals & cold calls\n"
+            "• Schedule & conduct employer presentations\n"
+            "• Educate employees on benefit options & support enrollment needs\n"
+            "• Provide claims support to new & existing clients\n\n"
+            "Related Competencies:\n"
+            "• Networking & Relationship Building\n"
+            "• Strong Communication Skills\n"
+            "• Entrepreneurial Mindset\n"
+            "• Positive \"Can Do\" Attitude\n\n"
+            "Requirements:\n"
+            "• Must be at least 18 years old\n"
+            "• Authorized to work in the US\n"
+            "• No experience necessary — all career backgrounds welcome\n"
+            "• Training provided"
+        ),
+    },
+    {
+        'title': 'Insurance Agent — Training Provided!',
+        'job_type': 'contract',
+        'salary_range': '$50,000 - $125,000 per year',
+        'description': (
+            "This is a truly rewarding business-to-business position that offers one of the strongest compensation "
+            "structures in the industry, flexible schedules with no nights, weekends or holidays. Are you ready "
+            "to start a sales career where you work for YOU?\n\n"
+            "We are seeking to bring on newly motivated individuals to our team.\n\n"
+            "We're looking for enthusiastic, motivated, creative team members to come build their own business. "
+            "If you feel you have these qualities, you might be a great fit.\n\n"
+            "Our sales agents work directly with business owners to deliver voluntary benefits solutions for their "
+            "employees while helping to solve key issues facing small businesses today. It's a key role that helps "
+            "business owners ensure their employees can receive direct cash benefits, unless otherwise assigned, "
+            "should covered medical events occur.\n\n"
+            "Bonus potential in first 3 months!\n\n"
+            "No experience necessary. All career backgrounds are welcome! Training is provided via our world-class "
+            "training program.\n\n"
+            "Top-notch benefits include stock bonus program, bonus rewards and exotic trips. Compensation includes "
+            "commission, residual commission, bonuses, and stock.\n\n"
+            "Requirements:\n"
+            "• Must be at least 18 years old\n"
+            "• Authorized to work in the US\n"
+            "• No experience necessary — training provided"
+        ),
+    },
+]
+
+def _seed_default_jobs(db, user_id):
+    """Pre-load 3 default job postings for a newly created account."""
+    try:
+        for job in DEFAULT_JOBS:
+            job_id = str(uuid.uuid4())
+            db.execute('''INSERT INTO jobs (id, user_id, title, description, job_type, salary_range,
+                status, public_apply_enabled, auto_engage_mode)
+                VALUES (?,?,?,?,?,?,?,?,?)''',
+                (job_id, user_id, job['title'], job['description'], job['job_type'],
+                 job['salary_range'], 'draft', 0, 'hold'))
+        db.commit()
+    except Exception as e:
+        print(f'[JOBS] Failed to seed default jobs for user {user_id}: {e}')
+
 # ======================== AUTH API ========================
 
 @app.route('/api/auth/register', methods=['POST'])
@@ -524,6 +639,9 @@ def api_register():
         (user_id, email, pw_hash, name, agency, 'professional', 'trialing', trial_end)
     )
     db.commit()
+
+    # Pre-load default job postings (Cycle 46)
+    _seed_default_jobs(db, user_id)
 
     # Send welcome email (non-blocking — don't fail registration if email fails)
     try:
@@ -8700,6 +8818,10 @@ def api_fmo_create_agency():
         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ''', (user_id, email, password_hash, name, agency_name, plan, g.user_id, trial_end, sub_status))
     db.commit()
+
+    # Pre-load default job postings (Cycle 46)
+    _seed_default_jobs(db, user_id)
+
     db.close()
 
     # Send welcome email with credentials (fire-and-forget)
