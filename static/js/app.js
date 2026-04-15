@@ -386,6 +386,74 @@ function sectionHint(title, text) {
     '<p style="font-size:13px;color:#6b7280;margin:0;line-height:1.5"><strong style="color:#374151">' + title + '</strong> — ' + text + '</p></div>';
 }
 
+// ==================== CYCLE 43: NAVIGATION REBUILD ====================
+// Breadcrumb: shows "< Back to X" + trail for orientation
+function breadcrumb(parentLabel, parentPage, currentLabel) {
+  return '<div style="margin-bottom:16px;display:flex;align-items:center;gap:12px">' +
+    '<a href="/' + parentPage + '" style="display:inline-flex;align-items:center;gap:4px;font-size:14px;color:#0ace0a;text-decoration:none;font-weight:600" ' +
+    'onmouseover="this.style.color=\'#08a808\'" onmouseout="this.style.color=\'#0ace0a\'">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg> ' +
+    'Back to ' + parentLabel + '</a>' +
+    '<span style="color:#d1d5db;font-size:13px">/</span>' +
+    '<span style="font-size:13px;color:#6b7280">' + currentLabel + '</span>' +
+    '</div>';
+}
+
+// Sub-nav tabs: horizontal tab bar within a section page
+function subNav(tabs, activePage) {
+  return '<div style="display:flex;gap:2px;border-bottom:2px solid #e5e7eb;margin-bottom:24px;overflow-x:auto">' +
+    tabs.map(function(t) {
+      var isActive = t.page === activePage;
+      return '<a href="/' + t.page + '" style="padding:10px 18px;font-size:14px;font-weight:' + (isActive ? '700' : '500') +
+        ';color:' + (isActive ? '#0ace0a' : '#6b7280') +
+        ';text-decoration:none;border-bottom:2px solid ' + (isActive ? '#0ace0a' : 'transparent') +
+        ';margin-bottom:-2px;white-space:nowrap;transition:color 0.15s" ' +
+        'onmouseover="if(!(' + isActive + '))this.style.color=\'#374151\'" ' +
+        'onmouseout="if(!(' + isActive + '))this.style.color=\'#6b7280\'">' +
+        t.label + '</a>';
+    }).join('') +
+    '</div>';
+}
+
+// Section configs for sub-nav tabs
+var SECTION_TABS = {
+  outreach: [
+    {label: 'Campaigns', page: 'campaigns'},
+    {label: 'Find Leads', page: 'lead-sourcing'},
+    {label: 'Referral Links', page: 'referral-links'},
+    {label: 'Job Board', page: 'job-board'},
+    {label: 'Post to Job Sites', page: 'job-syndication'},
+    {label: 'AI Calls', page: 'voice-agent'}
+  ],
+  insights: [
+    {label: 'Analytics', page: 'analytics'},
+    {label: 'Pipeline Funnel', page: 'pipeline-funnel'},
+    {label: 'Candidate Sources', page: 'source-tracking'},
+    {label: 'AI Scores', page: 'ai'}
+  ],
+  candidates: [
+    {label: 'Pipeline', page: 'enhanced-kanban'},
+    {label: 'All Candidates', page: 'candidates'},
+    {label: 'Compare', page: 'review-hub'}
+  ],
+  settings: [
+    {label: 'General', page: 'settings'},
+    {label: 'Brand Colors', page: 'branding'},
+    {label: 'Email Templates', page: 'email-templates'},
+    {label: 'Email Delivery', page: 'email-delivery'},
+    {label: 'My Team', page: 'team'},
+    {label: 'Integrations', page: 'integrations-hub'},
+    {label: 'Agency Systems', page: 'ams-integrations'}
+  ]
+};
+
+// Helper: inject sub-nav into a page that belongs to a section
+function sectionSubNav(sectionKey, activePage) {
+  var tabs = SECTION_TABS[sectionKey];
+  if (!tabs) return '';
+  return subNav(tabs, activePage);
+}
+
 async function loadPage() {
   // Check for first-login onboarding before loading normal page
   try {
@@ -2344,15 +2412,15 @@ async function renderCandidates() {
   ];
 
   content.innerHTML = `
-    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
-      <div><h1>My Candidates</h1><p class="subtitle">${total} total candidates</p></div>
-      <div style="position:absolute;left:50%;transform:translateX(-50%);display:flex;gap:4px;background:#f3f4f6;padding:4px;border-radius:8px">
-        <button class="btn btn-sm ${candidateViewMode==='table'?'btn-primary':'btn-outline'}" style="min-width:80px;border-radius:6px" onclick="candidateViewMode='table';renderCandidates()">📋 List</button>
-        <button class="btn btn-sm ${candidateViewMode==='kanban'?'btn-primary':'btn-outline'}" style="min-width:80px;border-radius:6px" onclick="candidateViewMode='kanban';renderCandidates()">📊 Board</button>
+    <h1 style="font-size:24px;margin:0 0 8px">Candidates</h1>
+    ${sectionSubNav('candidates', 'candidates')}
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;margin-top:0">
+      <div><h2 style="font-size:18px;margin:0">All Candidates</h2><p class="subtitle">${total} total</p></div>
+      <div style="display:flex;gap:4px;background:#f3f4f6;padding:4px;border-radius:8px">
+        <button class="btn btn-sm ${candidateViewMode==='table'?'btn-primary':'btn-outline'}" style="min-width:80px;border-radius:6px" onclick="candidateViewMode='table';renderCandidates()">List</button>
+        <button class="btn btn-sm ${candidateViewMode==='kanban'?'btn-primary':'btn-outline'}" style="min-width:80px;border-radius:6px" onclick="candidateViewMode='kanban';renderCandidates()">Board</button>
       </div>
-      <div></div>
     </div>
-    ${tabDescriptor('candidates')}
 
     <!-- Search & Filter Bar -->
     <div class="card" style="padding:12px 16px;margin-bottom:16px">
@@ -3157,7 +3225,9 @@ async function renderSettings() {
   try { profile = await api('/api/me'); } catch(e) { /* fallback to APP_USER */ }
 
   content.innerHTML = `
-    <div class="page-header"><div><h1>Settings</h1><p class="subtitle">Your agency settings and preferences</p></div></div>
+    <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Settings</h1>
+    <p style="color:#666;margin-bottom:16px">Your agency settings and preferences</p>
+    ${sectionSubNav('settings', 'settings')}
     ${tabDescriptor('settings')}
     <div style="max-width:600px">
       <div class="card">
@@ -3600,10 +3670,12 @@ async function renderAnalytics() {
     const entries = logs.entries || logs.logs || (Array.isArray(logs) ? logs : []);
 
     content.innerHTML = `
-      <div class="page-header">
-        <div><h1>Numbers &amp; Trends</h1><p class="subtitle">How your recruiting is going</p></div>
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'analytics')}
+      <div class="page-header" style="margin-top:0">
+        <div><h2 style="font-size:18px;margin:0">Hiring Analytics</h2><p class="subtitle">How your recruiting is going</p></div>
         <div class="page-actions">
-          <a href="/api/analytics/export" class="btn btn-outline" download>📥 Export CSV</a>
+          <a href="/api/analytics/export" class="btn btn-outline" download>Export CSV</a>
         </div>
       </div>
 
@@ -3673,8 +3745,10 @@ async function renderAiInsights() {
     const avg = d.avg_score ? Math.round(d.avg_score * 10) / 10 : '—';
 
     content.innerHTML = `
-      <div class="page-header">
-        <div><h1>AI Scoring</h1><p class="subtitle">See how AI rated your candidates</p></div>
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'ai')}
+      <div class="page-header" style="margin-top:0">
+        <div><h2 style="font-size:18px;margin:0">AI Scores</h2><p class="subtitle">See how AI rated your candidates</p></div>
       </div>
 
       <!-- Summary Stats -->
@@ -3986,8 +4060,11 @@ async function renderBranding() {
     const b = await api('/api/branding');
 
     content.innerHTML = `
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Settings</h1>
+      <p style="color:#666;margin-bottom:16px">Your agency settings and preferences</p>
+      ${sectionSubNav('settings', 'branding')}
       <div class="page-header">
-        <div><h1>My Branding</h1><p class="subtitle">Make it look like yours — logo, colors, and style</p></div>
+        <div><h2 style="font-size:18px;font-weight:600">My Branding</h2><p class="subtitle">Make it look like yours — logo, colors, and style</p></div>
       </div>
       ${tabDescriptor('branding')}
 
@@ -4936,8 +5013,11 @@ async function testSanitize() {
 
 async function renderTeam() {
   content.innerHTML = `
+    <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Settings</h1>
+    <p style="color:#666;margin-bottom:16px">Your agency settings and preferences</p>
+    ${sectionSubNav('settings', 'team')}
     <div class="page-header">
-      <div><h1>My Team</h1><p class="subtitle">Add people, set their roles, and manage access</p></div>
+      <div><h2 style="font-size:18px;font-weight:600">My Team</h2><p class="subtitle">Add people, set their roles, and manage access</p></div>
       <button class="btn btn-primary" onclick="showInviteModal()">Invite Member</button>
     </div>
     ${tabDescriptor('team')}
@@ -5383,7 +5463,10 @@ async function renderIntegrationsHub() {
     const widgets = widgetsRes.widgets || [];
 
     content.innerHTML = `
-      <div class="page-header"><h2>Embed &amp; Connect</h2></div>
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Settings</h1>
+      <p style="color:#666;margin-bottom:16px">Your agency settings and preferences</p>
+      ${sectionSubNav('settings', 'integrations-hub')}
+      <div class="page-header"><h2 style="font-size:18px;font-weight:600">Embed &amp; Connect</h2></div>
 
       <div class="card" style="margin-bottom:24px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -5504,7 +5587,10 @@ async function renderReviewHub() {
     const candidates = (candsRes.candidates || []).slice(0, 20);
 
     content.innerHTML = `
-      <div class="page-header"><h2>Compare Candidates</h2>
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Candidates</h1>
+      <p style="color:#666;margin-bottom:16px">Your candidate pipeline and comparisons</p>
+      ${sectionSubNav('candidates', 'review-hub')}
+      <div class="page-header"><h2 style="font-size:18px;font-weight:600">Compare Candidates</h2>
         <button class="btn btn-primary" onclick="showCreateShortlistModal()">New Shortlist</button>
       </div>
       ${tabDescriptor('review-hub')}
@@ -5811,7 +5897,10 @@ async function renderEmailTemplates() {
     const stats = statsRes;
 
     content.innerHTML = `
-      <div class="page-header"><h2>Email Templates</h2>
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Settings</h1>
+      <p style="color:#666;margin-bottom:16px">Your agency settings and preferences</p>
+      ${sectionSubNav('settings', 'email-templates')}
+      <div class="page-header"><h2 style="font-size:18px;font-weight:600">Email Templates</h2>
         <button class="btn btn-primary" onclick="showCreateTemplateModal()">New Template</button>
       </div>
       ${tabDescriptor('email-templates')}
@@ -6739,7 +6828,10 @@ async function renderAmsIntegrations() {
 
   content.innerHTML = `
     <div style="max-width:900px">
-      <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Connect Your AMS / CRM</h2>
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Settings</h1>
+      <p style="color:#666;margin-bottom:16px">Your agency settings and preferences</p>
+      ${sectionSubNav('settings', 'ams-integrations')}
+      <h2 style="font-size:18px;font-weight:600;margin-bottom:4px">Connect Your AMS / CRM</h2>
       <p style="color:#666;margin-bottom:24px">Sync your candidates and interview info with the management system you already use.</p>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:32px">
@@ -7101,9 +7193,12 @@ async function renderEmailDelivery() {
 
   document.getElementById('page-content').innerHTML = `
     <div style="max-width:1100px;margin:0 auto;padding:24px">
+      <h1 style="font-size:24px;font-weight:700;margin-bottom:0">Settings</h1>
+      <p style="color:#666;margin-bottom:16px">Your agency settings and preferences</p>
+      ${sectionSubNav('settings', 'email-delivery')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h1 style="font-size:24px;font-weight:700">Email Delivery</h1>
+          <h2 style="font-size:18px;font-weight:600">Email Delivery</h2>
           <p style="color:#666">Check if your emails to candidates are being sent and delivered</p>
         </div>
         <button class="btn btn-primary" onclick="showSendEmailModal()">Send Test Email</button>
@@ -7963,9 +8058,11 @@ async function renderPipelineFunnel() {
 
   content.innerHTML = `
     <div style="max-width:1100px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'pipeline-funnel')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Hiring Funnel</h2>
+          <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Hiring Funnel</h2>
           <p style="color:#666;font-size:13px">${funnelData.total_candidates || 0} total candidates &middot; ${funnelData.hire_rate || 0}% hire rate</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -8067,9 +8164,11 @@ async function renderEnhancedKanban() {
   c31SelectedCandidates.clear();
 
   content.innerHTML = `
+    <h1 style="font-size:24px;margin:0 0 8px">Candidates</h1>
+    ${sectionSubNav('candidates', 'enhanced-kanban')}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
-        <h1 style="font-size:24px;font-weight:700">Hiring Board</h1>
+        <h2 style="font-size:18px;font-weight:700;margin:0">Hiring Pipeline</h2>
         <p style="color:#666;margin-top:4px;font-size:13px">${data.total || 0} candidates across ${stages.length} stages</p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -8473,9 +8572,11 @@ async function renderSourceTracking() {
 
   content.innerHTML = `
     <div style="max-width:900px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'source-tracking')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Where They Found You</h2>
+          <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Candidate Sources</h2>
           <p style="color:#666;font-size:13px">${data.total || 0} candidates from ${sources.length} sources</p>
         </div>
         <select style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
@@ -8550,9 +8651,11 @@ async function renderJobBoardSettings() {
 
   content.innerHTML = `
     <div style="max-width:700px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
+      ${sectionSubNav('outreach', 'job-board')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Job Board</h2>
+          <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Job Board</h2>
           <p style="color:#666;font-size:13px">Publish open positions to your public job board</p>
         </div>
         <select style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
@@ -8873,9 +8976,11 @@ async function renderLeadSourcing() {
 
   content.innerHTML = `
     <div style="max-width:1100px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
+      ${sectionSubNav('outreach', 'lead-sourcing')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Find Candidates</h2>
+          <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Find Candidates</h2>
           <p style="color:#666;font-size:13px">${total} lead${total!==1?'s':''} in database</p>
         </div>
       </div>
@@ -9271,9 +9376,11 @@ async function renderReferralLinks() {
 
   content.innerHTML = `
     <div style="max-width:900px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
+      ${sectionSubNav('outreach', 'referral-links')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Referral Links</h2>
+          <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Referral Links</h2>
           <p style="color:#666;font-size:13px">Create trackable referral links for your interviews</p>
         </div>
       </div>
@@ -9416,9 +9523,11 @@ async function renderJobSyndication() {
 
   content.innerHTML = `
     <div style="max-width:900px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
+      ${sectionSubNav('outreach', 'job-syndication')}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Post to Job Sites</h2>
+          <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Post to Job Sites</h2>
           <p style="color:#666;font-size:13px">Push your open positions to Indeed, Google Jobs, and more</p>
         </div>
       </div>
@@ -9544,9 +9653,11 @@ async function renderVoiceAgent() {
 
   el.innerHTML = `
     <div style="max-width:1200px;margin:0 auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+      <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
+      ${sectionSubNav('outreach', 'voice-agent')}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div>
-          <h2 style="margin:0;font-size:24px;font-weight:700">AI Screening Calls</h2>
+          <h2 style="margin:0;font-size:18px;font-weight:700">AI Screening Calls</h2>
           <p style="color:#666;margin:4px 0 0">AI makes phone calls to pre-screen candidates before you spend time interviewing</p>
         </div>
         <div style="display:flex;gap:8px">
@@ -10796,7 +10907,7 @@ async function deleteJob(jobId) {
 
 async function renderCampaigns() {
   const el = document.getElementById('page-content');
-  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Campaigns</h1>' + tabDescriptor('campaigns') + '<div id="camp-content"><p style="color:#999">Loading...</p></div></div>';
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>' + sectionSubNav('outreach', 'campaigns') + tabDescriptor('campaigns') + '<div id="camp-content"><p style="color:#999">Loading...</p></div></div>';
   try {
     const res = await api('GET', '/api/campaigns');
     const camps = res.campaigns || [];
