@@ -46,10 +46,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       </div>
       <button type="submit" class="btn btn-primary" id="submitBtn">Sign In</button>
     </form>
+    <div style="text-align:center;margin-top:12px">
+      <a href="/forgot-password" style="color:#666;font-size:13px;text-decoration:none">Forgot your password?</a>
+    </div>
     <div class="auth-footer">
       Don't have an account? <a href="/register">Create one free</a>
     </div>
-    {% else %}
+    {% elif mode == 'register' %}
     <h2>Create your account</h2>
     <p class="subtitle">Start screening candidates in minutes</p>
     <div class="error-msg" id="error"></div>
@@ -76,6 +79,41 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </form>
     <div class="auth-footer">
       Already have an account? <a href="/login">Sign in</a>
+    </div>
+    {% elif mode == 'forgot' %}
+    <h2>Reset your password</h2>
+    <p class="subtitle">Enter your email and we'll send you a reset link</p>
+    <div class="error-msg" id="error"></div>
+    <div id="success-msg" style="background:#dcfce7;color:#166534;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none"></div>
+    <form id="authForm" onsubmit="handleForgot(event)">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="email" required placeholder="you@agency.com" autofocus>
+      </div>
+      <button type="submit" class="btn btn-primary" id="submitBtn">Send Reset Link</button>
+    </form>
+    <div class="auth-footer">
+      Remember your password? <a href="/login">Sign in</a>
+    </div>
+    {% elif mode == 'reset' %}
+    <h2>Set new password</h2>
+    <p class="subtitle">Choose a new password for your account</p>
+    <div class="error-msg" id="error"></div>
+    <div id="success-msg" style="background:#dcfce7;color:#166534;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none"></div>
+    <form id="authForm" onsubmit="handleReset(event)">
+      <input type="hidden" id="reset-token" value="{{ reset_token }}">
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="password" required placeholder="At least 8 characters" minlength="8">
+      </div>
+      <div class="form-group">
+        <label>Confirm Password</label>
+        <input type="password" id="password2" required placeholder="Type it again" minlength="8">
+      </div>
+      <button type="submit" class="btn btn-primary" id="submitBtn">Reset Password</button>
+    </form>
+    <div class="auth-footer">
+      <a href="/login">Back to sign in</a>
     </div>
     {% endif %}
   </div>
@@ -127,6 +165,57 @@ async function handleRegister(e) {
   } catch (err) {
     errEl.textContent = err.message; errEl.style.display = 'block';
     btn.disabled = false; btn.textContent = 'Create Account';
+  }
+}
+
+async function handleForgot(e) {
+  e.preventDefault();
+  errEl.style.display = 'none';
+  const succEl = document.getElementById('success-msg');
+  succEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Sending...';
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email: document.getElementById('email').value })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send reset link');
+    succEl.textContent = 'Check your email! We sent a password reset link. It expires in 1 hour.';
+    succEl.style.display = 'block';
+    btn.disabled = true; btn.textContent = 'Email Sent';
+  } catch (err) {
+    errEl.textContent = err.message; errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Send Reset Link';
+  }
+}
+
+async function handleReset(e) {
+  e.preventDefault();
+  errEl.style.display = 'none';
+  const succEl = document.getElementById('success-msg');
+  succEl.style.display = 'none';
+  const pw = document.getElementById('password').value;
+  const pw2 = document.getElementById('password2').value;
+  if (pw.length < 8) { errEl.textContent = 'Password must be at least 8 characters'; errEl.style.display = 'block'; return; }
+  if (pw !== pw2) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Resetting...';
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ token: document.getElementById('reset-token').value, password: pw })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+    succEl.textContent = 'Password reset successfully! Redirecting to sign in...';
+    succEl.style.display = 'block';
+    btn.disabled = true; btn.textContent = 'Done!';
+    setTimeout(() => { window.location.href = '/login'; }, 2000);
+  } catch (err) {
+    errEl.textContent = err.message; errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Reset Password';
   }
 }
 </script>

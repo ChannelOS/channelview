@@ -348,6 +348,15 @@ def login_page():
 def register_page():
     return render_template('auth.html', mode='register')
 
+@app.route('/forgot-password')
+def forgot_password_page():
+    return render_template('auth.html', mode='forgot')
+
+@app.route('/reset-password')
+def reset_password_page():
+    token = request.args.get('token', '')
+    return render_template('auth.html', mode='reset', reset_token=token)
+
 @app.route('/dashboard')
 @require_auth
 def dashboard_page():
