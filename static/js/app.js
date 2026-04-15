@@ -3726,7 +3726,10 @@ async function renderAnalytics() {
       </div>` : ''}
     `;
   } catch(e) {
-    content.innerHTML = `<div class="empty-state"><h3>Hiring Analytics</h3><p>Nothing to report yet — once candidates start completing interviews, you'll see completion rates, scores, and hiring trends here.</p></div>`;
+    content.innerHTML = `
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'analytics')}
+      <div class="empty-state"><h3>Hiring Analytics</h3><p>Nothing to report yet — once candidates start completing interviews, you'll see completion rates, scores, and hiring trends here.</p></div>`;
   }
 }
 
@@ -3850,7 +3853,10 @@ async function renderAiInsights() {
       </div>
     `;
   } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>Interview Insights</h3><p>No scores yet. Once candidates finish their interviews, AI will automatically rate their responses and give you a summary — no extra work on your end.</p></div>`;
+    content.innerHTML = `
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'ai')}
+      <div class="empty-state"><h3>Interview Insights</h3><p>No scores yet. Once candidates finish their interviews, AI will automatically rate their responses and give you a summary — no extra work on your end.</p></div>`;
   }
 }
 
@@ -8040,7 +8046,7 @@ async function c32SaveExperienceConfig(interviewId) {
 
 async function renderPipelineFunnel() {
   content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading pipeline analytics...</div>';
-
+  try {
   let interviews = [];
   try { interviews = await api('/api/interviews'); } catch(e) {}
   const interviewId = new URLSearchParams(window.location.search).get('interview_id') || '';
@@ -8139,6 +8145,12 @@ async function renderPipelineFunnel() {
         </div>
       </div>
     </div>`;
+  } catch(e) {
+    content.innerHTML = `
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'pipeline-funnel')}
+      <div class="empty-state"><h3>Pipeline Funnel</h3><p>Nothing to report yet — once candidates start moving through your pipeline stages, you'll see conversion rates and bottlenecks here.</p></div>`;
+  }
 }
 
 
@@ -8560,7 +8572,7 @@ async function c31ResetStages(interviewId) {
 
 async function renderSourceTracking() {
   content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading source analytics...</div>';
-
+  try {
   let interviews = [];
   try { interviews = await api('/api/interviews'); } catch(e) {}
   const interviewId = new URLSearchParams(window.location.search).get('interview_id') || '';
@@ -8626,6 +8638,12 @@ async function renderSourceTracking() {
         </table>
       </div>` : ''}
     </div>`;
+  } catch(e) {
+    content.innerHTML = `
+      <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
+      ${sectionSubNav('insights', 'source-tracking')}
+      <div class="empty-state"><h3>Candidate Sources</h3><p>Nothing to report yet — once candidates start applying, you'll see which sources (referrals, campaigns, job boards) are bringing in the best people.</p></div>`;
+  }
 }
 
 
