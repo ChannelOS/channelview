@@ -7895,7 +7895,7 @@ async function renderCandidateExperience() {
           <label style="font-size:12px;font-weight:600;color:#666;display:block;margin-bottom:4px">Next Steps</label>
           <textarea id="ce-next-steps" rows="2" placeholder="What happens after submission, expected timeline..."
             style="width:100%;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${config.thank_you_next_steps||''}</textarea>
-          ${fieldHint('Tell them what to expect: "We review all interviews within 48 hours. You\\'ll hear from us by email with next steps."')}
+          ${fieldHint('Tell them what to expect: "We review all interviews within 48 hours. You will hear from us by email with next steps."')}
         </div>
       </div>
 
@@ -10995,7 +10995,7 @@ async function showCampaignDetail(campId) {
       </div>`;
 
     if (!recipients.length) {
-      html += `<p style="color:#6b7280;text-align:center;padding:20px 0">No recipients yet. Add contacts to this campaign — these are the people who\\'ll receive your job description email.</p>
+      html += `<p style="color:#6b7280;text-align:center;padding:20px 0">No recipients yet. Add contacts to this campaign — these are the people who will receive your job description email.</p>
         ${helpExpander('How do I add recipients?', 'Click <strong>+ Add Recipients</strong> to paste names and emails, or <strong>Upload CSV</strong> to import a spreadsheet. You can also import directly from your Lead Hub. Each person will receive one email with your job description and a button to apply. Duplicates are automatically filtered out.')}`;
     } else {
       html += `<div style="max-height:400px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -11040,7 +11040,7 @@ async function showAddRecipients(campId) {
       <button onclick="document.getElementById('modal-add-recip').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
     </div>
     <p style="color:#6b7280;font-size:14px;margin:0 0 8px">Paste contacts below — one per line. Format: <code>first_name, last_name, email</code></p>
-    <p style="font-size:12px;color:#9ca3af;margin:0 0 16px">Tip: Copy rows from a spreadsheet and paste them here. Each person gets one email. Same email won\\'t be added twice.</p>
+    <p style="font-size:12px;color:#9ca3af;margin:0 0 16px">Tip: Copy rows from a spreadsheet and paste them here. Each person gets one email. Same email will not be added twice.</p>
     <textarea id="recip-paste" rows="10" placeholder="John, Smith, john@example.com&#10;Jane, Doe, jane@example.com&#10;..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:monospace;box-sizing:border-box"></textarea>
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
       <button onclick="document.getElementById('modal-add-recip').remove()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">Cancel</button>
