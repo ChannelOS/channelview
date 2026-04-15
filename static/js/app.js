@@ -8342,9 +8342,9 @@ async function renderEnhancedKanban() {
               ${c.source && c.source !== 'manual' ? `<div style="font-size:10px;color:#999;margin-top:4px;text-transform:capitalize">via ${c.source.replace(/_/g,' ')}</div>` : ''}
             </div>
           `).join('')}
-          ${(stage.candidates || []).length === 0 ? '<p style="text-align:center;color:#ccc;font-size:13px;margin-top:20px">No candidates</p>' : ''}`}).join('')}
-        </div>
-      `).join('')}
+          ${(stage.candidates || []).length === 0 ? '<p style="text-align:center;color:#ccc;font-size:13px;margin-top:20px">No candidates</p>' : ''}
+        </div>`;
+      }).join('')}
     </div>`;
 }
 
