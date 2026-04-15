@@ -8836,7 +8836,7 @@ DEFAULT_STAGES = [
 
 # --- Feature 1: Public Job Board ---
 
-@app.route('/api/jobs/<agency_id>', methods=['GET'])
+@app.route('/api/job-board/<agency_id>', methods=['GET'])
 def api_public_job_board(agency_id):
     """Public job board listing all open positions for an agency."""
     db = get_db()
@@ -18531,8 +18531,9 @@ def campaigns_page_c40():
 def api_list_campaigns_c40():
     """List all campaigns for the authenticated user."""
     db = get_db()
-    rows = db.execute('''SELECT c.*, i.title as interview_title
+    rows = db.execute('''SELECT c.*, i.title as interview_title, j.title as job_title
         FROM campaigns c LEFT JOIN interviews i ON c.interview_id = i.id
+        LEFT JOIN jobs j ON c.job_id = j.id
         WHERE c.user_id=? ORDER BY c.created_at DESC''', (g.user_id,)).fetchall()
     campaigns = [dict(r) for r in rows]
     db.close()
@@ -18541,29 +18542,48 @@ def api_list_campaigns_c40():
 @app.route('/api/campaigns', methods=['POST'])
 @require_auth
 def api_create_campaign_c40():
-    """Create a new campaign."""
+    """Create a new campaign. Accepts job_id (preferred) or interview_id (legacy)."""
     data = request.get_json() or {}
     db = get_db()
+    job_id = data.get('job_id')
     interview_id = data.get('interview_id')
-    if not interview_id:
+    job_title = 'Campaign'
+
+    if job_id:
+        job = db.execute('SELECT id, title, interview_id FROM jobs WHERE id=? AND user_id=?',
+                         (job_id, g.user_id)).fetchone()
+        if not job:
+            db.close()
+            return jsonify({'error': 'Job not found'}), 404
+        job = dict(job)
+        job_title = job['title']
+        interview_id = job.get('interview_id') or interview_id
+    elif interview_id:
+        interview = db.execute('SELECT id, title FROM interviews WHERE id=? AND user_id=?',
+                               (interview_id, g.user_id)).fetchone()
+        if not interview:
+            db.close()
+            return jsonify({'error': 'Interview not found'}), 404
+        job_title = dict(interview)['title']
+        # Look up associated job
+        assoc_job = db.execute('SELECT id FROM jobs WHERE interview_id=? AND user_id=?',
+                               (interview_id, g.user_id)).fetchone()
+        if assoc_job:
+            job_id = assoc_job['id']
+    else:
         db.close()
-        return jsonify({'error': 'interview_id is required'}), 400
-    interview = db.execute('SELECT id, title FROM interviews WHERE id=? AND user_id=?',
-                           (interview_id, g.user_id)).fetchone()
-    if not interview:
-        db.close()
-        return jsonify({'error': 'Interview not found'}), 404
+        return jsonify({'error': 'job_id or interview_id is required'}), 400
 
     cid = str(uuid.uuid4())
-    name = data.get('name', f'Campaign - {dict(interview)["title"]}')
+    name = data.get('name', f'Campaign - {job_title}')
     subject = data.get('subject_line', 'An Exciting Career Opportunity')
     headline = data.get('headline', "We Think You'd Be a Great Fit")
     body_html = data.get('body_html', '')
     cta_text = data.get('cta_text', "I'm Interested — Tell Me More")
 
-    db.execute('''INSERT INTO campaigns (id, user_id, interview_id, name, subject_line, headline, body_html, cta_text)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-        (cid, g.user_id, interview_id, name, subject, headline, body_html, cta_text))
+    db.execute('''INSERT INTO campaigns (id, user_id, interview_id, name, subject_line, headline, body_html, cta_text, job_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (cid, g.user_id, interview_id or '', name, subject, headline, body_html, cta_text, job_id))
     db.commit()
     db.close()
     return jsonify({'success': True, 'campaign': {'id': cid, 'name': name, 'status': 'draft'}}), 201
@@ -18573,8 +18593,9 @@ def api_create_campaign_c40():
 def api_get_campaign_c40(campaign_id):
     """Get campaign details with recipient stats."""
     db = get_db()
-    campaign = db.execute('''SELECT c.*, i.title as interview_title
+    campaign = db.execute('''SELECT c.*, i.title as interview_title, j.title as job_title
         FROM campaigns c LEFT JOIN interviews i ON c.interview_id = i.id
+        LEFT JOIN jobs j ON c.job_id = j.id
         WHERE c.id=? AND c.user_id=?''', (campaign_id, g.user_id)).fetchone()
     if not campaign:
         db.close()
@@ -18859,10 +18880,15 @@ def api_track_campaign_click_c40(campaign_id):
             db.execute("UPDATE campaigns SET clicked_count = clicked_count + 1 WHERE id=?", (campaign_id,))
             db.commit()
 
-    campaign = db.execute('SELECT interview_id FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
+    campaign = db.execute('SELECT interview_id, job_id FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
     db.close()
     if campaign:
-        return redirect(f"/apply/{dict(campaign)['interview_id']}?ref=campaign&campaign_id={campaign_id}&crid={crid}")
+        camp = dict(campaign)
+        # Prefer job apply page if job_id exists
+        if camp.get('job_id'):
+            return redirect(f"/apply/job/{camp['job_id']}?ref=campaign&campaign_id={campaign_id}&crid={crid}")
+        elif camp.get('interview_id'):
+            return redirect(f"/apply/{camp['interview_id']}?ref=campaign&campaign_id={campaign_id}&crid={crid}")
     return redirect('/')
 
 @app.route('/api/campaigns/preview', methods=['POST'])
@@ -18951,6 +18977,353 @@ Requirements:
         return jsonify({'body_html': body_html, 'ai_generated': True})
     except Exception as e:
         return jsonify({'error': f'AI generation failed: {str(e)}'}), 500
+
+
+# ======================== CYCLE 41: JOBS TAB — SEPARATE JOBS FROM INTERVIEWS ========================
+
+@app.route('/jobs-manage')
+@require_auth
+def jobs_page_c41():
+    return render_template('app.html', page='jobs-manage', user=g.user)
+
+@app.route('/api/jobs', methods=['GET'])
+@require_auth
+def api_list_jobs_c41():
+    db = get_db()
+    jobs = db.execute('''SELECT j.*, i.title as interview_title,
+        (SELECT COUNT(*) FROM candidates c WHERE c.job_id=j.id) as candidate_count,
+        (SELECT COUNT(*) FROM campaigns camp WHERE camp.job_id=j.id) as campaign_count
+        FROM jobs j LEFT JOIN interviews i ON j.interview_id=i.id
+        WHERE j.user_id=? ORDER BY j.created_at DESC''', (g.user['id'],)).fetchall()
+    db.close()
+    return jsonify([dict(j) for j in jobs])
+
+@app.route('/api/jobs', methods=['POST'])
+@require_auth
+def api_create_job_c41():
+    db = get_db()
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()
+    if not title:
+        db.close()
+        return jsonify({'error': 'Job title is required'}), 400
+    job_id = str(uuid.uuid4())
+    db.execute('''INSERT INTO jobs (id, user_id, title, description, department, position,
+        location, job_type, salary_range, application_deadline, status, job_board_enabled,
+        public_apply_enabled, auto_engage_mode, apply_instructions, estimated_duration_min,
+        interview_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        (job_id, g.user['id'], title, data.get('description', ''), data.get('department', ''),
+         data.get('position', ''), data.get('location', ''), data.get('job_type', 'full_time'),
+         data.get('salary_range', ''), data.get('application_deadline'),
+         data.get('status', 'active'), int(data.get('job_board_enabled', 0)),
+         int(data.get('public_apply_enabled', 1)), data.get('auto_engage_mode', 'hold'),
+         data.get('apply_instructions', ''), int(data.get('estimated_duration_min', 15)),
+         data.get('interview_id') or None))
+    db.commit()
+    db.close()
+    return jsonify({'id': job_id, 'message': 'Job created'}), 201
+
+@app.route('/api/jobs/<job_id>', methods=['GET'])
+@require_auth
+def api_get_job_c41(job_id):
+    db = get_db()
+    job = db.execute('''SELECT j.*, i.title as interview_title,
+        (SELECT COUNT(*) FROM candidates c WHERE c.job_id=j.id) as candidate_count,
+        (SELECT COUNT(*) FROM campaigns camp WHERE camp.job_id=j.id) as campaign_count
+        FROM jobs j LEFT JOIN interviews i ON j.interview_id=i.id
+        WHERE j.id=? AND j.user_id=?''', (job_id, g.user['id'])).fetchone()
+    if not job:
+        db.close()
+        return jsonify({'error': 'Job not found'}), 404
+    db.close()
+    return jsonify(dict(job))
+
+@app.route('/api/jobs/<job_id>', methods=['PUT'])
+@require_auth
+def api_update_job_c41(job_id):
+    db = get_db()
+    job = db.execute('SELECT * FROM jobs WHERE id=? AND user_id=?', (job_id, g.user['id'])).fetchone()
+    if not job:
+        db.close()
+        return jsonify({'error': 'Job not found'}), 404
+    data = request.get_json() or {}
+    allowed = ['title','description','department','position','location','job_type','salary_range',
+               'application_deadline','status','job_board_enabled','public_apply_enabled',
+               'auto_engage_mode','apply_instructions','estimated_duration_min','generated_description',
+               'interview_id','prep_video_url','prep_instructions','apply_fields_json']
+    sets = []
+    vals = []
+    for k in allowed:
+        if k in data:
+            sets.append(f"{k}=?")
+            vals.append(data[k])
+    if sets:
+        sets.append("updated_at=CURRENT_TIMESTAMP")
+        vals.append(job_id)
+        vals.append(g.user['id'])
+        db.execute(f"UPDATE jobs SET {','.join(sets)} WHERE id=? AND user_id=?", vals)
+        db.commit()
+    db.close()
+    return jsonify({'message': 'Job updated'})
+
+@app.route('/api/jobs/<job_id>', methods=['DELETE'])
+@require_auth
+def api_delete_job_c41(job_id):
+    db = get_db()
+    job = db.execute('SELECT * FROM jobs WHERE id=? AND user_id=?', (job_id, g.user['id'])).fetchone()
+    if not job:
+        db.close()
+        return jsonify({'error': 'Job not found'}), 404
+    # Don't delete if there are candidates
+    count = db.execute('SELECT COUNT(*) as cnt FROM candidates WHERE job_id=?', (job_id,)).fetchone()
+    if count and count['cnt'] > 0:
+        db.close()
+        return jsonify({'error': 'Cannot delete a job that has candidates. Archive it instead by setting status to closed.'}), 400
+    db.execute('DELETE FROM jobs WHERE id=? AND user_id=?', (job_id, g.user['id']))
+    db.commit()
+    db.close()
+    return jsonify({'message': 'Job deleted'})
+
+@app.route('/api/jobs/<job_id>/generate-description', methods=['POST'])
+@require_auth
+def api_generate_job_description_c41(job_id):
+    """AI-generate a job description for this job."""
+    db = get_db()
+    job = db.execute('SELECT * FROM jobs WHERE id=? AND user_id=?', (job_id, g.user['id'])).fetchone()
+    if not job:
+        db.close()
+        return jsonify({'error': 'Job not found'}), 404
+    job = dict(job)
+    agency = g.user.get('agency_name') or g.user.get('name', 'Our Agency')
+    title = job.get('title', 'Benefits Advisor')
+    location = job.get('location', '')
+    job_type = job.get('job_type', 'full_time')
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+        prompt = f"""Write a compelling job description for an insurance agency recruiting position.
+Agency: {agency}. Position: {title}. Location: {location or 'Remote/Flexible'}. Type: {job_type}.
+Requirements:
+- 150-250 words
+- Emphasize: flexibility, income potential, training/support, making a difference
+- Tone: warm, approachable, professional
+- Include brief sections: About the Role, What You'll Do, What We Offer
+- Do NOT include application instructions — those are handled separately"""
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514", max_tokens=600,
+            messages=[{"role": "user", "content": prompt}])
+        desc = response.content[0].text
+        db.execute("UPDATE jobs SET generated_description=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (desc, job_id))
+        db.commit()
+        db.close()
+        return jsonify({'description': desc, 'ai_generated': True})
+    except Exception as e:
+        db.close()
+        fallback = f"{title} at {agency} — a flexible career with uncapped earning potential, full training, and a supportive team environment."
+        return jsonify({'description': fallback, 'ai_generated': False})
+
+@app.route('/api/jobs/<job_id>/interviews', methods=['GET'])
+@require_auth
+def api_job_interviews_c41(job_id):
+    """List available interviews to attach to this job."""
+    db = get_db()
+    interviews = db.execute('SELECT id, title, status, created_at FROM interviews WHERE user_id=? ORDER BY created_at DESC',
+                           (g.user['id'],)).fetchall()
+    db.close()
+    return jsonify([dict(i) for i in interviews])
+
+# --- Apply page route for Jobs (new entry point) ---
+@app.route('/apply/job/<job_id>', methods=['GET'])
+def apply_job_page_c41(job_id):
+    """Public apply page for a Job (not interview). Renders the apply form."""
+    db = get_db()
+    job = db.execute('SELECT * FROM jobs WHERE id=? AND status=?', (job_id, 'active')).fetchone()
+    if not job:
+        db.close()
+        return '<html><body><h1>Position Not Found</h1><p>This job posting is no longer accepting applications.</p></body></html>', 404
+    job = dict(job)
+    user = db.execute('SELECT * FROM users WHERE id=?', (job['user_id'],)).fetchone()
+    user_dict = dict(user) if user else {}
+    agency = user_dict.get('agency_name') or user_dict.get('name', 'ChannelView')
+    brand_color = user_dict.get('brand_color') or '#0ace0a'
+    description = job.get('generated_description') or job.get('description') or ''
+    # If job has an interview attached, use the old apply page approach
+    interview_id = job.get('interview_id')
+    html = f'''<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apply - {job["title"]} | {agency}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f7f8fa;color:#1a1a1a}}
+.header{{background:{brand_color};color:#000;padding:20px;text-align:center}}
+.header h1{{font-size:1.4rem;font-weight:700}} .header p{{font-size:0.95rem;opacity:0.85;margin-top:4px}}
+.container{{max-width:600px;margin:30px auto;padding:0 20px}}
+.card{{background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px}}
+.card h2{{font-size:1.2rem;margin-bottom:12px}}
+.card .desc{{color:#555;font-size:0.95rem;line-height:1.6;white-space:pre-line;margin-bottom:20px}}
+.field{{margin-bottom:16px}} .field label{{display:block;font-weight:600;margin-bottom:4px;font-size:0.9rem}}
+.field input,.field textarea{{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.95rem}}
+.field textarea{{height:80px;resize:vertical}}
+.btn{{display:block;width:100%;padding:14px;background:{brand_color};color:#000;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;text-align:center}}
+.btn:hover{{opacity:0.9}} .msg{{padding:12px;border-radius:8px;margin-bottom:16px;display:none}}
+.msg.error{{background:#fee;color:#c00;display:block}} .msg.success{{background:#efe;color:#060;display:block}}
+.meta{{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:0.85rem;color:#666}}
+.meta span{{background:#f0f0f0;padding:4px 10px;border-radius:6px}}
+</style></head><body>
+<div class="header"><h1>{agency}</h1><p>Career Opportunity</p></div>
+<div class="container">
+<div class="card"><h2>{job["title"]}</h2>
+<div class="meta">
+{"<span>📍 " + job["location"] + "</span>" if job.get("location") else ""}
+{"<span>" + (job.get("job_type") or "full_time").replace("_"," ").title() + "</span>" if job.get("job_type") else ""}
+{"<span>💰 " + job["salary_range"] + "</span>" if job.get("salary_range") else ""}
+</div>
+<div class="desc">{description}</div>
+</div>
+<div class="card"><h2>Apply Now</h2>
+{"<p style='color:#555;margin-bottom:16px;font-size:0.9rem'>" + job["apply_instructions"] + "</p>" if job.get("apply_instructions") else ""}
+<div id="msg" class="msg"></div>
+<form id="applyForm" onsubmit="return submitApp(event)">
+<div class="field"><label>First Name *</label><input id="fn" required></div>
+<div class="field"><label>Last Name *</label><input id="ln" required></div>
+<div class="field"><label>Email *</label><input id="em" type="email" required></div>
+<div class="field"><label>Phone</label><input id="ph" type="tel"></div>
+<div class="field"><label>LinkedIn URL</label><input id="li" type="url" placeholder="https://linkedin.com/in/..."></div>
+<div class="field"><label>Why are you interested? (optional)</label><textarea id="cl"></textarea></div>
+<button type="submit" class="btn">Submit Application</button>
+</form></div></div>
+<script>
+function submitApp(e) {{
+  e.preventDefault();
+  var msg = document.getElementById('msg');
+  msg.className = 'msg'; msg.style.display = 'none';
+  var body = {{
+    first_name: document.getElementById('fn').value,
+    last_name: document.getElementById('ln').value,
+    email: document.getElementById('em').value,
+    phone: document.getElementById('ph').value,
+    linkedin_url: document.getElementById('li').value,
+    cover_letter: document.getElementById('cl').value,
+    job_id: '{job_id}'
+  }};
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('ref')) body.ref = params.get('ref');
+  if (params.get('campaign_id')) body.campaign_id = params.get('campaign_id');
+  if (params.get('crid')) body.crid = params.get('crid');
+  fetch('/api/jobs/{job_id}/apply', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify(body)
+  }}).then(r => r.json().then(d => ({{ok:r.ok, data:d}})))
+  .then(r => {{
+    if (r.ok) {{
+      msg.className = 'msg success';
+      msg.textContent = 'Application submitted! We\\'ll be in touch soon.';
+      msg.style.display = 'block';
+      document.getElementById('applyForm').style.display = 'none';
+    }} else {{
+      msg.className = 'msg error';
+      msg.textContent = r.data.error || 'Something went wrong. Please try again.';
+      msg.style.display = 'block';
+    }}
+  }}).catch(() => {{
+    msg.className = 'msg error'; msg.textContent = 'Network error. Please try again.'; msg.style.display = 'block';
+  }});
+  return false;
+}}
+</script></body></html>'''
+    db.close()
+    return html
+
+@app.route('/api/jobs/<job_id>/apply', methods=['POST'])
+def api_apply_job_c41(job_id):
+    """Public application submission for a Job."""
+    db = get_db()
+    job = db.execute('SELECT * FROM jobs WHERE id=? AND status=?', (job_id, 'active')).fetchone()
+    if not job:
+        db.close()
+        return jsonify({'error': 'Position not found or closed'}), 404
+    job = dict(job)
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    first_name = (data.get('first_name') or '').strip()
+    last_name = (data.get('last_name') or '').strip()
+    if not email or not first_name or not last_name:
+        db.close()
+        return jsonify({'error': 'First name, last name, and email are required'}), 400
+    # Check duplicate — by job
+    existing = db.execute('SELECT id, token FROM candidates WHERE job_id=? AND email=?',
+                          (job_id, email)).fetchone()
+    if existing:
+        db.close()
+        return jsonify({'error': 'You have already applied for this position', 'token': existing['token']}), 409
+    candidate_id = str(uuid.uuid4())
+    token = str(uuid.uuid4())
+    interview_id = job.get('interview_id') or ''
+    # Campaign source detection
+    ref = data.get('ref') or request.args.get('ref', '')
+    campaign_id = data.get('campaign_id') or request.args.get('campaign_id', '')
+    crid = data.get('crid') or request.args.get('crid', '')
+    source = 'campaign' if ref == 'campaign' else 'apply_page'
+    db.execute('''INSERT INTO candidates (id, user_id, interview_id, first_name, last_name, email,
+                  phone, token, status, source, portal_status, linkedin_url, cover_letter,
+                  pipeline_stage, campaign_id, campaign_recipient_id, job_id)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'invited', ?, 'not_started', ?, ?, 'new', ?, ?, ?)''',
+               (candidate_id, job['user_id'], interview_id, first_name, last_name, email,
+                data.get('phone', ''), token, source, data.get('linkedin_url', ''),
+                data.get('cover_letter', ''),
+                campaign_id if campaign_id else None, crid if crid else None, job_id))
+    db.commit()
+    # Update campaign recipient if from campaign
+    if crid and campaign_id:
+        try:
+            db.execute("""UPDATE campaign_recipients SET status='applied', applied_at=CURRENT_TIMESTAMP,
+                candidate_id=? WHERE id=? AND campaign_id=?""", (candidate_id, crid, campaign_id))
+            db.execute("UPDATE campaigns SET applied_count = applied_count + 1 WHERE id=?", (campaign_id,))
+            db.commit()
+        except:
+            pass
+    # Auto-engage logic (same as Cycle 38 but reads from job)
+    auto_mode = job.get('auto_engage_mode', 'hold') or 'hold'
+    auto_engaged = False
+    format_choice_url = None
+    if auto_mode != 'hold' and interview_id:
+        try:
+            user = db.execute('SELECT * FROM users WHERE id=?', (job['user_id'],)).fetchone()
+            intv = db.execute('SELECT * FROM interviews WHERE id=?', (interview_id,)).fetchone()
+            if user and intv:
+                user_dict = dict(user)
+                intv = dict(intv)
+                agency_name = user_dict.get('agency_name') or user_dict.get('name', 'ChannelView')
+                brand_color = intv.get('brand_color') or user_dict.get('brand_color') or '#0ace0a'
+                if auto_mode == 'video_invite':
+                    q_count = db.execute('SELECT COUNT(*) as cnt FROM questions WHERE interview_id=?',
+                                        (interview_id,)).fetchone()
+                    if q_count and q_count['cnt'] > 0:
+                        try:
+                            from email_service import send_interview_invite
+                            send_interview_invite(email, first_name, token, intv.get('title', job['title']),
+                                                agency_name, brand_color, user_dict)
+                            auto_engaged = True
+                        except:
+                            pass
+                elif auto_mode == 'format_choice':
+                    format_choice_url = f"https://mychannelview.com/i/{token}/choose"
+                    try:
+                        from email_service import send_format_choice_email
+                        send_format_choice_email(email, first_name, format_choice_url,
+                                               intv.get('title', job['title']), agency_name, brand_color, user_dict)
+                        auto_engaged = True
+                    except:
+                        pass
+        except:
+            pass
+    db.close()
+    result = {'id': candidate_id, 'token': token, 'message': 'Application submitted successfully',
+              'source': source, 'auto_engaged': auto_engaged}
+    if format_choice_url:
+        result['format_choice_url'] = format_choice_url
+    return jsonify(result), 201
 
 
 # ======================== INIT & RUN ========================

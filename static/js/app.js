@@ -279,6 +279,7 @@ const pages = {
   'candidate-experience': renderCandidateExperience,
   'lead-sourcing': renderLeadSourcing,
   'campaigns': renderCampaigns,
+  'jobs-manage': renderJobsManage,
   'referral-links': renderReferralLinks,
   'job-syndication': renderJobSyndication,
   'voice-agent': renderVoiceAgent,
@@ -10365,6 +10366,265 @@ async function saveGeneratedDescription(interviewId) {
 }
 
 
+// ==================== CYCLE 41: JOBS TAB ====================
+
+async function renderJobsManage() {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Jobs</h1><p style="color:#6b7280;margin:0 0 24px">Your open positions. Create a job posting, then attach an interview and send campaigns.</p><div id="jobs-content"><p style="color:#999">Loading...</p></div></div>';
+  try {
+    const jobs = await api('GET', '/api/jobs');
+    const list = Array.isArray(jobs) ? jobs : [];
+    const c = document.getElementById('jobs-content');
+    let html = `<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+      <button onclick="showCreateJob()" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px">+ New Job</button>
+    </div>`;
+    if (!list.length) {
+      html += `<div style="background:#f9fafb;border-radius:12px;padding:40px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">&#128188;</div>
+        <h3 style="margin:0 0 8px;color:#111">No jobs yet</h3>
+        <p style="color:#6b7280;margin:0 0 16px">Create your first job posting. This is the position you're hiring for — you can attach an interview to it later and send campaigns to reach passive candidates.</p>
+        <button onclick="showCreateJob()" style="background:#0ace0a;color:#000;font-weight:600;padding:10px 20px;border:none;border-radius:6px;cursor:pointer">Create Your First Job</button>
+      </div>`;
+    } else {
+      html += '<div style="display:grid;gap:16px">';
+      for (const job of list) {
+        const statusColors = {active:'#10b981',draft:'#f59e0b',paused:'#6b7280',closed:'#ef4444'};
+        const sc = statusColors[job.status] || '#6b7280';
+        const typeLabel = (job.job_type || 'full_time').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+        html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;cursor:pointer" onclick="showJobDetail('${job.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:16px;color:#111">${job.title}</h3>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:#6b7280;margin-top:4px">
+                ${job.location ? '<span>' + job.location + '</span>' : ''}
+                <span>${typeLabel}</span>
+                ${job.salary_range ? '<span>' + job.salary_range + '</span>' : ''}
+              </div>
+            </div>
+            <span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:4px 10px;border-radius:12px;text-transform:uppercase">${job.status}</span>
+          </div>
+          <div style="display:flex;gap:20px;margin-top:12px;font-size:13px;color:#6b7280">
+            <span>Candidates: <strong style="color:#111">${job.candidate_count || 0}</strong></span>
+            <span>Campaigns: <strong style="color:#111">${job.campaign_count || 0}</strong></span>
+            <span>Interview: <strong style="color:#111">${job.interview_title || 'None attached'}</strong></span>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    c.innerHTML = html;
+  } catch (e) { document.getElementById('jobs-content').innerHTML = '<p style="color:red">Failed to load jobs.</p>'; }
+}
+
+async function showCreateJob() {
+  // Fetch interviews to offer as options
+  let interviews = [];
+  try {
+    const r = await api('GET', '/api/interviews');
+    interviews = Array.isArray(r) ? r : (r.interviews || []);
+  } catch (e) {}
+  const ivOpts = '<option value="">None (add later)</option>' + interviews.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'modal-create-job';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">New Job</h2>
+      <button onclick="document.getElementById('modal-create-job').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Title *</label>
+        <input id="job-title" placeholder="e.g. Benefits Advisor" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Location</label>
+          <input id="job-location" placeholder="e.g. Nashville, TN" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Type</label>
+          <select id="job-type" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+            <option value="full_time">Full Time</option><option value="part_time">Part Time</option><option value="contract">Contract</option><option value="flexible">Flexible</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Salary Range</label>
+        <input id="job-salary" placeholder="e.g. $55,000 - $75,000" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Description</label>
+        <textarea id="job-desc" rows="5" placeholder="Describe the role, responsibilities, and what makes it a great opportunity..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;line-height:1.6;box-sizing:border-box"></textarea>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Attach Interview (optional)</label>
+        <select id="job-interview" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${ivOpts}</select>
+        <p style="margin:4px 0 0;font-size:11px;color:#9ca3af">The interview candidates will go through after applying. You can add this later.</p>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Auto-Engage After Apply</label>
+        <select id="job-auto-engage" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+          <option value="hold">Hold for review (manual)</option>
+          <option value="video_invite">Auto-send interview link</option>
+          <option value="format_choice">Auto-send format choice</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+        <button onclick="document.getElementById('modal-create-job').remove()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>
+        <button onclick="saveJob()" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:6px;cursor:pointer;font-size:14px">Create Job</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function saveJob() {
+  const title = document.getElementById('job-title').value.trim();
+  if (!title) { toast('Job title is required', 'error'); return; }
+  const payload = {
+    title,
+    location: document.getElementById('job-location').value.trim(),
+    job_type: document.getElementById('job-type').value,
+    salary_range: document.getElementById('job-salary').value.trim(),
+    description: document.getElementById('job-desc').value.trim(),
+    interview_id: document.getElementById('job-interview').value || null,
+    auto_engage_mode: document.getElementById('job-auto-engage').value,
+  };
+  try {
+    const res = await api('POST', '/api/jobs', payload);
+    toast('Job created!', 'success');
+    document.getElementById('modal-create-job').remove();
+    showJobDetail(res.id);
+  } catch (e) { toast('Failed to create: ' + e.message, 'error'); }
+}
+
+async function showJobDetail(jobId) {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><p style="color:#999">Loading job...</p></div>';
+  try {
+    const job = await api('GET', `/api/jobs/${jobId}`);
+    const typeLabel = (job.job_type || 'full_time').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+    const statusColors = {active:'#10b981',draft:'#f59e0b',paused:'#6b7280',closed:'#ef4444'};
+    const sc = statusColors[job.status] || '#6b7280';
+    el.innerHTML = `<div style="padding:32px;max-width:900px">
+      <div style="margin-bottom:24px">
+        <button onclick="renderJobsManage()" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:14px;padding:0">&larr; Back to Jobs</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:24px">
+        <div>
+          <h1 style="font-size:24px;margin:0 0 8px">${job.title}</h1>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:14px;color:#6b7280">
+            ${job.location ? '<span>' + job.location + '</span>' : ''}
+            <span>${typeLabel}</span>
+            ${job.salary_range ? '<span>' + job.salary_range + '</span>' : ''}
+            <span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase">${job.status}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="editJob('${jobId}')" style="background:#111;color:#fff;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px">Edit</button>
+          ${job.candidate_count === 0 ? `<button onclick="deleteJob('${jobId}')" style="background:#fff;color:#ef4444;padding:8px 16px;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:13px">Delete</button>` : ''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px">
+        <div style="background:#f0fdf4;border-radius:10px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:700;color:#111">${job.candidate_count || 0}</div><div style="font-size:12px;color:#6b7280;margin-top:4px">Candidates</div></div>
+        <div style="background:#eff6ff;border-radius:10px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:700;color:#111">${job.campaign_count || 0}</div><div style="font-size:12px;color:#6b7280;margin-top:4px">Campaigns</div></div>
+        <div style="background:#fefce8;border-radius:10px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:700;color:#111">${job.interview_title || 'None'}</div><div style="font-size:12px;color:#6b7280;margin-top:4px">Interview</div></div>
+        <div style="background:#f5f3ff;border-radius:10px;padding:16px;text-align:center"><div style="font-size:24px;font-weight:700;color:#111">${(job.auto_engage_mode || 'hold').replace(/_/g,' ')}</div><div style="font-size:12px;color:#6b7280;margin-top:4px">Auto-Engage</div></div>
+      </div>
+      ${job.description ? `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:20px">
+        <h3 style="margin:0 0 8px;font-size:14px;color:#374151">Description</h3>
+        <p style="margin:0;color:#555;font-size:14px;line-height:1.6;white-space:pre-line">${job.description}</p>
+      </div>` : ''}
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:20px">
+        <h3 style="margin:0 0 12px;font-size:14px;color:#374151">Apply Link</h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input readonly value="https://mychannelview.com/apply/job/${jobId}" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f9fafb;box-sizing:border-box" id="job-apply-link">
+          <button onclick="navigator.clipboard.writeText(document.getElementById('job-apply-link').value);toast('Link copied!','success')" style="background:#111;color:#fff;padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px">Copy</button>
+        </div>
+      </div>
+    </div>`;
+  } catch (e) { el.innerHTML = '<div style="padding:32px"><p style="color:red">Failed to load job.</p></div>'; }
+}
+
+async function editJob(jobId) {
+  let interviews = [];
+  try { const r = await api('GET', '/api/interviews'); interviews = Array.isArray(r) ? r : (r.interviews || []); } catch (e) {}
+  const job = await api('GET', `/api/jobs/${jobId}`);
+  const ivOpts = '<option value="">None</option>' + interviews.map(i => `<option value="${i.id}" ${i.id === job.interview_id ? 'selected' : ''}>${i.title}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'modal-edit-job';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">Edit Job</h2>
+      <button onclick="document.getElementById('modal-edit-job').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Title *</label>
+        <input id="edit-job-title" value="${job.title || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Location</label>
+          <input id="edit-job-location" value="${job.location || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job Type</label>
+          <select id="edit-job-type" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+            <option value="full_time" ${job.job_type==='full_time'?'selected':''}>Full Time</option><option value="part_time" ${job.job_type==='part_time'?'selected':''}>Part Time</option><option value="contract" ${job.job_type==='contract'?'selected':''}>Contract</option><option value="flexible" ${job.job_type==='flexible'?'selected':''}>Flexible</option>
+          </select></div>
+      </div>
+      <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Salary Range</label>
+        <input id="edit-job-salary" value="${job.salary_range || ''}" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box"></div>
+      <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Status</label>
+        <select id="edit-job-status" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+          <option value="active" ${job.status==='active'?'selected':''}>Active</option><option value="draft" ${job.status==='draft'?'selected':''}>Draft</option><option value="paused" ${job.status==='paused'?'selected':''}>Paused</option><option value="closed" ${job.status==='closed'?'selected':''}>Closed</option>
+        </select></div>
+      <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Description</label>
+        <textarea id="edit-job-desc" rows="5" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;line-height:1.6;box-sizing:border-box">${job.description || ''}</textarea></div>
+      <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Attach Interview</label>
+        <select id="edit-job-interview" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${ivOpts}</select></div>
+      <div><label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Auto-Engage After Apply</label>
+        <select id="edit-job-auto-engage" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+          <option value="hold" ${job.auto_engage_mode==='hold'?'selected':''}>Hold for review</option>
+          <option value="video_invite" ${job.auto_engage_mode==='video_invite'?'selected':''}>Auto-send interview link</option>
+          <option value="format_choice" ${job.auto_engage_mode==='format_choice'?'selected':''}>Auto-send format choice</option>
+        </select></div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+        <button onclick="document.getElementById('modal-edit-job').remove()" style="padding:10px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>
+        <button onclick="updateJob('${jobId}')" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:6px;cursor:pointer;font-size:14px">Save Changes</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function updateJob(jobId) {
+  const payload = {
+    title: document.getElementById('edit-job-title').value.trim(),
+    location: document.getElementById('edit-job-location').value.trim(),
+    job_type: document.getElementById('edit-job-type').value,
+    salary_range: document.getElementById('edit-job-salary').value.trim(),
+    status: document.getElementById('edit-job-status').value,
+    description: document.getElementById('edit-job-desc').value.trim(),
+    interview_id: document.getElementById('edit-job-interview').value || null,
+    auto_engage_mode: document.getElementById('edit-job-auto-engage').value,
+  };
+  if (!payload.title) { toast('Job title is required', 'error'); return; }
+  try {
+    await api('PUT', `/api/jobs/${jobId}`, payload);
+    toast('Job updated!', 'success');
+    document.getElementById('modal-edit-job').remove();
+    showJobDetail(jobId);
+  } catch (e) { toast('Failed to update: ' + e.message, 'error'); }
+}
+
+async function deleteJob(jobId) {
+  if (!confirm('Delete this job? This cannot be undone.')) return;
+  try {
+    await api('DELETE', `/api/jobs/${jobId}`);
+    toast('Job deleted', 'success');
+    renderJobsManage();
+  } catch (e) { toast(e.message || 'Failed to delete', 'error'); }
+}
+
 // ==================== CYCLE 40: CAMPAIGNS ====================
 
 async function renderCampaigns() {
@@ -10373,6 +10633,9 @@ async function renderCampaigns() {
   try {
     const res = await api('GET', '/api/campaigns');
     const camps = res.campaigns || [];
+    const jobsRes = await api('GET', '/api/jobs');
+    const jobs = Array.isArray(jobsRes) ? jobsRes : [];
+    // Also fetch interviews for legacy fallback
     const intRes = await api('GET', '/api/interviews');
     const interviews = intRes.interviews || [];
     const c = document.getElementById('camp-content');
@@ -10395,7 +10658,7 @@ async function renderCampaigns() {
           <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
             <div>
               <h3 style="margin:0 0 4px;font-size:16px;color:#111">${camp.name}</h3>
-              <p style="margin:0;font-size:13px;color:#6b7280">${camp.interview_title || 'No interview linked'}</p>
+              <p style="margin:0;font-size:13px;color:#6b7280">${camp.job_title || camp.interview_title || 'No job linked'}</p>
             </div>
             <span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:4px 10px;border-radius:12px;text-transform:uppercase">${camp.status}</span>
           </div>
@@ -10409,14 +10672,21 @@ async function renderCampaigns() {
       html += '</div>';
     }
     c.innerHTML = html;
+    window._campJobs = jobs;
     window._campInterviews = interviews;
   } catch (e) { document.getElementById('camp-content').innerHTML = '<p style="color:red">Failed to load campaigns.</p>'; }
 }
 
 async function showCreateCampaign() {
+  const jobs = window._campJobs || [];
   const interviews = window._campInterviews || [];
-  if (!interviews.length) { toast('Create an interview first — campaigns are tied to a specific position.', 'error'); return; }
-  const opts = interviews.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
+  if (!jobs.length && !interviews.length) { toast('Create a job first — campaigns are tied to a specific job posting.', 'error'); return; }
+  let opts = '';
+  if (jobs.length) {
+    opts = jobs.map(j => `<option value="job_${j.id}">${j.title}${j.location ? ' — ' + j.location : ''}</option>`).join('');
+  } else {
+    opts = interviews.map(i => `<option value="iv_${i.id}">${i.title}</option>`).join('');
+  }
   const modal = document.createElement('div');
   modal.id = 'modal-create-camp';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
@@ -10431,8 +10701,8 @@ async function showCreateCampaign() {
         <input id="camp-name" placeholder="e.g. Spring Recruiting Push" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
       </div>
       <div>
-        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Interview / Position</label>
-        <select id="camp-interview" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${opts}</select>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Job</label>
+        <select id="camp-job" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${opts}</select>
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Email Subject Line</label>
@@ -10484,15 +10754,19 @@ async function generateCampaignBody() {
 
 async function saveCampaign() {
   const name = document.getElementById('camp-name').value.trim();
-  const interview_id = document.getElementById('camp-interview').value;
+  const selectedVal = document.getElementById('camp-job').value;
   const subject_line = document.getElementById('camp-subject').value.trim();
   const headline = document.getElementById('camp-headline').value.trim();
   const body_html = document.getElementById('camp-body').value.trim();
   const cta_text = document.getElementById('camp-cta').value.trim();
   if (!name) { toast('Give your campaign a name', 'error'); return; }
   if (!body_html) { toast('Add a job description or email body', 'error'); return; }
+  const payload = { name, subject_line, headline, body_html, cta_text };
+  if (selectedVal.startsWith('job_')) { payload.job_id = selectedVal.slice(4); }
+  else if (selectedVal.startsWith('iv_')) { payload.interview_id = selectedVal.slice(3); }
+  else { payload.interview_id = selectedVal; }
   try {
-    const res = await api('POST', '/api/campaigns', { name, interview_id, subject_line, headline, body_html, cta_text });
+    const res = await api('POST', '/api/campaigns', payload);
     toast('Campaign created!', 'success');
     document.getElementById('modal-create-camp').remove();
     window._editingCampaignId = res.campaign.id;

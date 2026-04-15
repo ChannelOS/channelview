@@ -2961,6 +2961,114 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 41: JOBS TAB — SEPARATE JOBS FROM INTERVIEWS ========================
+
+    # Jobs table — the position/role an RSC is hiring for (separate from how they evaluate candidates)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        department TEXT,
+        position TEXT,
+        location TEXT,
+        job_type TEXT DEFAULT 'full_time',
+        salary_range TEXT,
+        application_deadline TIMESTAMP,
+        status TEXT DEFAULT 'active',
+        job_board_enabled INTEGER DEFAULT 0,
+        public_apply_enabled INTEGER DEFAULT 1,
+        auto_engage_mode TEXT DEFAULT 'hold',
+        apply_instructions TEXT,
+        apply_fields_json TEXT DEFAULT '[]',
+        prep_video_url TEXT,
+        prep_instructions TEXT,
+        estimated_duration_min INTEGER DEFAULT 15,
+        generated_description TEXT,
+        interview_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (interview_id) REFERENCES interviews(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_interview ON jobs(interview_id)")
+
+    # Migrations: add job_id to candidates, campaigns for the new linkage
+    c41_migrations = [
+        ("candidates", "job_id", "TEXT"),
+        ("campaigns", "job_id", "TEXT"),
+    ]
+    for table, col, coltype in c41_migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+        except:
+            pass
+
+    # Auto-migration: create a Job record for every existing Interview that doesn't already have one
+    try:
+        existing_interviews = conn.execute("""
+            SELECT i.id, i.user_id, i.title, i.description, i.department, i.position, i.status,
+                   i.created_at, i.updated_at
+            FROM interviews i
+            WHERE i.id NOT IN (SELECT interview_id FROM jobs WHERE interview_id IS NOT NULL)
+        """).fetchall()
+        for iv in existing_interviews:
+            iv = dict(iv)
+            job_id = uuid.uuid4().hex
+            # Pull job metadata from interview migration columns (may not exist on all rows)
+            location = None
+            job_type = 'full_time'
+            salary_range = None
+            application_deadline = None
+            job_board_enabled = 0
+            public_apply_enabled = 0
+            auto_engage_mode = 'hold'
+            apply_instructions = None
+            estimated_duration_min = 15
+            generated_description = None
+            try:
+                extra = conn.execute("""SELECT location, job_type, salary_range, application_deadline,
+                    job_board_enabled, public_apply_enabled, auto_engage_mode, apply_instructions,
+                    estimated_duration_min, generated_description
+                    FROM interviews WHERE id=?""", (iv['id'],)).fetchone()
+                if extra:
+                    extra = dict(extra)
+                    location = extra.get('location')
+                    job_type = extra.get('job_type') or 'full_time'
+                    salary_range = extra.get('salary_range')
+                    application_deadline = extra.get('application_deadline')
+                    job_board_enabled = extra.get('job_board_enabled') or 0
+                    public_apply_enabled = extra.get('public_apply_enabled') or 0
+                    auto_engage_mode = extra.get('auto_engage_mode') or 'hold'
+                    apply_instructions = extra.get('apply_instructions')
+                    estimated_duration_min = extra.get('estimated_duration_min') or 15
+                    generated_description = extra.get('generated_description')
+            except:
+                pass
+            conn.execute("""INSERT INTO jobs (id, user_id, title, description, department, position,
+                location, job_type, salary_range, application_deadline, status, job_board_enabled,
+                public_apply_enabled, auto_engage_mode, apply_instructions, estimated_duration_min,
+                generated_description, interview_id, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (job_id, iv['user_id'], iv['title'], iv.get('description'), iv.get('department'),
+                 iv.get('position'), location, job_type, salary_range, application_deadline,
+                 iv.get('status', 'active'), job_board_enabled, public_apply_enabled,
+                 auto_engage_mode, apply_instructions, estimated_duration_min,
+                 generated_description, iv['id'], iv.get('created_at'), iv.get('updated_at')))
+            # Backfill job_id on candidates that belong to this interview
+            conn.execute("UPDATE candidates SET job_id=? WHERE interview_id=? AND (job_id IS NULL OR job_id='')", (job_id, iv['id']))
+            # Backfill job_id on campaigns that reference this interview
+            conn.execute("UPDATE campaigns SET job_id=? WHERE interview_id=? AND (job_id IS NULL OR job_id='')", (job_id, iv['id']))
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except:
+            pass
+
     try:
         conn.commit()
     except:
