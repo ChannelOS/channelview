@@ -2757,6 +2757,61 @@ def api_seed():
                  str(uuid.uuid4()), status, score, summary)
             )
 
+    # ---- Pre-loaded Job: Business Development Representative ----
+    # Modeled after real insurance BDR postings. Linked to the first seeded interview.
+    first_interview_id = None
+    first_row = db.execute('SELECT id FROM interviews WHERE user_id=? ORDER BY rowid LIMIT 1', (uid,)).fetchone()
+    if first_row:
+        first_interview_id = first_row['id']
+
+    bdr_job_id = str(uuid.uuid4())
+    bdr_description = """We are seeking motivated and ambitious individuals to join our team. This opportunity allows driven professionals to build a rewarding career while providing valuable financial solutions to businesses and individuals.
+
+You will have the chance to make a significant impact on the lives of clients by offering them the peace of mind that supplemental insurance products provide. As a representative, you will engage with customers, build strong relationships, and educate them about the benefits of our offerings.
+
+We are looking for individuals who are self-starters with excellent communication skills and a desire to thrive in a supportive environment."""
+
+    bdr_apply_instructions = """Thank you for your interest in joining our team! This short video interview will help us get to know you better. Here's what to expect:
+
+- 5 brief questions about your background, motivation, and communication style
+- Each question allows you to record a short video response
+- The whole process takes about 10-15 minutes
+- You can re-record any answer if you'd like a do-over
+
+No insurance experience is required. We provide comprehensive training including on-the-job, virtual, and classroom instruction. We're looking for people with energy, a positive attitude, and the drive to succeed.
+
+Good luck — we look forward to meeting you!"""
+
+    db.execute('''INSERT INTO jobs (id, user_id, title, description, department, position,
+        location, job_type, salary_range, status, job_board_enabled, public_apply_enabled,
+        auto_engage_mode, apply_instructions, estimated_duration_min, interview_id,
+        generated_description)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        (bdr_job_id, uid,
+         'Business Development Representative',
+         bdr_description,
+         'Sales',
+         'Business Development Representative',
+         '',
+         'full_time',
+         '$65,000 - $95,000 a year',
+         'active',
+         1,   # job_board_enabled
+         1,   # public_apply_enabled
+         'video_invite',  # auto-engage: send video interview automatically
+         bdr_apply_instructions,
+         15,
+         first_interview_id,
+         """Join a team that's passionate about helping people protect what matters most. As a Business Development Representative, you'll connect with individuals and businesses to provide supplemental insurance solutions that make a real difference in people's lives.
+
+What you'll do: Engage with clients to understand their needs and recommend the right coverage. Conduct presentations to educate prospects about our products. Build lasting relationships that generate ongoing business and referrals. Collaborate with team members to grow your market.
+
+What we're looking for: Excellent communication skills and a customer-focused mindset. Self-motivated with a passion for helping others. Ability to work independently and as part of a team. Prior sales experience is a plus but not required — we provide full training.
+
+What you'll earn: First-year representatives typically earn $65,000-$95,000 annually through commission, renewals, and bonuses. We offer a flexible schedule, comprehensive training, career growth into leadership, and the chance to build long-term residual income.
+
+No insurance license required to start — we'll help you get there."""))
+
     db.commit()
     db.close()
     return jsonify({'success': True, 'message': 'Sample data created'})
