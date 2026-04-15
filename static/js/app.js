@@ -584,41 +584,55 @@ async function renderDashboard() {
   try {
     const data = await api('/api/dashboard');
     const s = data.stats;
+    // Store dashboard data for drill-downs
+    window._dashData = data;
     content.innerHTML = `
       <div class="page-header">
         <div><h1>Dashboard</h1><p class="subtitle">Welcome back, ${APP_USER.name}</p></div>
-        <div class="page-actions">
-          <button class="btn btn-primary" onclick="window.location.href='/interviews/new'">+ New Interview</button>
-        </div>
       </div>
       ${tabDescriptor('dashboard')}
       <div class="stat-grid">
-        <div class="stat-card"><div class="stat-label">Active Interviews</div><div class="stat-value">${s.active_interviews}</div></div>
-        <div class="stat-card"><div class="stat-label">Total Candidates</div><div class="stat-value">${s.total_candidates}</div></div>
-        <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${s.completed}</div></div>
-        <div class="stat-card"><div class="stat-label">Avg Interview Score</div><div class="stat-value">${s.avg_score || '—'}</div></div>
+        <div class="stat-card stat-card-drillable" onclick="toggleStatDrill('interviews')" data-drill="interviews">
+          <div class="stat-label">Active Interviews</div><div class="stat-value">${s.active_interviews}</div>
+          <div class="stat-drill-hint">Click to expand</div>
+        </div>
+        <div class="stat-card stat-card-drillable" onclick="toggleStatDrill('candidates')" data-drill="candidates">
+          <div class="stat-label">Total Candidates</div><div class="stat-value">${s.total_candidates}</div>
+          <div class="stat-drill-hint">Click to expand</div>
+        </div>
+        <div class="stat-card stat-card-drillable" onclick="toggleStatDrill('completed')" data-drill="completed">
+          <div class="stat-label">Completed</div><div class="stat-value">${s.completed}</div>
+          <div class="stat-drill-hint">Click to expand</div>
+        </div>
+        <div class="stat-card stat-card-drillable" onclick="toggleStatDrill('scores')" data-drill="scores">
+          <div class="stat-label">Avg Interview Score</div><div class="stat-value">${s.avg_score || '\u2014'}</div>
+          <div class="stat-drill-hint">Click to expand</div>
+        </div>
       </div>
+      <div id="stat-drill-panel" class="stat-drill-panel" style="display:none"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
-          <div class="card-header"><h3>Recent Candidates</h3><a href="/candidates" class="btn btn-sm btn-outline">View All</a></div>
+          <div class="card-header"><h3>Recent Candidates</h3></div>
           ${data.recent_candidates.length ? `<table><thead><tr><th>Name</th><th>Interview</th><th>Status</th><th>Score</th></tr></thead><tbody>
-            ${data.recent_candidates.map(c => `<tr style="cursor:pointer" onclick="window.location.href='/review/${c.id}'">
+            ${data.recent_candidates.map(c => `<tr>
               <td><strong>${c.first_name} ${c.last_name}</strong><br><span style="font-size:12px;color:#999">${c.email}</span></td>
               <td style="font-size:13px">${c.interview_title}</td>
               <td>${statusBadge(c.status)}</td>
-              <td>${c.ai_score ? scoreRing(c.ai_score, 40) : '—'}</td>
+              <td>${c.ai_score ? scoreRing(c.ai_score, 40) : '\u2014'}</td>
             </tr>`).join('')}
-          </tbody></table>` : '<div class="empty-state"><p style="font-size:15px;margin-bottom:8px">No candidates yet</p><p style="color:#888;font-size:13px">Once you send out an interview, candidates will show up here as they respond.</p><a href="/interviews/new" class="btn btn-sm btn-primary" style="margin-top:8px">Create Your First Interview</a></div>'}
+          </tbody></table>
+          <div class="dispatch-link">Want to manage your pipeline? <a href="/enhanced-kanban">Go to <strong>Candidates</strong> \u2192</a></div>` : '<div class="empty-state" style="padding:30px 20px"><p style="font-size:15px;margin-bottom:8px">No candidates yet</p><p style="color:#888;font-size:13px;margin-bottom:0">Once you send out an interview, candidates will show up here as they respond. Head to <a href="/jobs-manage"><strong>My Jobs</strong></a> to create your first interview and start recruiting.</p></div>'}
         </div>
         <div class="card">
-          <div class="card-header"><h3>Active Interviews</h3><a href="/interviews" class="btn btn-sm btn-outline">View All</a></div>
+          <div class="card-header"><h3>Active Interviews</h3></div>
           ${data.recent_interviews.length ? `<table><thead><tr><th>Interview</th><th>Candidates</th><th>Status</th></tr></thead><tbody>
-            ${data.recent_interviews.map(i => `<tr style="cursor:pointer" onclick="window.location.href='/interviews/${i.id}'">
+            ${data.recent_interviews.map(i => `<tr>
               <td><strong>${i.title}</strong><br><span style="font-size:12px;color:#999">${i.department || ''}</span></td>
               <td>${i.completed_count || 0}/${i.candidate_count || 0}</td>
               <td>${statusBadge(i.status)}</td>
             </tr>`).join('')}
-          </tbody></table>` : '<div class="empty-state"><p style="font-size:15px;margin-bottom:8px">No interviews yet</p><p style="color:#888;font-size:13px">Create an interview with your questions, then send it to candidates. Takes about 2 minutes.</p><a href="/interviews/new" class="btn btn-sm btn-primary" style="margin-top:8px">Create Interview</a></div>'}
+          </tbody></table>
+          <div class="dispatch-link">Need to edit or create interviews? <a href="/jobs-manage">Go to <strong>My Jobs</strong> \u2192</a></div>` : '<div class="empty-state" style="padding:30px 20px"><p style="font-size:15px;margin-bottom:8px">No interviews yet</p><p style="color:#888;font-size:13px;margin-bottom:0">You don\'t have any interviews set up yet. Go to <a href="/jobs-manage"><strong>My Jobs</strong></a> to create one \u2014 it only takes a couple minutes.</p></div>'}
         </div>
       </div>
       ${data.recent_interviews.length === 0 ? `
@@ -626,16 +640,103 @@ async function renderDashboard() {
         <h3 style="margin-bottom:8px">Ready to start hiring?</h3>
         <p style="color:#666;margin-bottom:16px">We've set up ready-made interview templates for insurance recruiting. Load them to get started in under a minute.</p>
         <button class="btn btn-primary" onclick="seedData()">Load Interview Templates</button>
+        <p style="color:#999;font-size:13px;margin-top:12px">Or go to <a href="/jobs-manage"><strong>My Jobs</strong></a> to build your own from scratch.</p>
       </div>` : ''}
     `;
   } catch (err) {
     content.innerHTML = `<div class="card" style="text-align:center;padding:40px">
       <h3 style="margin-bottom:8px">Welcome to ChannelView!</h3>
-      <p style="color:#666;margin-bottom:16px">You're all set to start recruiting. Load our ready-made insurance interview templates, or jump straight in and create your own.</p>
-      <button class="btn btn-primary" onclick="seedData()" style="margin-right:8px">Load Interview Templates</button>
-      <a href="/interviews/new" class="btn btn-secondary">Create My Own</a>
+      <p style="color:#666;margin-bottom:16px">You're all set to start recruiting. Load our ready-made insurance interview templates, or head to <a href="/jobs-manage"><strong>My Jobs</strong></a> to build your own.</p>
+      <button class="btn btn-primary" onclick="seedData()">Load Interview Templates</button>
     </div>`;
   }
+}
+
+function toggleStatDrill(type) {
+  const panel = document.getElementById('stat-drill-panel');
+  const cards = document.querySelectorAll('.stat-card-drillable');
+  const data = window._dashData;
+  if (!data) return;
+  // If same card clicked, collapse
+  if (panel.dataset.active === type && panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    panel.dataset.active = '';
+    cards.forEach(c => c.classList.remove('active'));
+    return;
+  }
+  // Deactivate all cards, activate clicked one
+  cards.forEach(c => c.classList.remove('active'));
+  const activeCard = document.querySelector(`[data-drill="${type}"]`);
+  if (activeCard) activeCard.classList.add('active');
+  panel.dataset.active = type;
+  let html = '';
+  if (type === 'interviews') {
+    if (data.recent_interviews.length) {
+      html = `<h4>Your Active Interviews</h4>
+        <table><thead><tr><th>Interview</th><th>Position</th><th>Candidates</th><th>Completed</th><th>Status</th></tr></thead><tbody>
+        ${data.recent_interviews.map(i => `<tr>
+          <td><strong>${i.title}</strong></td>
+          <td style="font-size:13px;color:#666">${i.department || '\u2014'}</td>
+          <td>${i.candidate_count || 0}</td>
+          <td>${i.completed_count || 0}</td>
+          <td>${statusBadge(i.status)}</td>
+        </tr>`).join('')}
+        </tbody></table>
+        <div class="dispatch-link">Manage your interviews in <a href="/jobs-manage"><strong>My Jobs</strong> \u2192</a></div>`;
+    } else {
+      html = `<div class="drill-empty">No active interviews yet. Head to <a href="/jobs-manage"><strong>My Jobs</strong></a> to create your first one.</div>`;
+    }
+  } else if (type === 'candidates') {
+    if (data.recent_candidates.length) {
+      html = `<h4>Recent Candidates (last ${data.recent_candidates.length})</h4>
+        <table><thead><tr><th>Name</th><th>Email</th><th>Interview</th><th>Status</th><th>Score</th></tr></thead><tbody>
+        ${data.recent_candidates.map(c => `<tr>
+          <td><strong>${c.first_name} ${c.last_name}</strong></td>
+          <td style="font-size:13px;color:#666">${c.email}</td>
+          <td style="font-size:13px">${c.interview_title}</td>
+          <td>${statusBadge(c.status)}</td>
+          <td>${c.ai_score ? scoreRing(c.ai_score, 40) : '\u2014'}</td>
+        </tr>`).join('')}
+        </tbody></table>
+        <div class="dispatch-link">View your full pipeline in <a href="/enhanced-kanban"><strong>Candidates</strong> \u2192</a></div>`;
+    } else {
+      html = `<div class="drill-empty">No candidates yet. Once you send out interviews from <a href="/jobs-manage"><strong>My Jobs</strong></a>, candidates will appear here.</div>`;
+    }
+  } else if (type === 'completed') {
+    const completed = (data.recent_candidates || []).filter(c => c.status === 'completed');
+    if (completed.length) {
+      html = `<h4>Completed Interviews</h4>
+        <table><thead><tr><th>Name</th><th>Interview</th><th>Score</th></tr></thead><tbody>
+        ${completed.map(c => `<tr>
+          <td><strong>${c.first_name} ${c.last_name}</strong></td>
+          <td style="font-size:13px">${c.interview_title}</td>
+          <td>${c.ai_score ? scoreRing(c.ai_score, 40) : '\u2014'}</td>
+        </tr>`).join('')}
+        </tbody></table>
+        <div class="dispatch-link">Review and compare candidates in <a href="/enhanced-kanban"><strong>Candidates</strong> \u2192</a></div>`;
+    } else {
+      html = `<div class="drill-empty">No completed interviews yet. Once candidates finish their interviews, you'll see them here with their scores. You can review them in <a href="/enhanced-kanban"><strong>Candidates</strong></a>.</div>`;
+    }
+  } else if (type === 'scores') {
+    const scored = (data.recent_candidates || []).filter(c => c.ai_score);
+    if (scored.length) {
+      const avg = Math.round(scored.reduce((sum, c) => sum + c.ai_score, 0) / scored.length);
+      const high = scored.filter(c => c.ai_score >= 80).length;
+      const mid = scored.filter(c => c.ai_score >= 50 && c.ai_score < 80).length;
+      const low = scored.filter(c => c.ai_score < 50).length;
+      html = `<h4>Score Breakdown</h4>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+          <div class="drill-stat"><div class="drill-stat-value" style="color:#16a34a">${high}</div><div class="drill-stat-label">Strong (80+)</div></div>
+          <div class="drill-stat"><div class="drill-stat-value" style="color:#d97706">${mid}</div><div class="drill-stat-label">Average (50-79)</div></div>
+          <div class="drill-stat"><div class="drill-stat-value" style="color:#dc2626">${low}</div><div class="drill-stat-label">Needs Review (&lt;50)</div></div>
+        </div>
+        <div class="dispatch-link">See detailed AI insights in <a href="/analytics"><strong>Insights</strong> \u2192</a></div>`;
+    } else {
+      html = `<div class="drill-empty">No scores yet. AI scoring happens automatically when candidates complete their interviews. Check detailed analytics in <a href="/analytics"><strong>Insights</strong></a>.</div>`;
+    }
+  }
+  panel.innerHTML = html;
+  panel.style.display = 'block';
 }
 
 async function seedData() {
