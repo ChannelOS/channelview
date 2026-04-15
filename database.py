@@ -3069,6 +3069,20 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 45: PIPELINE STAGE MIGRATION ========================
+    # Migrate old pipeline_stage values to new Cycle 45 stages
+    # Old: new, in_review, shortlisted, interview_scheduled, offered, hired, rejected
+    # New: new, invited, in_progress, completed, shortlisted, interview_scheduled, offered, hired, rejected
+    # 'in_review' maps to 'completed' (interview done, RSC hasn't acted)
+    try:
+        migrated = conn.execute(
+            "UPDATE candidates SET pipeline_stage='completed' WHERE pipeline_stage='in_review'"
+        ).rowcount
+        if migrated:
+            conn.commit()
+    except Exception:
+        pass
+
     try:
         conn.commit()
     except:

@@ -71,7 +71,7 @@ const PAGE_FEATURE_GATE = {
   'api-management':  { feature: 'api_access',          label: 'API Keys',              icon: '🔑', desc: 'Manage your API keys and see how they\'re being used.' },
   'voice-agent':     { feature: 'integrations',        label: 'Phone Screening',       icon: '🎙️', desc: 'An AI phone call that pre-screens candidates before you spend time on a video interview.' },
   'automation':      { feature: 'integrations',        label: 'Automation',            icon: '⚙️', desc: 'Set it and forget it — auto-send invites, follow-ups, and move candidates along your pipeline.' },
-  'auto-rules':      { feature: 'integrations',        label: 'Auto-Rules',            icon: '⚙️', desc: 'Create simple rules like "if a candidate finishes, send me a notification" to save time.' },
+  'auto-rules':      { feature: null,                   label: 'Automation Rules',      icon: '⚙️', desc: 'Create simple rules like "if a candidate finishes, send me a notification" to save time.' },
 };
 
 /**
@@ -305,7 +305,7 @@ const TAB_DESCRIPTORS = {
 
   // ===== TRACK =====
   'candidates': {title:'All Candidates', desc:"Every person who\u2019s ever applied, been invited, or been added to your system is here. Search, filter, and sort by status, score, source, or date. This is your single source of truth for where every candidate stands in your process."},
-  'enhanced-kanban': {title:'Hiring Pipeline', desc:"See your entire hiring process as a visual board. Drag candidates between stages \u2014 New, Screening, Interview, Offer, Hired \u2014 to track progress at a glance. When your pipeline is full and moving, you\u2019re hiring faster than your competition."},
+  'enhanced-kanban': {title:'Hiring Pipeline', desc:"Your hiring pipeline updates automatically as candidates move through the interview process. Once they complete their interview, you decide what\u2019s next \u2014 drag them to Shortlisted, Offered, or Hired. The board always shows where everyone stands."},
   'pipeline-funnel': {title:'Hiring Funnel', desc:"See where candidates drop off and where they convert. If 100 people apply but only 10 make it to interview, you know your screening step needs work. This data helps you fix the bottlenecks so more good candidates make it through."},
   'source-tracking': {title:'Candidate Sources', desc:"Not all candidate sources are equal. This shows you which sources (campaigns, job boards, referrals, direct apply) actually produce hires \u2014 not just applications. Stop wasting time on sources that don\u2019t convert and double down on the ones that do."},
   'ai-scoring': {title:'AI Scores', desc:"AI watches every video response and scores candidates on communication, enthusiasm, professionalism, and job fit. Instead of watching hours of video, scan the scores to find your top candidates in seconds. The AI catches things you might miss on a first watch."},
@@ -353,7 +353,7 @@ const TAB_DESCRIPTORS = {
   'help-center': {title:'Help Center', desc:"Guides, walkthroughs, and answers to common questions. If you\u2019re not sure how something works or want to get more out of a feature, start here before reaching out to support."},
 
   // ===== MISC =====
-  'auto-rules': {title:'Auto Rules', desc:"Create rules that automatically move candidates through your pipeline based on scores, activity, or time. For example: AI score above 8 auto-moves to \u201CHot,\u201D no response in 3 days triggers a reminder. You set the rules once and the system works for you."},
+  'auto-rules': {title:'Automation Rules', desc:"Create rules that automatically move candidates through your pipeline based on scores, activity, or time. For example: AI score above 80 auto-moves to Shortlisted, no response in 3 days triggers a reminder. You set the rules once and the system works for you."},
   'custom-stages': {title:'Pipeline Stages', desc:"Customize the stages candidates move through in your hiring pipeline. Add, rename, reorder, or color-code stages to match your actual recruiting process. Every agency recruits differently \u2014 your pipeline should reflect how you work."},
 };
 
@@ -442,6 +442,7 @@ var SECTION_TABS = {
     {label: 'Email Templates', page: 'email-templates'},
     {label: 'Email Delivery', page: 'email-delivery'},
     {label: 'My Team', page: 'team'},
+    {label: 'Automation', page: 'auto-rules'},
     {label: 'Integrations', page: 'integrations-hub'},
     {label: 'Agency Systems', page: 'ams-integrations'}
   ]
@@ -4648,14 +4649,15 @@ async function renderKanban() {
   const interviewId = new URLSearchParams(window.location.search).get('interview_id') || '';
   const pipeline = await api('/api/candidates/pipeline' + (interviewId ? '?interview_id=' + interviewId : ''));
 
-  const stages = pipeline.stages || ['new', 'in_review', 'shortlisted', 'interview_scheduled', 'offered', 'hired', 'rejected'];
+  const stages = pipeline.stages || ['new', 'invited', 'in_progress', 'completed', 'shortlisted', 'interview_scheduled', 'offered', 'hired', 'rejected'];
   const stageLabels = {
-    new: 'New', in_review: 'In Review', shortlisted: 'Shortlisted',
-    interview_scheduled: 'Scheduled', offered: 'Offered', hired: 'Hired', rejected: 'Rejected'
+    new: 'New', invited: 'Invited', in_progress: 'In Progress', completed: 'Completed',
+    shortlisted: 'Shortlisted', interview_scheduled: 'Scheduled',
+    offered: 'Offered', hired: 'Hired', rejected: 'Rejected'
   };
   const stageColors = {
-    new: '#6b7280', in_review: '#3b82f6', shortlisted: '#8b5cf6',
-    interview_scheduled: '#f59e0b', offered: '#0ace0a', hired: '#16a34a', rejected: '#dc2626'
+    new: '#6b7280', invited: '#3b82f6', in_progress: '#f59e0b', completed: '#8b5cf6',
+    shortlisted: '#10b981', interview_scheduled: '#f97316', offered: '#06b6d4', hired: '#059669', rejected: '#ef4444'
   };
 
   content.innerHTML = `
@@ -8160,8 +8162,8 @@ async function renderPipelineFunnel() {
 
   const funnel = funnelData.funnel || [];
   const maxCount = Math.max(...funnel.map(f => f.count), 1);
-  const stageColors = { new:'#6b7280', in_review:'#3b82f6', shortlisted:'#8b5cf6',
-    interview_scheduled:'#f59e0b', offered:'#10b981', hired:'#059669' };
+  const stageColors = { new:'#6b7280', invited:'#3b82f6', in_progress:'#f59e0b', completed:'#8b5cf6',
+    shortlisted:'#10b981', interview_scheduled:'#f97316', offered:'#06b6d4', hired:'#059669' };
 
   content.innerHTML = `
     <div style="max-width:1100px">
@@ -8279,23 +8281,20 @@ async function renderEnhancedKanban() {
   content.innerHTML = `
     <h1 style="font-size:24px;margin:0 0 8px">Candidates</h1>
     ${sectionSubNav('candidates', 'enhanced-kanban')}
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div>
-        <h2 style="font-size:18px;font-weight:700;margin:0">Hiring Pipeline</h2>
-        <p style="color:#666;margin-top:4px;font-size:13px">${data.total || 0} candidates across ${stages.length} stages</p>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="text" id="c31-kanban-search" placeholder="Search candidates..." value="${c31KanbanSearch}"
-          style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;width:200px"
-          onkeydown="if(event.key==='Enter'){c31KanbanSearch=this.value;renderEnhancedKanban()}">
-        <select class="form-input" style="width:auto;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
-          onchange="const v=this.value;history.replaceState(null,'',v?'/enhanced-kanban?interview_id='+v:'/enhanced-kanban');renderEnhancedKanban()">
-          <option value="">All Interviews</option>
-          ${(interviews||[]).map(i => `<option value="${i.id}" ${i.id===interviewId?'selected':''}>${i.title}</option>`).join('')}
-        </select>
-        <button class="btn btn-sm btn-outline" onclick="renderPipelineFunnel()" title="View funnel analytics">📊 Funnel</button>
-        <button class="btn btn-sm btn-outline" onclick="renderAutoRules()" title="Configure auto-stage rules">⚡ Rules</button>
-      </div>
+    <div style="margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700;margin:0">Hiring Pipeline</h2>
+      <p style="color:#666;margin-top:4px;font-size:13px">${data.total || 0} candidates across ${stages.length} stages</p>
+    </div>
+    <!-- Search & Filter Toolbar -->
+    <div class="kanban-toolbar" style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+      <input type="text" id="c31-kanban-search" placeholder="Search candidates..." value="${c31KanbanSearch}"
+        style="padding:8px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;flex:1;min-width:180px"
+        onkeydown="if(event.key==='Enter'){c31KanbanSearch=this.value;renderEnhancedKanban()}">
+      <select class="form-input" style="width:auto;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px"
+        onchange="const v=this.value;history.replaceState(null,'',v?'/enhanced-kanban?interview_id='+v:'/enhanced-kanban');renderEnhancedKanban()">
+        <option value="">All Interviews</option>
+        ${(interviews||[]).map(i => `<option value="${i.id}" ${i.id===interviewId?'selected':''}>${i.title}</option>`).join('')}
+      </select>
     </div>
     ${tabDescriptor('enhanced-kanban')}
 
@@ -8315,22 +8314,26 @@ async function renderEnhancedKanban() {
 
     <!-- Kanban Columns -->
     <div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;min-height:500px">
-      ${stages.map(stage => `
-        <div class="kanban-column" data-stage="${stage.slug}" style="min-width:230px;max-width:270px;flex:1;background:#f9fafb;border-radius:12px;padding:12px"
+      ${stages.map(stage => {
+        const isAuto = stage.zone === 'auto';
+        return `
+        <div class="kanban-column ${isAuto ? 'kanban-col-auto' : 'kanban-col-manual'}" data-stage="${stage.slug}" style="min-width:230px;max-width:270px;flex:1;background:#f9fafb;border-radius:12px;padding:12px"
           ondragover="event.preventDefault();this.style.background='#e6fce6'" ondragleave="this.style.background='#f9fafb'"
           ondrop="c31DropCandidate(event,'${stage.slug}');this.style.background='#f9fafb'">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:3px solid ${stage.color}">
-            <span style="font-weight:700;font-size:13px;color:${stage.color}">${stage.name}</span>
+            <span style="font-weight:700;font-size:13px;color:${stage.color}">${stage.name}${isAuto ? ' <span class="kanban-auto-badge">Auto</span>' : ''}</span>
             <span style="background:${stage.color}22;color:${stage.color};font-size:12px;padding:2px 8px;border-radius:10px;font-weight:600">${stage.count}</span>
           </div>
           ${(stage.candidates || []).map(c => `
-            <div draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${c.id}')"
-              style="background:white;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:3px solid ${stage.color};position:relative"
-              onclick="if(event.target.type!=='checkbox')window.location.href='/review/${c.id}'">
-              <input type="checkbox" style="position:absolute;top:10px;right:10px;cursor:pointer"
+            <div ${isAuto ? '' : `draggable="true" ondragstart="event.dataTransfer.setData('text/plain','${c.id}')"`}
+              class="kanban-card ${isAuto ? 'kanban-card-locked' : ''}"
+              style="background:white;border-radius:8px;padding:10px 12px;margin-bottom:8px;${isAuto ? 'cursor:default;' : 'cursor:grab;'}box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:3px solid ${stage.color};position:relative"
+              onclick="if(event.target.type!=='checkbox'&&!event.target.closest('.kanban-reject-btn'))window.location.href='/review/${c.id}'">
+              <input type="checkbox" style="position:absolute;top:10px;right:${isAuto ? '30' : '10'}px;cursor:pointer"
                 ${c31SelectedCandidates.has(c.id)?'checked':''}
                 onchange="event.stopPropagation();if(this.checked)c31SelectedCandidates.add('${c.id}');else c31SelectedCandidates.delete('${c.id}');c31UpdateBulkBar()">
-              <div style="font-weight:600;font-size:14px;padding-right:24px">${c.first_name} ${c.last_name}</div>
+              ${isAuto ? `<button class="kanban-reject-btn" onclick="event.stopPropagation();c45RejectCandidate('${c.id}')" title="Reject candidate">&times;</button>` : ''}
+              <div style="font-weight:600;font-size:14px;padding-right:${isAuto ? '44' : '24'}px">${c.first_name} ${c.last_name}</div>
               <div style="font-size:12px;color:#666;margin-top:2px">${c.interview_title || ''}</div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
                 ${c.ai_score ? `<span style="font-size:12px;color:#0ace0a;font-weight:600">Score: ${c.ai_score}</span>` : '<span></span>'}
@@ -8339,7 +8342,7 @@ async function renderEnhancedKanban() {
               ${c.source && c.source !== 'manual' ? `<div style="font-size:10px;color:#999;margin-top:4px;text-transform:capitalize">via ${c.source.replace(/_/g,' ')}</div>` : ''}
             </div>
           `).join('')}
-          ${(stage.candidates || []).length === 0 ? '<p style="text-align:center;color:#ccc;font-size:13px;margin-top:20px">No candidates</p>' : ''}
+          ${(stage.candidates || []).length === 0 ? '<p style="text-align:center;color:#ccc;font-size:13px;margin-top:20px">No candidates</p>' : ''}`}).join('')}
         </div>
       `).join('')}
     </div>`;
@@ -8408,6 +8411,18 @@ async function c31BulkArchive() {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+// Cycle 45: Quick-reject from automated zone
+async function c45RejectCandidate(candidateId) {
+  if (!confirm('Reject this candidate?')) return;
+  try {
+    await api('/api/candidates/' + candidateId + '/pipeline-stage', {
+      method: 'PUT', body: JSON.stringify({ stage: 'rejected', order: 0 })
+    });
+    toast('Candidate rejected', 'success');
+    renderEnhancedKanban();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 
 // --- C31 Feature 3: Auto-Stage Rules Config ---
 
@@ -8424,20 +8439,22 @@ async function renderAutoRules() {
     days_inactive: 'Days Inactive ≥', interview_completed: 'Interview Completed'
   };
   const stageLabels = {
-    new: 'New', in_review: 'In Review', shortlisted: 'Shortlisted',
-    interview_scheduled: 'Scheduled', offered: 'Offered', hired: 'Hired', rejected: 'Rejected'
+    new: 'New', invited: 'Invited', in_progress: 'In Progress', completed: 'Completed',
+    shortlisted: 'Shortlisted', interview_scheduled: 'Scheduled',
+    offered: 'Offered', hired: 'Hired', rejected: 'Rejected'
   };
 
   content.innerHTML = `
     <div style="max-width:800px">
+      <h1 style="font-size:24px;margin:0 0 8px">Settings</h1>
+      ${sectionSubNav('settings', 'auto-rules')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Auto-Rules</h2>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:4px">Automation Rules</h2>
           <p style="color:#666;font-size:13px">Automatically move candidates along when certain things happen</p>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm btn-primary" onclick="c31ApplyRules()">⚡ Run Rules Now</button>
-          <button class="btn btn-sm btn-outline" onclick="renderEnhancedKanban()">← Back to Hiring Board</button>
         </div>
       </div>
 

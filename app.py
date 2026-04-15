@@ -1453,9 +1453,12 @@ def api_create_candidate():
         (cid, g.user_id, data['interview_id'], data['first_name'], data['last_name'],
          data['email'], data.get('phone',''), token)
     )
+    # Cycle 45: Auto-advance to 'new' on creation
+    auto_advance_candidate(db, cid, 'candidate_created')
     db.commit()
 
     # Send invite email if SMTP configured and send_invite flag is not explicitly false
+    invite_sent = False
     if data.get('send_invite', True):
         interview = db.execute('SELECT * FROM interviews WHERE id=?', (data['interview_id'],)).fetchone()
         user = db.execute('SELECT * FROM users WHERE id=?', (g.user_id,)).fetchone()
@@ -1471,6 +1474,13 @@ def api_create_candidate():
                 welcome_msg=interview['welcome_msg'],
                 to_email=data['email']
             )
+            invite_sent = True
+
+    # Cycle 45: Auto-advance to 'invited' if invite was sent
+    if invite_sent:
+        auto_advance_candidate(db, cid, 'invite_sent')
+        db.commit()
+
     db.close()
     return jsonify({'success': True, 'id': cid, 'token': token}), 201
 
@@ -1587,6 +1597,8 @@ def api_candidate_start(token):
         return jsonify({'error': 'Interview already completed'}), 400
 
     db.execute("UPDATE candidates SET status='in_progress', started_at=CURRENT_TIMESTAMP WHERE token=?", (token,))
+    # Cycle 45: Auto-advance to 'in_progress'
+    auto_advance_candidate(db, candidate['id'], 'interview_started')
     db.commit()
 
     questions = db.execute(
@@ -1697,6 +1709,8 @@ def api_candidate_complete(token):
         return jsonify({'error': 'Invalid token'}), 404
 
     db.execute("UPDATE candidates SET status='completed', completed_at=CURRENT_TIMESTAMP WHERE token=?", (token,))
+    # Cycle 45: Auto-advance to 'completed'
+    auto_advance_candidate(db, candidate['id'], 'interview_completed')
     db.commit()
 
     # Send completion confirmation email to candidate
@@ -1791,8 +1805,11 @@ def api_send_bulk_invites(interview_id):
             welcome_msg=interview['welcome_msg'],
             to_email=cand['email']
         )
+        # Cycle 45: Auto-advance to 'invited'
+        auto_advance_candidate(db, cand['id'], 'invite_sent')
         sent += 1
 
+    db.commit()
     db.close()
     return jsonify({'success': True, 'sent': sent, 'message': f'Sent {sent} invite email{"s" if sent != 1 else ""}'})
 
@@ -5047,7 +5064,7 @@ def api_candidates_pipeline():
             (g.user_id,)).fetchall()
     db.close()
 
-    stages = ['new', 'in_review', 'shortlisted', 'interview_scheduled', 'offered', 'hired', 'rejected']
+    stages = [s['slug'] for s in DEFAULT_STAGES]
     pipeline = {stage: [] for stage in stages}
     for c in candidates:
         stage = c['pipeline_stage'] or 'new'
@@ -5067,7 +5084,7 @@ def api_update_pipeline_stage(candidate_id):
     data = request.get_json()
     new_stage = data.get('stage', 'new')
     order = data.get('order', 0)
-    valid_stages = ['new', 'in_review', 'shortlisted', 'interview_scheduled', 'offered', 'hired', 'rejected']
+    valid_stages = [s['slug'] for s in DEFAULT_STAGES]
     if new_stage not in valid_stages:
         return jsonify({'error': f'Invalid stage. Must be one of: {", ".join(valid_stages)}'}), 400
 
@@ -5078,8 +5095,9 @@ def api_update_pipeline_stage(candidate_id):
         return jsonify({'error': 'Candidate not found'}), 404
 
     old_stage = candidate['pipeline_stage'] or 'new'
-    db.execute("UPDATE candidates SET pipeline_stage=?, kanban_order=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-               (new_stage, order, candidate_id))
+    now = datetime.utcnow().isoformat()
+    db.execute("UPDATE candidates SET pipeline_stage=?, kanban_order=?, stage_entered_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+               (new_stage, order, now, candidate_id))
 
     # Auto-update status on certain stage transitions
     if new_stage == 'hired':
@@ -5114,7 +5132,7 @@ def api_bulk_pipeline_move():
     data = request.get_json()
     candidate_ids = data.get('candidate_ids', [])
     new_stage = data.get('stage', '')
-    valid_stages = ['new', 'in_review', 'shortlisted', 'interview_scheduled', 'offered', 'hired', 'rejected']
+    valid_stages = [s['slug'] for s in DEFAULT_STAGES]
     if not candidate_ids or new_stage not in valid_stages:
         return jsonify({'error': 'candidate_ids and valid stage required'}), 400
 
@@ -6050,7 +6068,7 @@ def api_funnel_report():
     db.close()
 
     stages = {'invited': 0, 'started': 0, 'completed': 0, 'reviewed': 0, 'shortlisted': 0, 'hired': 0, 'rejected': 0}
-    pipeline_stages = {'new': 0, 'in_review': 0, 'shortlisted': 0, 'interview_scheduled': 0, 'offered': 0, 'hired': 0, 'rejected': 0}
+    pipeline_stages = {s['slug']: 0 for s in DEFAULT_STAGES}
 
     for c in candidates:
         s = c['status']
@@ -7374,6 +7392,8 @@ def api_public_apply_submit(interview_id):
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'invited', 'public_apply', 'not_started')''',
                (candidate_id, intv['user_id'], interview_id, first_name, last_name, email,
                 data.get('phone', ''), token))
+    # Cycle 45: Auto-advance to 'new' on public apply
+    auto_advance_candidate(db, candidate_id, 'candidate_created')
     db.commit()
     db.close()
     return jsonify({'success': True, 'candidate_id': candidate_id, 'token': token,
@@ -8879,14 +8899,70 @@ def api_fmo_dashboard_c29():
 # ======================== CYCLE 31: JOB BOARDS & PIPELINE POWER-UP ========================
 
 DEFAULT_STAGES = [
-    {'name': 'New', 'slug': 'new', 'order': 0, 'color': '#6b7280'},
-    {'name': 'In Review', 'slug': 'in_review', 'order': 1, 'color': '#3b82f6'},
-    {'name': 'Shortlisted', 'slug': 'shortlisted', 'order': 2, 'color': '#8b5cf6'},
-    {'name': 'Interview Scheduled', 'slug': 'interview_scheduled', 'order': 3, 'color': '#f59e0b'},
-    {'name': 'Offered', 'slug': 'offered', 'order': 4, 'color': '#10b981'},
-    {'name': 'Hired', 'slug': 'hired', 'order': 5, 'color': '#059669', 'is_terminal': True},
-    {'name': 'Rejected', 'slug': 'rejected', 'order': 6, 'color': '#ef4444', 'is_terminal': True},
+    # ── Automated Zone (system advances based on events) ──
+    {'name': 'New', 'slug': 'new', 'order': 0, 'color': '#6b7280', 'zone': 'auto'},
+    {'name': 'Invited', 'slug': 'invited', 'order': 1, 'color': '#3b82f6', 'zone': 'auto'},
+    {'name': 'In Progress', 'slug': 'in_progress', 'order': 2, 'color': '#f59e0b', 'zone': 'auto'},
+    {'name': 'Completed', 'slug': 'completed', 'order': 3, 'color': '#8b5cf6', 'zone': 'auto'},
+    # ── Manual Zone (RSC drags based on judgment) ──
+    {'name': 'Shortlisted', 'slug': 'shortlisted', 'order': 4, 'color': '#10b981', 'zone': 'manual'},
+    {'name': 'Interview Scheduled', 'slug': 'interview_scheduled', 'order': 5, 'color': '#f97316', 'zone': 'manual'},
+    {'name': 'Offered', 'slug': 'offered', 'order': 6, 'color': '#06b6d4', 'zone': 'manual'},
+    {'name': 'Hired', 'slug': 'hired', 'order': 7, 'color': '#059669', 'is_terminal': True, 'zone': 'manual'},
+    {'name': 'Rejected', 'slug': 'rejected', 'order': 8, 'color': '#ef4444', 'is_terminal': True, 'zone': 'manual'},
 ]
+
+# Stage zone lookup: auto-zone stages can't be manually dragged, only system-advanced
+AUTO_ZONE_SLUGS = {s['slug'] for s in DEFAULT_STAGES if s.get('zone') == 'auto'}
+STAGE_ORDER = {s['slug']: s['order'] for s in DEFAULT_STAGES}
+
+def auto_advance_candidate(db, candidate_id, event_type):
+    """Auto-advance a candidate's pipeline_stage based on a system event.
+    Only advances forward within the automated zone. Never touches candidates
+    already in the manual zone (shortlisted and beyond).
+    """
+    event_to_stage = {
+        'candidate_created': 'new',
+        'invite_sent': 'invited',
+        'interview_started': 'in_progress',
+        'interview_completed': 'completed',
+    }
+    target_stage = event_to_stage.get(event_type)
+    if not target_stage:
+        return False
+
+    candidate = db.execute('SELECT id, pipeline_stage FROM candidates WHERE id=?', (candidate_id,)).fetchone()
+    if not candidate:
+        return False
+
+    current_stage = candidate['pipeline_stage'] or 'new'
+    current_order = STAGE_ORDER.get(current_stage, 0)
+    target_order = STAGE_ORDER.get(target_stage, 0)
+
+    # Only advance forward, never backward
+    if target_order <= current_order:
+        return False
+
+    # Don't touch candidates already in manual zone
+    if current_stage not in AUTO_ZONE_SLUGS:
+        return False
+
+    now = datetime.utcnow().isoformat()
+    db.execute("UPDATE candidates SET pipeline_stage=?, stage_entered_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+               (target_stage, now, candidate_id))
+
+    # Log touchpoint for audit trail
+    try:
+        tp_id = str(uuid.uuid4())
+        stage_label = target_stage.replace('_', ' ').title()
+        db.execute("""INSERT INTO touchpoints (id, candidate_id, user_id, type, description, created_at)
+                      VALUES (?,?,?,?,?,?)""",
+                   (tp_id, candidate_id, candidate['pipeline_stage'], 'stage_change',
+                    f'Auto-advanced to {stage_label}', now))
+    except Exception:
+        pass  # Don't fail the main flow on touchpoint logging errors
+
+    return True
 
 
 # --- Feature 1: Public Job Board ---
@@ -9025,7 +9101,7 @@ def api_pipeline_funnel_c31():
     total = sum(stage_counts.values())
 
     # Build funnel with conversion rates
-    stage_order = ['new', 'in_review', 'shortlisted', 'interview_scheduled', 'offered', 'hired']
+    stage_order = [s['slug'] for s in DEFAULT_STAGES if not s.get('is_terminal') or s['slug'] == 'hired']
     funnel = []
     prev_count = total
     for s in stage_order:
@@ -9098,6 +9174,7 @@ def api_kanban_enhanced_c31():
     for s in DEFAULT_STAGES:
         stages[s['slug']] = {'name': s['name'], 'slug': s['slug'], 'color': s['color'],
                              'order': s['order'], 'is_terminal': s.get('is_terminal', False),
+                             'zone': s.get('zone', 'manual'),
                              'candidates': [], 'count': 0}
 
     for c in candidates:
@@ -9756,6 +9833,8 @@ def api_apply_c32(interview_id):
                 data.get('phone', ''), token, source, data.get('linkedin_url', ''),
                 data.get('cover_letter', ''), apply_answers,
                 campaign_id if campaign_id else None, crid if crid else None))
+    # Cycle 45: Auto-advance — candidate just applied
+    auto_advance_candidate(db, candidate_id, 'candidate_created')
     db.commit()
 
     # Cycle 40: Update campaign recipient status to 'applied'
@@ -9845,6 +9924,11 @@ def api_apply_c32(interview_id):
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Auto-engage failed: {e}")
+
+    # Cycle 45: Auto-advance to 'invited' if auto-engaged
+    if auto_engaged:
+        auto_advance_candidate(db, candidate_id, 'invite_sent')
+        db.commit()
 
     db.close()
 
@@ -9962,7 +10046,8 @@ def page_candidate_status_c32(token):
 
     # Map pipeline_stage to progress step
     stage_to_step = {
-        'new': 0, 'in_review': 1, 'shortlisted': 1,
+        'new': 0, 'invited': 0, 'in_progress': 2, 'completed': 3,
+        'in_review': 1, 'shortlisted': 1,
         'interview_scheduled': 2, 'offered': 4, 'hired': 4, 'rejected': 4
     }
     current_step = stage_to_step.get(stage, 0)
@@ -15603,6 +15688,8 @@ def api_convert_lead_c33(lead_id):
           lead['first_name'] or '', lead['last_name'] or '',
           lead['email'] or '', lead['phone'] or '', token,
           'new', 'sourced_lead', lead_id))
+    # Cycle 45: Auto-advance to 'new' on lead conversion
+    auto_advance_candidate(db, candidate_id, 'candidate_created')
 
     db.execute("""
         UPDATE sourced_leads SET status='converted', converted_candidate_id=?,
