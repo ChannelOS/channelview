@@ -20731,7 +20731,18 @@ FLOWS_C46 = {
 
 
 def _ensure_walkthrough_table_c46(db):
-    """Defensive: make sure the walkthrough_progress table exists even if init_db was bypassed."""
+    """Defensive: make sure the walkthrough_progress table exists even if init_db was bypassed.
+    CRITICAL: Postgres aborts the entire transaction on any error. After a failed DDL we
+    MUST rollback before running any other queries, otherwise we get InFailedSqlTransaction.
+    """
+    def _rb(_db):
+        try:
+            if hasattr(_db, '_conn') and _db._conn is not None:
+                _db._conn.rollback()
+            elif hasattr(_db, 'rollback'):
+                _db.rollback()
+        except Exception:
+            pass
     try:
         db.execute("""
         CREATE TABLE IF NOT EXISTS walkthrough_progress (
@@ -20748,17 +20759,17 @@ def _ensure_walkthrough_table_c46(db):
         )""")
         db.commit()
     except Exception:
-        pass
+        _rb(db)
     try:
-        db.execute("ALTER TABLE users ADD COLUMN notification_prefs TEXT DEFAULT '{}'")
+        db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_prefs TEXT DEFAULT '{}'")
         db.commit()
     except Exception:
-        pass
+        _rb(db)
     try:
-        db.execute("ALTER TABLE users ADD COLUMN outreach_tone TEXT DEFAULT 'warm'")
+        db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS outreach_tone TEXT DEFAULT 'warm'")
         db.commit()
     except Exception:
-        pass
+        _rb(db)
 
 
 def _walkthrough_row_c46(db, user_id, flow_key):
