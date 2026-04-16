@@ -96,6 +96,7 @@ def csrf_protect():
     # Skip CSRF for certain paths
     exempt = [
         '/api/auth/register', '/api/auth/login', '/api/auth/logout',
+        '/api/auth/forgot-password', '/api/auth/reset-password',  # Public, rate-limited
         '/api/interview/',  # Candidate-facing (no auth cookie context)
         '/i/',  # Candidate-facing format choice (RSVP, book, choose-video)
         '/api/stripe/webhook',  # Stripe webhook uses its own signature verification
