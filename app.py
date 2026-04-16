@@ -20560,6 +20560,462 @@ def api_setup_wizard_dismissed_c40c():
     return jsonify({'dismissed': dismissed})
 
 
+# ======================== CYCLE 46: GUIDED CONVERSATION WALKTHROUGHS ========================
+# Strategic direction: every setup step becomes a conversation, not a form.
+# Reusable WalkthroughPanel on the frontend; this backend stores per-user progress
+# and, on completion, applies the answers to the underlying system (territories, jobs,
+# users.notification_prefs, users.brand_color / outreach_tone).
+
+FLOWS_C46 = {
+    'territory': {
+        'key': 'territory',
+        'title': 'Your Territory',
+        'description': 'Tell the AI agent where to look for candidates.',
+        'agent_summary': "I'll use your territory to decide where to recruit from and who to pass on.",
+        'completion_action': 'write_territory',
+        'steps': [
+            {
+                'key': 'zips',
+                'question': 'What zip codes do you cover?',
+                'help': 'Comma-separated list \u2014 e.g. 28202, 28203, 28204. You can paste a long list.',
+                'agent_does': "I'll only reach out to candidates in these zips so you aren't cold-calling people you can't serve.",
+                'input': {'type': 'textarea', 'placeholder': '28202, 28203, 28204'},
+            },
+            {
+                'key': 'center_zip',
+                'question': 'What zip code are you based out of?',
+                'help': 'The center of your territory.',
+                'agent_does': "I'll use this as the radius center when I prioritize nearby candidates.",
+                'input': {'type': 'text', 'placeholder': '28202', 'maxlength': 5},
+            },
+            {
+                'key': 'radius_miles',
+                'question': 'How far are you willing to travel?',
+                'help': 'In miles. Most RSCs pick 15-50.',
+                'agent_does': "I'll widen or tighten my search radius based on this when your zip list doesn't have enough candidates.",
+                'input': {'type': 'number', 'placeholder': '25', 'default': 25, 'min': 1, 'max': 500},
+            },
+        ],
+    },
+    'first_job': {
+        'key': 'first_job',
+        'title': 'Your First Job',
+        'description': 'The AI agent needs something to hire for.',
+        'agent_summary': "I'll turn this into a public apply page, a job description, and the AI email subject line.",
+        'completion_action': 'write_job',
+        'steps': [
+            {
+                'key': 'title',
+                'question': "What's the job title?",
+                'help': 'Use what you actually say on calls \u2014 Benefits Advisor, Financial Services Rep, etc.',
+                'agent_does': 'This title goes on the apply page and in every outreach email.',
+                'input': {'type': 'text', 'placeholder': 'Benefits Advisor'},
+            },
+            {
+                'key': 'summary',
+                'question': "One sentence: what's this role about?",
+                'help': "Keep it simple \u2014 you're talking to a person, not writing a corporate JD.",
+                'agent_does': "I'll expand this into a full job description and use the core idea as the email hook.",
+                'input': {'type': 'textarea', 'placeholder': 'Help small businesses pick the right health plan for their team.'},
+            },
+            {
+                'key': 'pay_style',
+                'question': 'How does this role get paid?',
+                'help': 'Pick the closest fit. You can always tweak the exact numbers later.',
+                'agent_does': "This shapes the screening script and shows up on the apply page so you don't get tire-kickers.",
+                'input': {
+                    'type': 'radio',
+                    'options': [
+                        {'value': 'commission',   'label': 'Commission only'},
+                        {'value': 'salary_comm',  'label': 'Salary + commission'},
+                        {'value': 'salary',       'label': 'Salary'},
+                    ],
+                    'default': 'commission',
+                },
+            },
+        ],
+    },
+    'notifications': {
+        'key': 'notifications',
+        'title': 'How You Want to Hear From Me',
+        'description': 'Decide how involved you want to be.',
+        'agent_summary': "I'll handle the busywork. You only hear from me when it matters to you.",
+        'completion_action': 'write_notification_prefs',
+        'steps': [
+            {
+                'key': 'email_mode',
+                'question': 'How do you want to hear about new candidates?',
+                'help': 'Most RSCs pick daily digest to avoid inbox fatigue.',
+                'agent_does': "I'll batch or ping you based on this \u2014 you'll never miss a hot candidate, and you won't get spammed for cold ones.",
+                'input': {
+                    'type': 'radio',
+                    'options': [
+                        {'value': 'every',       'label': 'Email me every new candidate'},
+                        {'value': 'daily',       'label': 'Daily digest at 8am'},
+                        {'value': 'shortlist',   'label': 'Only when shortlisted'},
+                        {'value': 'never',       'label': 'Never \u2014 just check the dashboard'},
+                    ],
+                    'default': 'daily',
+                },
+            },
+            {
+                'key': 'sms_enabled',
+                'question': 'Text you when someone gets shortlisted?',
+                'help': "Uses the AI agent's phone number. No cost to you.",
+                'agent_does': "A quick text so you can decide fast. You can reply with instructions and I'll take it from there.",
+                'input': {
+                    'type': 'radio',
+                    'options': [
+                        {'value': 'yes', 'label': 'Yes, text me'},
+                        {'value': 'no',  'label': 'No, email only'},
+                    ],
+                    'default': 'yes',
+                },
+            },
+            {
+                'key': 'agent_handles_faqs',
+                'question': 'Want me to answer candidate questions without pinging you?',
+                'help': 'Things like "is this role remote?" or "when do interviews happen?"',
+                'agent_does': "I'll reply to basic candidate questions 24/7 using your job details. You only get pulled in when it's a real decision.",
+                'input': {
+                    'type': 'radio',
+                    'options': [
+                        {'value': 'yes', 'label': 'Yes \u2014 handle the FAQs'},
+                        {'value': 'no',  'label': "No \u2014 I'll reply myself"},
+                    ],
+                    'default': 'yes',
+                },
+            },
+        ],
+    },
+    'brand': {
+        'key': 'brand',
+        'title': 'How Candidates See You',
+        'description': 'Your agency name and colors \u2014 what candidates see on every email, page, and interview.',
+        'agent_summary': "I'll match this everywhere I represent you.",
+        'completion_action': 'write_brand',
+        'steps': [
+            {
+                'key': 'agency_name',
+                'question': 'What should we call your agency?',
+                'help': 'This shows on emails, the apply page, and candidate follow-ups.',
+                'agent_does': "I'll use this name in every message I send on your behalf.",
+                'input': {'type': 'text', 'placeholder': 'Smith Insurance Group'},
+            },
+            {
+                'key': 'brand_color',
+                'question': 'Pick a primary color.',
+                'help': 'Used on buttons, headers, and the apply page.',
+                'agent_does': "I'll style every candidate-facing touchpoint with this color.",
+                'input': {'type': 'color', 'default': '#0ace0a'},
+            },
+            {
+                'key': 'tone',
+                'question': 'What tone should I use in outreach?',
+                'help': 'Candidates pick up on this fast \u2014 pick the one that sounds like you.',
+                'agent_does': 'Every email, SMS, and scheduling message I send will use this tone.',
+                'input': {
+                    'type': 'radio',
+                    'options': [
+                        {'value': 'warm',         'label': 'Warm \u2014 friendly, personal, neighborly'},
+                        {'value': 'professional', 'label': 'Professional \u2014 polished, respectful, clear'},
+                        {'value': 'direct',       'label': 'Direct \u2014 no fluff, to-the-point'},
+                    ],
+                    'default': 'warm',
+                },
+            },
+        ],
+    },
+}
+
+
+def _ensure_walkthrough_table_c46(db):
+    """Defensive: make sure the walkthrough_progress table exists even if init_db was bypassed."""
+    try:
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS walkthrough_progress (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            flow_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'in_progress',
+            step_index INTEGER DEFAULT 0,
+            answers TEXT DEFAULT '{}',
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            UNIQUE(user_id, flow_key)
+        )""")
+        db.commit()
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN notification_prefs TEXT DEFAULT '{}'")
+        db.commit()
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN outreach_tone TEXT DEFAULT 'warm'")
+        db.commit()
+    except Exception:
+        pass
+
+
+def _walkthrough_row_c46(db, user_id, flow_key):
+    row = db.execute(
+        'SELECT * FROM walkthrough_progress WHERE user_id=? AND flow_key=?',
+        (user_id, flow_key)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _serialize_flow_c46(flow_key, progress_row):
+    flow = FLOWS_C46.get(flow_key)
+    if not flow:
+        return None
+    status = (progress_row or {}).get('status') or 'not_started'
+    step_index = int((progress_row or {}).get('step_index') or 0)
+    answers = {}
+    if progress_row and progress_row.get('answers'):
+        try:
+            answers = json.loads(progress_row['answers'])
+        except Exception:
+            answers = {}
+    return {
+        'key': flow['key'],
+        'title': flow['title'],
+        'description': flow['description'],
+        'agent_summary': flow['agent_summary'],
+        'steps': flow['steps'],
+        'status': status,
+        'step_index': step_index,
+        'answers': answers,
+        'total_steps': len(flow['steps']),
+    }
+
+
+@app.route('/api/walkthrough/flows', methods=['GET'])
+@require_auth
+def api_walkthrough_flows_c46():
+    """List every flow with this user's current status."""
+    db = get_db()
+    _ensure_walkthrough_table_c46(db)
+    out = []
+    for key in FLOWS_C46.keys():
+        row = _walkthrough_row_c46(db, g.user_id, key)
+        out.append(_serialize_flow_c46(key, row))
+    db.close()
+    completed = sum(1 for f in out if f['status'] == 'completed')
+    return jsonify({
+        'flows': out,
+        'total': len(out),
+        'completed': completed,
+        'all_done': completed == len(out),
+    })
+
+
+@app.route('/api/walkthrough/<flow_key>', methods=['GET'])
+@require_auth
+def api_walkthrough_get_c46(flow_key):
+    """Get saved progress for one flow (so the panel can resume mid-flow)."""
+    if flow_key not in FLOWS_C46:
+        return jsonify({'error': 'Unknown flow'}), 404
+    db = get_db()
+    _ensure_walkthrough_table_c46(db)
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    db.close()
+    return jsonify({'flow': _serialize_flow_c46(flow_key, row)})
+
+
+@app.route('/api/walkthrough/<flow_key>/answer', methods=['POST'])
+@require_auth
+def api_walkthrough_answer_c46(flow_key):
+    """Save one step's answer. Advances the step pointer."""
+    flow = FLOWS_C46.get(flow_key)
+    if not flow:
+        return jsonify({'error': 'Unknown flow'}), 404
+    data = request.get_json(silent=True) or {}
+    step_key = data.get('step_key')
+    value = data.get('value')
+    if not step_key:
+        return jsonify({'error': 'step_key required'}), 400
+    step_keys = [s['key'] for s in flow['steps']]
+    if step_key not in step_keys:
+        return jsonify({'error': f'Unknown step {step_key} for flow {flow_key}'}), 400
+
+    db = get_db()
+    _ensure_walkthrough_table_c46(db)
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    if row:
+        try:
+            answers = json.loads(row.get('answers') or '{}')
+        except Exception:
+            answers = {}
+        answers[step_key] = value
+        new_index = step_keys.index(step_key) + 1
+        db.execute(
+            "UPDATE walkthrough_progress SET answers=?, step_index=?, status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND flow_key=?",
+            (json.dumps(answers), new_index, g.user_id, flow_key)
+        )
+    else:
+        new_index = step_keys.index(step_key) + 1
+        db.execute(
+            "INSERT INTO walkthrough_progress (id, user_id, flow_key, status, step_index, answers) VALUES (?, ?, ?, 'in_progress', ?, ?)",
+            (f"wt_{uuid.uuid4().hex[:12]}", g.user_id, flow_key, new_index, json.dumps({step_key: value}))
+        )
+    db.commit()
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    db.close()
+    return jsonify({'success': True, 'flow': _serialize_flow_c46(flow_key, row)})
+
+
+def _apply_flow_completion_c46(db, user_id, flow_key, answers):
+    """Write the answers to the underlying system after flow completion."""
+    action = FLOWS_C46[flow_key].get('completion_action')
+    if action == 'write_territory':
+        raw = (answers.get('zips') or '').strip()
+        zip_list = [z.strip() for z in raw.replace('\n', ',').split(',') if z.strip()]
+        center = (answers.get('center_zip') or '').strip()
+        try:
+            radius = int(answers.get('radius_miles') or 25)
+        except Exception:
+            radius = 25
+        tid = f"terr_{uuid.uuid4().hex[:12]}"
+        db.execute(
+            "INSERT INTO rsc_territories (id, user_id, name, center_zip, radius_miles, zip_codes, states, is_active) VALUES (?, ?, ?, ?, ?, ?, '[]', 1)",
+            (tid, user_id, 'My Territory', center, radius, json.dumps(zip_list))
+        )
+    elif action == 'write_job':
+        title = (answers.get('title') or 'New Position').strip() or 'New Position'
+        summary = (answers.get('summary') or '').strip()
+        pay_style = answers.get('pay_style') or 'commission'
+        try:
+            cols = [r[1] for r in db.execute("PRAGMA table_info(jobs)").fetchall()]
+        except Exception:
+            cols = []
+        jid = f"job_{uuid.uuid4().hex[:12]}"
+        base_cols = ['id', 'user_id', 'title']
+        base_vals = [jid, user_id, title]
+        if 'description' in cols:
+            base_cols.append('description'); base_vals.append(summary)
+        if 'summary' in cols:
+            base_cols.append('summary'); base_vals.append(summary)
+        if 'pay_style' in cols:
+            base_cols.append('pay_style'); base_vals.append(pay_style)
+        if 'status' in cols:
+            base_cols.append('status'); base_vals.append('active')
+        placeholders = ','.join(['?'] * len(base_vals))
+        db.execute(
+            f"INSERT INTO jobs ({','.join(base_cols)}) VALUES ({placeholders})",
+            base_vals
+        )
+    elif action == 'write_notification_prefs':
+        prefs = {
+            'email_mode': answers.get('email_mode') or 'daily',
+            'sms_enabled': answers.get('sms_enabled') == 'yes',
+            'agent_handles_faqs': answers.get('agent_handles_faqs') == 'yes',
+        }
+        db.execute(
+            'UPDATE users SET notification_prefs=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (json.dumps(prefs), user_id)
+        )
+    elif action == 'write_brand':
+        name = (answers.get('agency_name') or '').strip()
+        color = (answers.get('brand_color') or '#0ace0a').strip()
+        tone = answers.get('tone') or 'warm'
+        sets = ['brand_color=?', 'outreach_tone=?', 'updated_at=CURRENT_TIMESTAMP']
+        vals = [color, tone]
+        if name:
+            sets.insert(0, 'agency_name=?')
+            vals.insert(0, name)
+        vals.append(user_id)
+        db.execute(f"UPDATE users SET {', '.join(sets)} WHERE id=?", vals)
+
+
+@app.route('/api/walkthrough/<flow_key>/complete', methods=['POST'])
+@require_auth
+def api_walkthrough_complete_c46(flow_key):
+    """Finalize the flow: mark complete + apply side effects."""
+    flow = FLOWS_C46.get(flow_key)
+    if not flow:
+        return jsonify({'error': 'Unknown flow'}), 404
+    db = get_db()
+    _ensure_walkthrough_table_c46(db)
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    if not row:
+        db.close()
+        return jsonify({'error': 'No progress for this flow yet. Answer at least one step first.'}), 400
+    try:
+        answers = json.loads(row.get('answers') or '{}')
+    except Exception:
+        answers = {}
+    data = request.get_json(silent=True) or {}
+    if isinstance(data.get('answers'), dict):
+        answers.update(data['answers'])
+    try:
+        _apply_flow_completion_c46(db, g.user_id, flow_key, answers)
+    except Exception as e:
+        db.close()
+        return jsonify({'error': f'Could not apply answers: {e}'}), 500
+    db.execute(
+        "UPDATE walkthrough_progress SET status='completed', answers=?, step_index=?, completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND flow_key=?",
+        (json.dumps(answers), len(flow['steps']), g.user_id, flow_key)
+    )
+    db.commit()
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    db.close()
+    return jsonify({'success': True, 'flow': _serialize_flow_c46(flow_key, row)})
+
+
+@app.route('/api/walkthrough/<flow_key>/skip', methods=['POST'])
+@require_auth
+def api_walkthrough_skip_c46(flow_key):
+    """Mark a flow as skipped without applying any side effects."""
+    if flow_key not in FLOWS_C46:
+        return jsonify({'error': 'Unknown flow'}), 404
+    db = get_db()
+    _ensure_walkthrough_table_c46(db)
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    if row:
+        db.execute(
+            "UPDATE walkthrough_progress SET status='skipped', updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND flow_key=?",
+            (g.user_id, flow_key)
+        )
+    else:
+        db.execute(
+            "INSERT INTO walkthrough_progress (id, user_id, flow_key, status, step_index, answers) VALUES (?, ?, ?, 'skipped', 0, '{}')",
+            (f"wt_{uuid.uuid4().hex[:12]}", g.user_id, flow_key)
+        )
+    db.commit()
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    db.close()
+    return jsonify({'success': True, 'flow': _serialize_flow_c46(flow_key, row)})
+
+
+@app.route('/api/walkthrough/<flow_key>/reset', methods=['POST'])
+@require_auth
+def api_walkthrough_reset_c46(flow_key):
+    """Reopen a completed or skipped flow so the RSC can walk through it again."""
+    if flow_key not in FLOWS_C46:
+        return jsonify({'error': 'Unknown flow'}), 404
+    db = get_db()
+    _ensure_walkthrough_table_c46(db)
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    if row:
+        db.execute(
+            "UPDATE walkthrough_progress SET status='in_progress', step_index=0, completed_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND flow_key=?",
+            (g.user_id, flow_key)
+        )
+    else:
+        db.execute(
+            "INSERT INTO walkthrough_progress (id, user_id, flow_key, status, step_index, answers) VALUES (?, ?, ?, 'in_progress', 0, '{}')",
+            (f"wt_{uuid.uuid4().hex[:12]}", g.user_id, flow_key)
+        )
+    db.commit()
+    row = _walkthrough_row_c46(db, g.user_id, flow_key)
+    db.close()
+    return jsonify({'success': True, 'flow': _serialize_flow_c46(flow_key, row)})
+
+
 # ======================== INIT & RUN ========================
 
 if __name__ == '__main__':

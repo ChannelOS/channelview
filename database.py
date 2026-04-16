@@ -3208,6 +3208,38 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_oe_type ON outreach_events(event_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_oe_occurred ON outreach_events(occurred_at)")
 
+    # ======================== CYCLE 46: GUIDED CONVERSATION WALKTHROUGHS ========================
+    # Tracks per-user progress through each guided-conversation flow (territory, first_job,
+    # notifications, brand — and future flows for campaign launch, pipeline, AI agent rules).
+    # One row per (user_id, flow_key). answers is a JSON object keyed by step_key.
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS walkthrough_progress (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        flow_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'in_progress',
+        step_index INTEGER DEFAULT 0,
+        answers TEXT DEFAULT '{}',
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        UNIQUE(user_id, flow_key)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_walkthrough_user ON walkthrough_progress(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_walkthrough_flow ON walkthrough_progress(flow_key)")
+
+    # Migration: ensure users.notification_prefs exists (JSON, written by the notifications flow)
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN notification_prefs TEXT DEFAULT '{}'")
+    except Exception:
+        pass
+    # Migration: ensure users.outreach_tone exists (written by the brand flow)
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN outreach_tone TEXT DEFAULT 'warm'")
+    except Exception:
+        pass
+
     # Seed system outreach sequences (pre-built campaign templates)
     try:
         conn.commit()
@@ -3273,14 +3305,14 @@ def init_db():
                  'recruiting'))
             re_steps = [
                 ('rs1_email', seq3_id, 1, 'email', 0,
-                 'We\'d love to reconnect',
-                 'Hi {{first_name}},\n\nIt\'s been a while since we last connected, and I wanted to reach out again. Things at {{agency_name}} have been growing, and we\'re looking for great people to join the team.\n\nIf your situation has changed or you\'re open to exploring something new, I\'d love to catch up.\n\nHere\'s a quick way to get started:\n{{interview_link}}\n\nHope to hear from you,\n{{recruiter_name}}'),
+                 "We'd love to reconnect",
+                 "Hi {{first_name}},\n\nIt's been a while since we last connected, and I wanted to reach out again. Things at {{agency_name}} have been growing, and we're looking for great people to join the team.\n\nIf your situation has changed or you're open to exploring something new, I'd love to catch up.\n\nHere's a quick way to get started:\n{{interview_link}}\n\nHope to hear from you,\n{{recruiter_name}}"),
                 ('rs1_sms', seq3_id, 2, 'sms', 4,
                  None,
                  'Hi {{first_name}}, {{recruiter_name}} here from {{agency_name}}. Sent you an email recently about reconnecting. Any interest in catching up? {{interview_link}}'),
                 ('rs1_final', seq3_id, 3, 'email', 8,
                  'Last check-in from {{agency_name}}',
-                 'Hi {{first_name}},\n\nI\'ll keep this short — I don\'t want to fill your inbox if the timing isn\'t right.\n\nIf you\'re ever interested in exploring what {{agency_name}} has to offer, the door is always open:\n{{interview_link}}\n\nWishing you all the best either way.\n\n{{recruiter_name}}'),
+                 "Hi {{first_name}},\n\nI'll keep this short \u2014 I don't want to fill your inbox if the timing isn't right.\n\nIf you're ever interested in exploring what {{agency_name}} has to offer, the door is always open:\n{{interview_link}}\n\nWishing you all the best either way.\n\n{{recruiter_name}}"),
             ]
             for sid, seqid, order, channel, delay, subject, content in re_steps:
                 conn.execute("""INSERT INTO outreach_sequence_steps (id, sequence_id, step_order, channel, delay_days, template_subject, template_content)

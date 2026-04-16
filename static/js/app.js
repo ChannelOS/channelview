@@ -599,16 +599,224 @@ async function dismissSetupWizard() {
 }
 
 function launchSetupStep(key) {
+  // Cycle 46: The setup wizard on the dashboard now prefers guided conversation
+  // walkthroughs over dispatching to a full page. Map legacy keys onto flow keys.
+  var walkthroughFor = {
+    territory: 'territory',
+    job: 'first_job',
+    // 'email' step maps to the notifications walkthrough in the new model:
+    // we no longer ask RSCs to configure SMTP themselves \u2014 the AI agent has
+    // its own identity. We just ask HOW they want to be notified.
+    email: 'notifications',
+    // 'campaign' keeps dispatching to the full outreach page for now \u2014 Cycle 47
+    // will replace it with a Campaign Launch walkthrough.
+  };
+  var flowKey = walkthroughFor[key];
+  if (flowKey && typeof WalkthroughPanel !== 'undefined') {
+    WalkthroughPanel.open(flowKey, {
+      onComplete: function(){ try { renderDashboard(); } catch(e) {} }
+    });
+    return;
+  }
   var routes = {
     territory: '/territory-setup',
     job: '/jobs-manage',
     email: '/settings',
     campaign: '/outreach-campaigns'
   };
-  if (routes[key]) {
-    window.location.href = routes[key];
-  }
+  if (routes[key]) { window.location.href = routes[key]; }
 }
+
+// ======================== CYCLE 46: GUIDED CONVERSATION WALKTHROUGHS ========================
+// Reusable panel that turns any multi-step setup into a conversation. Each step
+// shows ONE question + a side-panel explaining what the AI agent does with the
+// answer. Progress is saved after every step so the RSC can resume.
+//
+// Usage:
+//   WalkthroughPanel.open('territory', { onComplete: fn });
+//   WalkthroughPanel.close();
+var WalkthroughPanel = (function(){
+  var state = { flow: null, stepIndex: 0, answers: {}, onComplete: null, saving: false };
+
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function renderInput(step, currentValue){
+    var inp = step.input || {};
+    var val = (currentValue == null) ? (inp.default == null ? '' : inp.default) : currentValue;
+    if (inp.type === 'textarea') {
+      return '<textarea id="wt-input" class="wt-input" rows="4" placeholder="' + escapeHtml(inp.placeholder || '') + '">' + escapeHtml(val) + '</textarea>';
+    }
+    if (inp.type === 'number') {
+      return '<input id="wt-input" type="number" class="wt-input" placeholder="' + escapeHtml(inp.placeholder || '') + '" value="' + escapeHtml(val) + '"' +
+             (inp.min != null ? ' min="' + inp.min + '"' : '') +
+             (inp.max != null ? ' max="' + inp.max + '"' : '') + '>';
+    }
+    if (inp.type === 'color') {
+      var c = val || '#0ace0a';
+      return '<div style="display:flex;align-items:center;gap:12px">' +
+               '<input id="wt-input" type="color" value="' + escapeHtml(c) + '" style="width:64px;height:44px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer">' +
+               '<span id="wt-color-preview" style="font-size:14px;color:#111;font-family:monospace">' + escapeHtml(c) + '</span>' +
+             '</div>';
+    }
+    if (inp.type === 'radio') {
+      var opts = (inp.options || []).map(function(o){
+        var checked = (o.value === val) ? ' checked' : '';
+        return '<label class="wt-radio"><input type="radio" name="wt-input" value="' + escapeHtml(o.value) + '"' + checked + '><span>' + escapeHtml(o.label) + '</span></label>';
+      }).join('');
+      return '<div class="wt-radio-group">' + opts + '</div>';
+    }
+    // default: text
+    var maxlen = inp.maxlength ? (' maxlength="' + inp.maxlength + '"') : '';
+    return '<input id="wt-input" type="text" class="wt-input" placeholder="' + escapeHtml(inp.placeholder || '') + '" value="' + escapeHtml(val) + '"' + maxlen + '>';
+  }
+
+  function readInput(step){
+    var inp = step.input || {};
+    if (inp.type === 'radio') {
+      var sel = document.querySelector('#wt-overlay input[name="wt-input"]:checked');
+      return sel ? sel.value : null;
+    }
+    var el = document.getElementById('wt-input');
+    return el ? el.value : null;
+  }
+
+  function render(){
+    if (!state.flow) return;
+    var total = state.flow.steps.length;
+    var idx = Math.min(state.stepIndex, total - 1);
+    var step = state.flow.steps[idx];
+    var pct = Math.round(((idx) / total) * 100);
+    var existingAnswer = state.answers[step.key];
+    var host = document.getElementById('wt-overlay');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'wt-overlay';
+      document.body.appendChild(host);
+    }
+    host.innerHTML =
+      '<div class="wt-backdrop" onclick="WalkthroughPanel.close()"></div>' +
+      '<div class="wt-panel" role="dialog" aria-modal="true">' +
+        '<div class="wt-header">' +
+          '<div>' +
+            '<div class="wt-title">' + escapeHtml(state.flow.title) + '</div>' +
+            '<div class="wt-subtitle">' + escapeHtml(state.flow.description) + '</div>' +
+          '</div>' +
+          '<button class="wt-close" onclick="WalkthroughPanel.close()" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="wt-progress"><div class="wt-progress-bar" style="width:' + pct + '%"></div></div>' +
+        '<div class="wt-body">' +
+          '<div class="wt-main">' +
+            '<div class="wt-step-label">Step ' + (idx + 1) + ' of ' + total + '</div>' +
+            '<div class="wt-question">' + escapeHtml(step.question) + '</div>' +
+            (step.help ? '<div class="wt-help">' + escapeHtml(step.help) + '</div>' : '') +
+            '<div class="wt-input-wrap">' + renderInput(step, existingAnswer) + '</div>' +
+          '</div>' +
+          '<aside class="wt-aside">' +
+            '<div class="wt-aside-label">What your AI agent does with this</div>' +
+            '<div class="wt-aside-body">' + escapeHtml(step.agent_does || state.flow.agent_summary || '') + '</div>' +
+          '</aside>' +
+        '</div>' +
+        '<div class="wt-footer">' +
+          '<button class="btn wt-btn-ghost" onclick="WalkthroughPanel.skip()">Skip for now</button>' +
+          '<div style="flex:1"></div>' +
+          (idx > 0 ? '<button class="btn wt-btn-secondary" onclick="WalkthroughPanel.back()">Back</button>' : '') +
+          '<button class="btn wt-btn-primary" id="wt-continue" onclick="WalkthroughPanel.next()">' +
+            (idx === total - 1 ? "Finish \u2014 I'm done" : 'Continue') +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    // Color-preview sync
+    var colorInp = host.querySelector('input[type="color"]');
+    if (colorInp) {
+      colorInp.addEventListener('input', function(){
+        var p = document.getElementById('wt-color-preview');
+        if (p) p.textContent = colorInp.value;
+      });
+    }
+    // Focus the first input for immediate typing
+    setTimeout(function(){
+      var firstFocus = host.querySelector('#wt-input, input[name="wt-input"]');
+      if (firstFocus && firstFocus.focus) firstFocus.focus();
+    }, 30);
+  }
+
+  function open(flowKey, opts){
+    opts = opts || {};
+    state.onComplete = opts.onComplete || null;
+    api('/api/walkthrough/' + flowKey).then(function(res){
+      var flow = res.flow;
+      state.flow = flow;
+      state.stepIndex = Math.min(flow.step_index || 0, flow.steps.length - 1);
+      state.answers = flow.answers || {};
+      render();
+    }).catch(function(err){
+      showToast('Could not load walkthrough: ' + (err.message || err), 'error');
+    });
+  }
+
+  function close(){
+    var host = document.getElementById('wt-overlay');
+    if (host) host.remove();
+    state.flow = null;
+  }
+
+  async function next(){
+    if (!state.flow || state.saving) return;
+    var total = state.flow.steps.length;
+    var idx = Math.min(state.stepIndex, total - 1);
+    var step = state.flow.steps[idx];
+    var val = readInput(step);
+    // Allow blank for truly optional steps; otherwise nudge
+    if ((val == null || String(val).trim() === '') && (step.input || {}).type !== 'color') {
+      showToast('Give it a quick answer, or use "Skip for now."', 'error');
+      return;
+    }
+    state.saving = true;
+    try {
+      var res = await api('/api/walkthrough/' + state.flow.key + '/answer', {
+        method: 'POST',
+        body: JSON.stringify({ step_key: step.key, value: val })
+      });
+      state.flow = res.flow;
+      state.answers = res.flow.answers || {};
+      if (idx === total - 1) {
+        // Last step answered — complete the flow
+        var done = await api('/api/walkthrough/' + state.flow.key + '/complete', { method: 'POST', body: JSON.stringify({}) });
+        showToast('All set! ' + (state.flow.title || 'Walkthrough') + ' complete.');
+        if (typeof state.onComplete === 'function') { try { state.onComplete(done.flow); } catch(e) {} }
+        close();
+      } else {
+        state.stepIndex = res.flow.step_index || (idx + 1);
+        render();
+      }
+    } catch(e) {
+      showToast('Could not save: ' + (e.message || e), 'error');
+    } finally {
+      state.saving = false;
+    }
+  }
+
+  function back(){
+    if (!state.flow) return;
+    state.stepIndex = Math.max(0, state.stepIndex - 1);
+    render();
+  }
+
+  async function skip(){
+    if (!state.flow) return;
+    if (!confirm('Skip this walkthrough? You can always come back and run it later.')) return;
+    try {
+      await api('/api/walkthrough/' + state.flow.key + '/skip', { method: 'POST' });
+      showToast('Walkthrough skipped. You can resume it from the dashboard.');
+      if (typeof state.onComplete === 'function') { try { state.onComplete(null); } catch(e) {} }
+      close();
+    } catch(e) {
+      showToast('Could not skip: ' + (e.message || e), 'error');
+    }
+  }
+
+  return { open: open, close: close, next: next, back: back, skip: skip };
+})();
 
 async function renderDashboard() {
   content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading dashboard...</div>';
@@ -12145,175 +12353,4 @@ async function loadCampaignContacts(cid) {
     html += '<th style="padding:10px 16px;text-align:left;font-weight:600;color:#374151">Step</th>';
     html += '<th style="padding:10px 16px;text-align:left;font-weight:600;color:#374151">Status</th>';
     html += '<th style="padding:10px 16px;text-align:right;font-weight:600;color:#374151">Actions</th>';
-    html += '</tr></thead><tbody>';
-    for (const ct of contacts) {
-      const sc = statusColors[ct.status] || '#6b7280';
-      html += `<tr style="border-bottom:1px solid #f3f4f6">
-        <td style="padding:10px 16px;color:#111">${ct.first_name || ''} ${ct.last_name || ''}</td>
-        <td style="padding:10px 16px;color:#6b7280">${ct.email || '-'}</td>
-        <td style="padding:10px 16px;color:#6b7280">${ct.phone || '-'}</td>
-        <td style="padding:10px 16px;color:#374151">${ct.current_step || '-'}</td>
-        <td style="padding:10px 16px"><span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:3px 8px;border-radius:10px">${ct.status}</span></td>
-        <td style="padding:10px 16px;text-align:right">
-          <button onclick="removeOutreachContact('${cid}','${ct.id}')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">Remove</button>
-        </td>
-      </tr>`;
-    }
-    html += '</tbody></table></div>';
-    c.innerHTML = html;
-  } catch (e) { c.innerHTML = '<p style="color:red">Failed to load contacts.</p>'; }
-}
-
-async function showEnrollLeads(cid) {
-  try {
-    const res = await api('GET', '/api/leads');
-    const leads = res.leads || [];
-    if (!leads.length) { toast('No sourced leads found. Import leads from the Find Leads tab first.', 'error'); return; }
-    const modal = document.createElement('div');
-    modal.id = 'modal-enroll';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
-    let leadRows = '';
-    for (const l of leads.slice(0, 100)) {
-      leadRows += `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6;cursor:pointer">
-        <input type="checkbox" class="enroll-lead-cb" value="${l.id}" style="width:18px;height:18px">
-        <div>
-          <div style="font-size:14px;color:#111">${l.first_name || ''} ${l.last_name || ''}</div>
-          <div style="font-size:12px;color:#6b7280">${l.email || ''} ${l.zip_code ? '&bull; ZIP: ' + l.zip_code : ''}</div>
-        </div>
-      </label>`;
-    }
-    modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <h2 style="margin:0;font-size:20px">Enroll Leads</h2>
-        <button onclick="document.getElementById('modal-enroll').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
-      </div>
-      <div style="margin-bottom:12px">
-        <label style="font-size:13px;cursor:pointer"><input type="checkbox" id="enroll-all" onclick="document.querySelectorAll('.enroll-lead-cb').forEach(c=>c.checked=this.checked)" style="margin-right:6px"> Select All (${leads.length})</label>
-      </div>
-      <div style="max-height:400px;overflow-y:auto;margin-bottom:16px">${leadRows}</div>
-      <button onclick="enrollSelectedLeads('${cid}')" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Enroll Selected</button>
-    </div>`;
-    document.body.appendChild(modal);
-  } catch (e) { toast('Failed to load leads: ' + e.message, 'error'); }
-}
-
-async function enrollSelectedLeads(cid) {
-  const checked = document.querySelectorAll('.enroll-lead-cb:checked');
-  const lead_ids = Array.from(checked).map(c => c.value);
-  if (!lead_ids.length) { toast('Select at least one lead', 'error'); return; }
-  try {
-    const res = await api('POST', '/api/outreach/campaigns/' + cid + '/enroll', { lead_ids });
-    toast(res.enrolled + ' lead(s) enrolled' + (res.skipped ? ', ' + res.skipped + ' skipped (duplicate)' : ''), 'success');
-    const m = document.getElementById('modal-enroll');
-    if (m) m.remove();
-    showOutreachCampaignDetail(cid);
-  } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-function showEnrollManual(cid) {
-  const modal = document.createElement('div');
-  modal.id = 'modal-enroll-manual';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
-  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;padding:28px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0;font-size:20px">Add Contact Manually</h2>
-      <button onclick="document.getElementById('modal-enroll-manual').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
-    </div>
-    <div style="display:grid;gap:12px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">First Name</label>
-          <input id="em-first" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Last Name</label>
-          <input id="em-last" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
-        </div>
-      </div>
-      <div>
-        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Email</label>
-        <input id="em-email" type="email" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Phone</label>
-          <input id="em-phone" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">ZIP Code</label>
-          <input id="em-zip" maxlength="5" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
-        </div>
-      </div>
-      <button onclick="enrollManualContact('${cid}')" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Add Contact</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-}
-
-async function enrollManualContact(cid) {
-  const first_name = document.getElementById('em-first').value.trim();
-  const last_name = document.getElementById('em-last').value.trim();
-  const email = document.getElementById('em-email').value.trim();
-  const phone = document.getElementById('em-phone').value.trim();
-  const zip_code = document.getElementById('em-zip').value.trim();
-  if (!email && !phone) { toast('Email or phone is required', 'error'); return; }
-  try {
-    const res = await api('POST', '/api/outreach/campaigns/' + cid + '/enroll', {
-      contacts: [{ first_name, last_name, email, phone, zip_code }]
-    });
-    toast('Contact added!', 'success');
-    const m = document.getElementById('modal-enroll-manual');
-    if (m) m.remove();
-    showOutreachCampaignDetail(cid);
-  } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function activateOutreachCampaign(cid) {
-  if (!confirm('Activate this campaign? The AI agent will start sending outreach on the configured schedule.')) return;
-  try {
-    const res = await api('POST', '/api/outreach/campaigns/' + cid + '/activate');
-    toast('Campaign activated! The AI agent is now running.', 'success');
-    showOutreachCampaignDetail(cid);
-  } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function pauseOutreachCampaign(cid) {
-  try {
-    await api('POST', '/api/outreach/campaigns/' + cid + '/pause');
-    toast('Campaign paused', 'success');
-    showOutreachCampaignDetail(cid);
-  } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function resumeOutreachCampaign(cid) {
-  try {
-    await api('POST', '/api/outreach/campaigns/' + cid + '/resume');
-    toast('Campaign resumed', 'success');
-    showOutreachCampaignDetail(cid);
-  } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function deleteOutreachCampaign(cid) {
-  if (!confirm('Delete this campaign and all enrolled contacts? This cannot be undone.')) return;
-  try {
-    await api('DELETE', '/api/outreach/campaigns/' + cid);
-    toast('Campaign deleted', 'success');
-    renderOutreachCampaigns();
-  } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-async function removeOutreachContact(cid, contactId) {
-  if (!confirm('Remove this contact from the campaign?')) return;
-  try {
-    await api('DELETE', '/api/outreach/campaigns/' + cid + '/contacts/' + contactId);
-    toast('Contact removed', 'success');
-    loadCampaignContacts(cid);
-  } catch (e) { toast('Failed: ' + e.message, 'error'); }
-}
-
-
-// ==================== INIT ====================
-loadPage();
-loadNotifications();
-// Poll for new notifications every 60 seconds
-setInterval(loadNotifications, 60000);
+    html +=
