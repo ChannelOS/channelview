@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ChannelView</title>
-<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/app.css?v={{ cache_bust }}">
 </head>
 <body>
 <div class="app-layout">
@@ -137,6 +137,6 @@ const APP_USER = {{ user | tojson }};
 const APP_PAGE = "{{ page }}";
 const EXTRA_ID = "{{ interview_id if interview_id is defined else (candidate_id if candidate_id is defined else '') }}";
 </script>
-<script src="/static/js/app.js?v=c45b"></script>
+<script src="/static/js/app.js?v={{ cache_bust }}"></script>
 </body>
 </html>

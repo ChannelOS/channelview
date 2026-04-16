@@ -42,6 +42,15 @@ else:
 
 CORS(app, resources={r"/api/*": {"origins": os.environ.get('CORS_ORIGINS', 'https://mychannelview.com')}})
 
+# Cache-busting: generate a version string from app start time so browsers
+# always load fresh JS/CSS after a deploy (container restart).
+_cache_bust = str(int(_app_start_time))[-8:]
+
+@app.context_processor
+def inject_cache_bust():
+    """Make cache_bust available in every Jinja2 template automatically."""
+    return dict(cache_bust=_cache_bust)
+
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config.get('INTRO_FOLDER', os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'intros')), exist_ok=True)
 
