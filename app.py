@@ -20880,6 +20880,53 @@ def api_walkthrough_answer_c46(flow_key):
     return jsonify({'success': True, 'flow': _serialize_flow_c46(flow_key, row)})
 
 
+def _table_columns_c46(db, table_name):
+    """Return list of column names for a table, works on both Postgres and SQLite.
+    Rolls back the transaction on failure so the caller can continue with fresh state.
+    """
+    def _rb(_db):
+        try:
+            if hasattr(_db, '_conn') and _db._conn is not None:
+                _db._conn.rollback()
+        except Exception:
+            pass
+    # Try Postgres first (information_schema is SQL standard).
+    try:
+        rows = db.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name=? AND table_schema='public'",
+            (table_name,)
+        ).fetchall()
+        cols = []
+        for r in rows:
+            if isinstance(r, dict):
+                cols.append(r.get('column_name'))
+            else:
+                try:
+                    cols.append(r['column_name'])
+                except Exception:
+                    cols.append(r[0])
+        if cols:
+            return [c for c in cols if c]
+    except Exception:
+        _rb(db)
+    # Fall back to SQLite PRAGMA.
+    try:
+        rows = db.execute(f"PRAGMA table_info({table_name})").fetchall()
+        out = []
+        for r in rows:
+            try:
+                out.append(r[1])
+            except Exception:
+                try:
+                    out.append(r['name'])
+                except Exception:
+                    pass
+        return out
+    except Exception:
+        _rb(db)
+    return []
+
+
 def _apply_flow_completion_c46(db, user_id, flow_key, answers):
     """Write the answers to the underlying system after flow completion."""
     action = FLOWS_C46[flow_key].get('completion_action')
@@ -20900,10 +20947,7 @@ def _apply_flow_completion_c46(db, user_id, flow_key, answers):
         title = (answers.get('title') or 'New Position').strip() or 'New Position'
         summary = (answers.get('summary') or '').strip()
         pay_style = answers.get('pay_style') or 'commission'
-        try:
-            cols = [r[1] for r in db.execute("PRAGMA table_info(jobs)").fetchall()]
-        except Exception:
-            cols = []
+        cols = _table_columns_c46(db, 'jobs')
         jid = f"job_{uuid.uuid4().hex[:12]}"
         base_cols = ['id', 'user_id', 'title']
         base_vals = [jid, user_id, title]
