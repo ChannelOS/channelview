@@ -866,11 +866,26 @@ async function renderDashboard() {
       }
     } catch(wzErr) { /* wizard API not available, skip silently */ }
 
-    // Cycle 46.1: Always-visible Agency Setup panel (walkthroughs)
+    // Cycle 46.2: Always-visible Agency Setup panel (walkthroughs) — renders
+    // with a static fallback list even if /api/walkthrough/flows fails.
     var setupWalkthroughsHtml = '';
+    var wtFlows = [
+      { flow_key: 'territory',     title: 'Your Territory',  description: 'Tell the AI agent where to look for candidates.',  status: 'not_started' },
+      { flow_key: 'first_job',     title: 'Your First Job',  description: 'Set up your first role so we can start sourcing.', status: 'not_started' },
+      { flow_key: 'notifications', title: 'Notifications',   description: 'Choose when and how your AI agent talks to you.',  status: 'not_started' },
+      { flow_key: 'brand',         title: 'Your Brand',      description: 'Name, colors, and outreach tone.',                 status: 'not_started' }
+    ];
     try {
       var wtData = await api('/api/walkthrough/flows');
-      var wtFlows = (wtData && wtData.flows) || [];
+      if (wtData && wtData.flows && wtData.flows.length) {
+        wtFlows = wtData.flows;
+      } else {
+        console.warn('[ChannelView] walkthrough flows API returned no data', wtData);
+      }
+    } catch(wtErr) {
+      console.warn('[ChannelView] walkthrough flows API failed:', wtErr && wtErr.message);
+    }
+    try {
       if (wtFlows.length) {
         var wtDoneCount = wtFlows.filter(function(f){ return f.status === 'completed'; }).length;
         var wtTotal = wtFlows.length;
@@ -906,7 +921,7 @@ async function renderDashboard() {
           + '</div>'
           + '</div>';
       }
-    } catch(wtErr) { /* walkthrough API not available, skip silently */ }
+    } catch(renderErr) { console.warn('[ChannelView] walkthrough render failed:', renderErr); }
 
     content.innerHTML = `
       <div class="page-header">
