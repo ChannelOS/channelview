@@ -517,6 +517,7 @@ def api_email_backend_info():
 
 DEFAULT_JOBS = [
     {
+        'key': 'benefits_advisor',
         'title': 'Benefits Advisor',
         'job_type': 'full_time',
         'salary_range': '$55,000 - $125,000 per year',
@@ -552,6 +553,7 @@ DEFAULT_JOBS = [
         ),
     },
     {
+        'key': 'enrollment_specialist',
         'title': 'Benefits Enrollment Specialist',
         'job_type': 'full_time',
         'salary_range': '$50,000 - $90,000 per year',
@@ -587,6 +589,7 @@ DEFAULT_JOBS = [
         ),
     },
     {
+        'key': 'insurance_agent_training',
         'title': 'Insurance Agent — Training Provided!',
         'job_type': 'contract',
         'salary_range': '$50,000 - $125,000 per year',
@@ -20570,30 +20573,23 @@ def api_setup_wizard_dismissed_c40c():
 FLOWS_C46 = {
     'territory': {
         'key': 'territory',
-        'title': 'Your Territory',
+        'title': 'Start Here',
         'description': 'Tell the AI agent where to look for candidates.',
-        'agent_summary': "I'll use your territory to decide where to recruit from and who to pass on.",
+        'agent_summary': "I'll use your location to decide where to recruit from and who to pass on.",
         'completion_action': 'write_territory',
         'steps': [
             {
-                'key': 'zips',
-                'question': 'What zip codes do you cover?',
-                'help': 'Comma-separated list \u2014 e.g. 28202, 28203, 28204. You can paste a long list.',
-                'agent_does': "I'll only reach out to candidates in these zips so you aren't cold-calling people you can't serve.",
-                'input': {'type': 'textarea', 'placeholder': '28202, 28203, 28204'},
-            },
-            {
                 'key': 'center_zip',
-                'question': 'What zip code are you based out of?',
-                'help': 'The center of your territory.',
-                'agent_does': "I'll use this as the radius center when I prioritize nearby candidates.",
+                'question': "What's the zip code of your regional office?",
+                'help': 'This is the center point my sourcing radius fans out from.',
+                'agent_does': "I'll prioritize candidates closest to this zip and deprioritize anyone outside your radius.",
                 'input': {'type': 'text', 'placeholder': '28202', 'maxlength': 5},
             },
             {
                 'key': 'radius_miles',
-                'question': 'How far are you willing to travel?',
+                'question': 'How far a radius around your office should I look for candidates?',
                 'help': 'In miles. Most RSCs pick 15-50.',
-                'agent_does': "I'll widen or tighten my search radius based on this when your zip list doesn't have enough candidates.",
+                'agent_does': "I'll only surface candidates inside this radius so you're not driving an hour for an interview.",
                 'input': {'type': 'number', 'placeholder': '25', 'default': 25, 'min': 1, 'max': 500},
             },
         ],
@@ -20607,31 +20603,37 @@ FLOWS_C46 = {
         'steps': [
             {
                 'key': 'title',
-                'question': "What's the job title?",
-                'help': 'Use what you actually say on calls \u2014 Benefits Advisor, Financial Services Rep, etc.',
-                'agent_does': 'This title goes on the apply page and in every outreach email.',
-                'input': {'type': 'text', 'placeholder': 'Benefits Advisor'},
+                'question': 'What job title do you want to use for this ad?',
+                'help': 'Pick what you actually say on calls \u2014 this goes on the apply page and in every outreach email.',
+                'agent_does': 'This title is what candidates see in the subject line and on the apply page.',
+                'input': {
+                    'type': 'select',
+                    'placeholder': 'Select a title\u2026',
+                    'options': [
+                        {'value': 'Benefits Advisor',              'label': 'Benefits Advisor'},
+                        {'value': 'Benefits Consultant',           'label': 'Benefits Consultant'},
+                        {'value': 'Benefits Representative',       'label': 'Benefits Representative'},
+                        {'value': 'Benefits Enrollment Specialist','label': 'Benefits Enrollment Specialist'},
+                        {'value': 'Enrollment Consultant',         'label': 'Enrollment Consultant'},
+                        {'value': 'Voluntary Benefits Specialist', 'label': 'Voluntary Benefits Specialist'},
+                        {'value': 'Insurance Agent',               'label': 'Insurance Agent'},
+                        {'value': 'Financial Services Rep',        'label': 'Financial Services Rep'},
+                    ],
+                },
             },
             {
-                'key': 'summary',
-                'question': "One sentence: what's this role about?",
-                'help': "Keep it simple \u2014 you're talking to a person, not writing a corporate JD.",
-                'agent_does': "I'll expand this into a full job description and use the core idea as the email hook.",
-                'input': {'type': 'textarea', 'placeholder': 'Help small businesses pick the right health plan for their team.'},
-            },
-            {
-                'key': 'pay_style',
-                'question': 'How does this role get paid?',
-                'help': 'Pick the closest fit. You can always tweak the exact numbers later.',
-                'agent_does': "This shapes the screening script and shows up on the apply page so you don't get tire-kickers.",
+                'key': 'posting',
+                'question': 'Which job posting should I use?',
+                'help': "Pick a starting template \u2014 you can tweak it after. These are the postings I've pre-loaded for you.",
+                'agent_does': "I'll use this posting as the full job description on your apply page and the source material for every outreach email.",
                 'input': {
                     'type': 'radio',
                     'options': [
-                        {'value': 'commission',   'label': 'Commission only'},
-                        {'value': 'salary_comm',  'label': 'Salary + commission'},
-                        {'value': 'salary',       'label': 'Salary'},
+                        {'value': 'benefits_advisor',         'label': 'Benefits Advisor',              'description': 'B2B voluntary benefits role. Flexible schedule, commission-driven, no nights/weekends. $55K-$125K.'},
+                        {'value': 'enrollment_specialist',    'label': 'Benefits Enrollment Specialist','description': 'Support-oriented enrollment role. Team environment, growth path, training provided. $50K-$90K.'},
+                        {'value': 'insurance_agent_training', 'label': 'Insurance Agent — Training Provided', 'description': 'Entry-level friendly. World-class training, stock bonus, exotic trips. $50K-$125K.'},
                     ],
-                    'default': 'commission',
+                    'default': 'benefits_advisor',
                 },
             },
         ],
@@ -20931,8 +20933,6 @@ def _apply_flow_completion_c46(db, user_id, flow_key, answers):
     """Write the answers to the underlying system after flow completion."""
     action = FLOWS_C46[flow_key].get('completion_action')
     if action == 'write_territory':
-        raw = (answers.get('zips') or '').strip()
-        zip_list = [z.strip() for z in raw.replace('\n', ',').split(',') if z.strip()]
         center = (answers.get('center_zip') or '').strip()
         try:
             radius = int(answers.get('radius_miles') or 25)
@@ -20940,25 +20940,36 @@ def _apply_flow_completion_c46(db, user_id, flow_key, answers):
             radius = 25
         tid = f"terr_{uuid.uuid4().hex[:12]}"
         db.execute(
-            "INSERT INTO rsc_territories (id, user_id, name, center_zip, radius_miles, zip_codes, states, is_active) VALUES (?, ?, ?, ?, ?, ?, '[]', 1)",
-            (tid, user_id, 'My Territory', center, radius, json.dumps(zip_list))
+            "INSERT INTO rsc_territories (id, user_id, name, center_zip, radius_miles, zip_codes, states, is_active) VALUES (?, ?, ?, ?, ?, '[]', '[]', 1)",
+            (tid, user_id, 'My Territory', center, radius)
         )
     elif action == 'write_job':
         title = (answers.get('title') or 'New Position').strip() or 'New Position'
-        summary = (answers.get('summary') or '').strip()
-        pay_style = answers.get('pay_style') or 'commission'
+        posting_key = (answers.get('posting') or 'benefits_advisor').strip()
+        template = next((j for j in DEFAULT_JOBS if j.get('key') == posting_key), DEFAULT_JOBS[0])
+        description = template.get('description', '')
+        job_type = template.get('job_type', 'full_time')
+        salary_range = template.get('salary_range', '')
         cols = _table_columns_c46(db, 'jobs')
         jid = f"job_{uuid.uuid4().hex[:12]}"
         base_cols = ['id', 'user_id', 'title']
         base_vals = [jid, user_id, title]
         if 'description' in cols:
-            base_cols.append('description'); base_vals.append(summary)
+            base_cols.append('description'); base_vals.append(description)
         if 'summary' in cols:
+            # First line of the description is a decent summary fallback
+            summary = description.split('\n\n', 1)[0][:280]
             base_cols.append('summary'); base_vals.append(summary)
-        if 'pay_style' in cols:
-            base_cols.append('pay_style'); base_vals.append(pay_style)
+        if 'job_type' in cols:
+            base_cols.append('job_type'); base_vals.append(job_type)
+        if 'salary_range' in cols:
+            base_cols.append('salary_range'); base_vals.append(salary_range)
         if 'status' in cols:
             base_cols.append('status'); base_vals.append('active')
+        if 'public_apply_enabled' in cols:
+            base_cols.append('public_apply_enabled'); base_vals.append(1)
+        if 'auto_engage_mode' in cols:
+            base_cols.append('auto_engage_mode'); base_vals.append('hold')
         placeholders = ','.join(['?'] * len(base_vals))
         db.execute(
             f"INSERT INTO jobs ({','.join(base_cols)}) VALUES ({placeholders})",

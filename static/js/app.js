@@ -661,9 +661,18 @@ var WalkthroughPanel = (function(){
     if (inp.type === 'radio') {
       var opts = (inp.options || []).map(function(o){
         var checked = (o.value === val) ? ' checked' : '';
-        return '<label class="wt-radio"><input type="radio" name="wt-input" value="' + escapeHtml(o.value) + '"' + checked + '><span>' + escapeHtml(o.label) + '</span></label>';
+        var sub = o.description ? '<div class="wt-radio-sub">' + escapeHtml(o.description) + '</div>' : '';
+        return '<label class="wt-radio"><input type="radio" name="wt-input" value="' + escapeHtml(o.value) + '"' + checked + '><span><span class="wt-radio-label">' + escapeHtml(o.label) + '</span>' + sub + '</span></label>';
       }).join('');
       return '<div class="wt-radio-group">' + opts + '</div>';
+    }
+    if (inp.type === 'select') {
+      var optsHtml = (inp.options || []).map(function(o){
+        var selected = (o.value === val) ? ' selected' : '';
+        return '<option value="' + escapeHtml(o.value) + '"' + selected + '>' + escapeHtml(o.label) + '</option>';
+      }).join('');
+      var placeholderOpt = (val === '' && inp.placeholder) ? ('<option value="" disabled selected>' + escapeHtml(inp.placeholder) + '</option>') : '';
+      return '<select id="wt-input" class="wt-input wt-select">' + placeholderOpt + optsHtml + '</select>';
     }
     // default: text
     var maxlen = inp.maxlength ? (' maxlength="' + inp.maxlength + '"') : '';
