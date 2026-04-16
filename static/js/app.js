@@ -891,6 +891,7 @@ async function renderDashboard() {
         var wtTotal = wtFlows.length;
         var wtPct = wtTotal ? Math.round((wtDoneCount / wtTotal) * 100) : 0;
         var flowCards = wtFlows.map(function(f){
+          var fkey = f.flow_key || f.key;
           var statusLabel, statusColor, btnLabel, btnStyle;
           if (f.status === 'completed') { statusLabel = 'Complete'; statusColor = '#0ace0a'; btnLabel = 'Redo'; btnStyle = 'background:#f9fafb;color:#111;border:1px solid #e5e7eb'; }
           else if (f.status === 'in_progress') { statusLabel = 'In progress - step ' + ((f.step_index||0)+1) + ' of ' + (f.total_steps||'?'); statusColor = '#f59e0b'; btnLabel = 'Continue'; btnStyle = 'background:#0ace0a;color:#000;border:none'; }
@@ -898,11 +899,11 @@ async function renderDashboard() {
           else { statusLabel = 'Not started'; statusColor = '#9ca3af'; btnLabel = 'Start walkthrough'; btnStyle = 'background:#0ace0a;color:#000;border:none'; }
           return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">'
             + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
-            +   '<div style="font-size:14px;font-weight:700;color:#111">' + (f.title || f.flow_key) + '</div>'
+            +   '<div style="font-size:14px;font-weight:700;color:#111">' + (f.title || fkey) + '</div>'
             +   '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';white-space:nowrap">' + statusLabel + '</span>'
             + '</div>'
             + '<div style="font-size:12px;color:#6b7280;line-height:1.4;flex:1">' + (f.description || '') + '</div>'
-            + '<button onclick="WalkthroughPanel.open(\'' + f.flow_key + '\', { onComplete: function(){ renderDashboard(); } })" '
+            + '<button onclick="WalkthroughPanel.open(\'' + fkey + '\', { onComplete: function(){ renderDashboard(); } })" '
             +   'style="' + btnStyle + ';font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;width:100%">'
             +   btnLabel
             + '</button>'
