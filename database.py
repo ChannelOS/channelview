@@ -3083,6 +3083,217 @@ def init_db():
     except Exception:
         pass
 
+    # ======================== CYCLE 40A: OUTREACH SEQUENCE ENGINE + TERRITORY ========================
+
+    # RSC Territories — defines the geographic area an RSC recruits in
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS rsc_territories (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT 'My Territory',
+        center_zip TEXT,
+        radius_miles INTEGER DEFAULT 25,
+        zip_codes TEXT DEFAULT '[]',
+        states TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_territories_user ON rsc_territories(user_id)")
+
+    # Outreach Sequences — reusable multi-step outreach templates
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS outreach_sequences (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT,
+        sequence_type TEXT NOT NULL DEFAULT 'recruiting',
+        is_system INTEGER DEFAULT 0,
+        step_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sequences_user ON outreach_sequences(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sequences_type ON outreach_sequences(sequence_type)")
+
+    # Outreach Sequence Steps — ordered actions within a sequence
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS outreach_sequence_steps (
+        id TEXT PRIMARY KEY,
+        sequence_id TEXT NOT NULL,
+        step_order INTEGER NOT NULL DEFAULT 1,
+        channel TEXT NOT NULL DEFAULT 'email',
+        delay_days INTEGER NOT NULL DEFAULT 0,
+        template_subject TEXT,
+        template_content TEXT NOT NULL,
+        voice_script_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (sequence_id) REFERENCES outreach_sequences(id),
+        FOREIGN KEY (voice_script_id) REFERENCES voice_scripts(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_seq_steps_sequence ON outreach_sequence_steps(sequence_id)")
+
+    # Outreach Campaigns — an active run of a sequence against a set of contacts
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS outreach_campaigns (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        campaign_type TEXT NOT NULL DEFAULT 'recruiting',
+        sequence_id TEXT NOT NULL,
+        territory_id TEXT,
+        job_id TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        send_window_start TEXT DEFAULT '09:00',
+        send_window_end TEXT DEFAULT '18:00',
+        contact_count INTEGER DEFAULT 0,
+        responded_count INTEGER DEFAULT 0,
+        converted_count INTEGER DEFAULT 0,
+        started_at TIMESTAMP,
+        completed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (sequence_id) REFERENCES outreach_sequences(id),
+        FOREIGN KEY (territory_id) REFERENCES rsc_territories(id),
+        FOREIGN KEY (job_id) REFERENCES jobs(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oc_user ON outreach_campaigns(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oc_status ON outreach_campaigns(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oc_type ON outreach_campaigns(campaign_type)")
+
+    # Outreach Campaign Contacts — people enrolled in a campaign with per-step tracking
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS outreach_contacts (
+        id TEXT PRIMARY KEY,
+        campaign_id TEXT NOT NULL,
+        contact_type TEXT NOT NULL DEFAULT 'lead',
+        contact_id TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        email TEXT,
+        phone TEXT,
+        zip_code TEXT,
+        current_step INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_step_at TIMESTAMP,
+        next_step_due TIMESTAMP,
+        converted_at TIMESTAMP,
+        FOREIGN KEY (campaign_id) REFERENCES outreach_campaigns(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oc_contacts_campaign ON outreach_contacts(campaign_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oc_contacts_status ON outreach_contacts(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oc_contacts_next ON outreach_contacts(next_step_due)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oc_contacts_email ON outreach_contacts(email)")
+
+    # Outreach Campaign Events — granular log of every action
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS outreach_events (
+        id TEXT PRIMARY KEY,
+        contact_id TEXT NOT NULL,
+        step_id TEXT,
+        event_type TEXT NOT NULL,
+        channel TEXT,
+        metadata TEXT DEFAULT '{}',
+        occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (contact_id) REFERENCES outreach_contacts(id),
+        FOREIGN KEY (step_id) REFERENCES outreach_sequence_steps(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oe_contact ON outreach_events(contact_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oe_type ON outreach_events(event_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_oe_occurred ON outreach_events(occurred_at)")
+
+    # Seed system outreach sequences (pre-built campaign templates)
+    try:
+        conn.commit()
+        row = conn.execute("SELECT COUNT(*) as cnt FROM outreach_sequences WHERE is_system=1").fetchone()
+        seq_count = dict(row).get('cnt', 0) if hasattr(row, 'keys') else row[0]
+        if seq_count == 0:
+            import json
+            # Template 1: Cold Producer Outreach
+            seq1_id = 'seq_cold_outreach'
+            conn.execute("""INSERT INTO outreach_sequences (id, name, description, sequence_type, is_system, step_count)
+                VALUES (?, ?, ?, ?, 1, 4)""",
+                (seq1_id, 'Cold Producer Outreach',
+                 'Email intro, SMS nudge, AI voice call, follow-up email. Best for new lead lists and purchased data.',
+                 'recruiting'))
+            cold_steps = [
+                ('cs1_email', seq1_id, 1, 'email', 0,
+                 'An opportunity worth exploring',
+                 'Hi {{first_name}},\n\nI came across your profile and wanted to reach out. We have an opportunity at {{agency_name}} that I think could be a great fit for someone with your background.\n\nWe offer flexibility, competitive compensation, and a team that actually supports your growth.\n\nWould you be open to a quick conversation? You can learn more and share a bit about yourself here:\n{{interview_link}}\n\nLooking forward to connecting,\n{{recruiter_name}}\n{{agency_name}}'),
+                ('cs1_sms', seq1_id, 2, 'sms', 3,
+                 None,
+                 'Hi {{first_name}}, this is {{recruiter_name}} from {{agency_name}}. I sent you an email a few days ago about a career opportunity. Would love to connect — any interest? Reply here or check it out: {{interview_link}}'),
+                ('cs1_voice', seq1_id, 3, 'voice', 5,
+                 None,
+                 'cold_outreach_script'),
+                ('cs1_followup', seq1_id, 4, 'email', 7,
+                 'Following up — still interested?',
+                 'Hi {{first_name}},\n\nI wanted to follow up on my earlier message. I know your inbox is busy, so I\'ll keep this brief.\n\nWe\'re looking for people who want more control over their career and income. If that sounds like you, I\'d love to chat.\n\nHere\'s the link whenever you\'re ready:\n{{interview_link}}\n\nNo pressure either way.\n\nBest,\n{{recruiter_name}}'),
+            ]
+            for sid, seqid, order, channel, delay, subject, content in cold_steps:
+                conn.execute("""INSERT INTO outreach_sequence_steps (id, sequence_id, step_order, channel, delay_days, template_subject, template_content)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (sid, seqid, order, channel, delay, subject, content))
+
+            # Template 2: Warm Lead Nurture
+            seq2_id = 'seq_warm_nurture'
+            conn.execute("""INSERT INTO outreach_sequences (id, name, description, sequence_type, is_system, step_count)
+                VALUES (?, ?, ?, ?, 1, 3)""",
+                (seq2_id, 'Warm Lead Nurture',
+                 'Personal SMS, detailed email, check-in text. Best for referrals and event contacts.',
+                 'recruiting'))
+            warm_steps = [
+                ('ws1_sms', seq2_id, 1, 'sms', 0,
+                 None,
+                 'Hi {{first_name}}, this is {{recruiter_name}} from {{agency_name}}. {{referral_source}} mentioned you might be interested in learning about what we do. Would love to chat — what does your week look like?'),
+                ('ws1_email', seq2_id, 2, 'email', 2,
+                 'More about the opportunity at {{agency_name}}',
+                 'Hi {{first_name}},\n\nThanks for your interest in {{agency_name}}. I wanted to share a bit more about what we offer:\n\n- Flexible schedule — you control your calendar\n- Uncapped earning potential with competitive commissions\n- Full training and mentorship from day one\n- A team that actually has your back\n\nIf you\'d like to learn more, you can complete a quick intro at your convenience:\n{{interview_link}}\n\nHappy to answer any questions.\n\nBest,\n{{recruiter_name}}\n{{agency_name}}'),
+                ('ws1_checkin', seq2_id, 3, 'sms', 5,
+                 None,
+                 'Hey {{first_name}}, just checking in. Did you get a chance to look at the opportunity? Happy to answer any questions — just reply here. {{recruiter_name}}'),
+            ]
+            for sid, seqid, order, channel, delay, subject, content in warm_steps:
+                conn.execute("""INSERT INTO outreach_sequence_steps (id, sequence_id, step_order, channel, delay_days, template_subject, template_content)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (sid, seqid, order, channel, delay, subject, content))
+
+            # Template 3: Re-Engagement
+            seq3_id = 'seq_re_engagement'
+            conn.execute("""INSERT INTO outreach_sequences (id, name, description, sequence_type, is_system, step_count)
+                VALUES (?, ?, ?, ?, 1, 3)""",
+                (seq3_id, 'Re-Engagement',
+                 'Reconnect email, SMS nudge, final email. Best for old candidates and stale leads.',
+                 'recruiting'))
+            re_steps = [
+                ('rs1_email', seq3_id, 1, 'email', 0,
+                 'We\'d love to reconnect',
+                 'Hi {{first_name}},\n\nIt\'s been a while since we last connected, and I wanted to reach out again. Things at {{agency_name}} have been growing, and we\'re looking for great people to join the team.\n\nIf your situation has changed or you\'re open to exploring something new, I\'d love to catch up.\n\nHere\'s a quick way to get started:\n{{interview_link}}\n\nHope to hear from you,\n{{recruiter_name}}'),
+                ('rs1_sms', seq3_id, 2, 'sms', 4,
+                 None,
+                 'Hi {{first_name}}, {{recruiter_name}} here from {{agency_name}}. Sent you an email recently about reconnecting. Any interest in catching up? {{interview_link}}'),
+                ('rs1_final', seq3_id, 3, 'email', 8,
+                 'Last check-in from {{agency_name}}',
+                 'Hi {{first_name}},\n\nI\'ll keep this short — I don\'t want to fill your inbox if the timing isn\'t right.\n\nIf you\'re ever interested in exploring what {{agency_name}} has to offer, the door is always open:\n{{interview_link}}\n\nWishing you all the best either way.\n\n{{recruiter_name}}'),
+            ]
+            for sid, seqid, order, channel, delay, subject, content in re_steps:
+                conn.execute("""INSERT INTO outreach_sequence_steps (id, sequence_id, step_order, channel, delay_days, template_subject, template_content)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (sid, seqid, order, channel, delay, subject, content))
+
+            conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except:
+            pass
+
     try:
         conn.commit()
     except:

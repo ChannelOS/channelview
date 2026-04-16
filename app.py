@@ -19600,6 +19600,867 @@ def api_apply_job_c41(job_id):
     return jsonify(result), 201
 
 
+# ======================== CYCLE 40A: OUTREACH ENGINE + TERRITORY ========================
+
+# --- Territory Endpoints ---
+
+@app.route('/api/territories', methods=['POST'])
+@require_auth
+def api_create_territory_c40a():
+    """Create a recruiting territory for the RSC."""
+    data = request.get_json() or {}
+    db = get_db()
+    tid = str(uuid.uuid4())
+    name = data.get('name', 'My Territory')
+    center_zip = data.get('center_zip', '')
+    radius_miles = data.get('radius_miles', 25)
+    zip_codes = json.dumps(data.get('zip_codes', []))
+    states = json.dumps(data.get('states', []))
+    db.execute("""INSERT INTO rsc_territories (id, user_id, name, center_zip, radius_miles, zip_codes, states)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (tid, g.user_id, name, center_zip, radius_miles, zip_codes, states))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'territory': {'id': tid, 'name': name, 'center_zip': center_zip, 'radius_miles': radius_miles}}), 201
+
+@app.route('/api/territories', methods=['GET'])
+@require_auth
+def api_list_territories_c40a():
+    """List all territories for the RSC."""
+    db = get_db()
+    rows = db.execute('SELECT * FROM rsc_territories WHERE user_id=? ORDER BY created_at DESC', (g.user_id,)).fetchall()
+    territories = []
+    for r in rows:
+        t = dict(r)
+        t['zip_codes'] = json.loads(t.get('zip_codes') or '[]')
+        t['states'] = json.loads(t.get('states') or '[]')
+        territories.append(t)
+    db.close()
+    return jsonify({'territories': territories})
+
+@app.route('/api/territories/<tid>', methods=['GET'])
+@require_auth
+def api_get_territory_c40a(tid):
+    """Get territory detail."""
+    db = get_db()
+    row = db.execute('SELECT * FROM rsc_territories WHERE id=? AND user_id=?', (tid, g.user_id)).fetchone()
+    if not row:
+        db.close()
+        return jsonify({'error': 'Territory not found'}), 404
+    t = dict(row)
+    t['zip_codes'] = json.loads(t.get('zip_codes') or '[]')
+    t['states'] = json.loads(t.get('states') or '[]')
+    db.close()
+    return jsonify({'territory': t})
+
+@app.route('/api/territories/<tid>', methods=['PUT'])
+@require_auth
+def api_update_territory_c40a(tid):
+    """Update a territory."""
+    data = request.get_json() or {}
+    db = get_db()
+    existing = db.execute('SELECT id FROM rsc_territories WHERE id=? AND user_id=?', (tid, g.user_id)).fetchone()
+    if not existing:
+        db.close()
+        return jsonify({'error': 'Territory not found'}), 404
+    fields = []
+    params = []
+    for key in ('name', 'center_zip', 'radius_miles', 'is_active'):
+        if key in data:
+            fields.append(f"{key}=?")
+            params.append(data[key])
+    for key in ('zip_codes', 'states'):
+        if key in data:
+            fields.append(f"{key}=?")
+            params.append(json.dumps(data[key]))
+    if fields:
+        fields.append("updated_at=CURRENT_TIMESTAMP")
+        params.append(tid)
+        params.append(g.user_id)
+        db.execute(f"UPDATE rsc_territories SET {', '.join(fields)} WHERE id=? AND user_id=?", params)
+        db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/territories/<tid>', methods=['DELETE'])
+@require_auth
+def api_delete_territory_c40a(tid):
+    """Delete a territory."""
+    db = get_db()
+    db.execute('DELETE FROM rsc_territories WHERE id=? AND user_id=?', (tid, g.user_id))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/territories/<tid>/check-zip/<zipcode>', methods=['GET'])
+@require_auth
+def api_check_zip_territory_c40a(tid, zipcode):
+    """Check if a ZIP code is within this territory."""
+    db = get_db()
+    row = db.execute('SELECT * FROM rsc_territories WHERE id=? AND user_id=?', (tid, g.user_id)).fetchone()
+    if not row:
+        db.close()
+        return jsonify({'error': 'Territory not found'}), 404
+    t = dict(row)
+    zip_codes = json.loads(t.get('zip_codes') or '[]')
+    # Check explicit ZIP list first
+    in_territory = zipcode in zip_codes if zip_codes else False
+    # If not in explicit list, check radius (uses existing zip search from Cycle 33)
+    if not in_territory and t.get('center_zip') and t.get('radius_miles'):
+        try:
+            result = db.execute("""SELECT id FROM sourced_leads
+                WHERE zip_code=? AND id IN (
+                    SELECT id FROM sourced_leads WHERE zip_code=?
+                ) LIMIT 1""", (zipcode, zipcode)).fetchone()
+            # Simple 5-digit ZIP proximity check (first 3 digits = same metro area)
+            if zipcode[:3] == t['center_zip'][:3]:
+                in_territory = True
+        except:
+            pass
+    db.close()
+    return jsonify({'zip': zipcode, 'in_territory': in_territory, 'territory_id': tid})
+
+# --- Outreach Sequence Endpoints ---
+
+@app.route('/api/outreach/sequences', methods=['GET'])
+@require_auth
+def api_list_sequences_c40a():
+    """List available outreach sequences (system + user-created)."""
+    db = get_db()
+    rows = db.execute("""SELECT * FROM outreach_sequences
+        WHERE is_system=1 OR user_id=? ORDER BY is_system DESC, created_at DESC""",
+        (g.user_id,)).fetchall()
+    sequences = []
+    for r in rows:
+        s = dict(r)
+        steps = db.execute("""SELECT id, step_order, channel, delay_days, template_subject
+            FROM outreach_sequence_steps WHERE sequence_id=? ORDER BY step_order""",
+            (s['id'],)).fetchall()
+        s['steps'] = [dict(st) for st in steps]
+        sequences.append(s)
+    db.close()
+    return jsonify({'sequences': sequences})
+
+@app.route('/api/outreach/sequences', methods=['POST'])
+@require_auth
+def api_create_sequence_c40a():
+    """Create a custom outreach sequence."""
+    data = request.get_json() or {}
+    db = get_db()
+    sid = str(uuid.uuid4())
+    name = data.get('name', 'My Sequence')
+    description = data.get('description', '')
+    seq_type = data.get('sequence_type', 'recruiting')
+    db.execute("""INSERT INTO outreach_sequences (id, user_id, name, description, sequence_type, is_system, step_count)
+        VALUES (?, ?, ?, ?, ?, 0, 0)""",
+        (sid, g.user_id, name, description, seq_type))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'sequence': {'id': sid, 'name': name}}), 201
+
+@app.route('/api/outreach/sequences/<sid>', methods=['GET'])
+@require_auth
+def api_get_sequence_c40a(sid):
+    """Get sequence detail with all steps."""
+    db = get_db()
+    row = db.execute('SELECT * FROM outreach_sequences WHERE id=? AND (is_system=1 OR user_id=?)',
+                     (sid, g.user_id)).fetchone()
+    if not row:
+        db.close()
+        return jsonify({'error': 'Sequence not found'}), 404
+    s = dict(row)
+    steps = db.execute("""SELECT * FROM outreach_sequence_steps WHERE sequence_id=? ORDER BY step_order""",
+                       (sid,)).fetchall()
+    s['steps'] = [dict(st) for st in steps]
+    db.close()
+    return jsonify({'sequence': s})
+
+@app.route('/api/outreach/sequences/<sid>/steps', methods=['POST'])
+@require_auth
+def api_add_sequence_step_c40a(sid):
+    """Add a step to a sequence."""
+    data = request.get_json() or {}
+    db = get_db()
+    seq = db.execute('SELECT id FROM outreach_sequences WHERE id=? AND user_id=?', (sid, g.user_id)).fetchone()
+    if not seq:
+        db.close()
+        return jsonify({'error': 'Sequence not found or not editable'}), 404
+    # Get next step order
+    max_order = db.execute('SELECT MAX(step_order) as mx FROM outreach_sequence_steps WHERE sequence_id=?',
+                           (sid,)).fetchone()
+    next_order = (dict(max_order).get('mx') or 0) + 1
+    step_id = str(uuid.uuid4())
+    channel = data.get('channel', 'email')
+    delay_days = data.get('delay_days', 0)
+    template_subject = data.get('template_subject')
+    template_content = data.get('template_content', '')
+    voice_script_id = data.get('voice_script_id')
+    db.execute("""INSERT INTO outreach_sequence_steps (id, sequence_id, step_order, channel, delay_days, template_subject, template_content, voice_script_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (step_id, sid, next_order, channel, delay_days, template_subject, template_content, voice_script_id))
+    db.execute("UPDATE outreach_sequences SET step_count=step_count+1, updated_at=CURRENT_TIMESTAMP WHERE id=?", (sid,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'step': {'id': step_id, 'step_order': next_order, 'channel': channel}}), 201
+
+@app.route('/api/outreach/sequences/<sid>/steps/<step_id>', methods=['PUT'])
+@require_auth
+def api_update_sequence_step_c40a(sid, step_id):
+    """Update a step in a sequence."""
+    data = request.get_json() or {}
+    db = get_db()
+    seq = db.execute('SELECT id FROM outreach_sequences WHERE id=? AND user_id=?', (sid, g.user_id)).fetchone()
+    if not seq:
+        db.close()
+        return jsonify({'error': 'Sequence not found or not editable'}), 404
+    fields = []
+    params = []
+    for key in ('channel', 'delay_days', 'template_subject', 'template_content', 'voice_script_id', 'step_order'):
+        if key in data:
+            fields.append(f"{key}=?")
+            params.append(data[key])
+    if fields:
+        params.extend([step_id, sid])
+        db.execute(f"UPDATE outreach_sequence_steps SET {', '.join(fields)} WHERE id=? AND sequence_id=?", params)
+        db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/outreach/sequences/<sid>/steps/<step_id>', methods=['DELETE'])
+@require_auth
+def api_delete_sequence_step_c40a(sid, step_id):
+    """Delete a step and reorder remaining steps."""
+    db = get_db()
+    seq = db.execute('SELECT id FROM outreach_sequences WHERE id=? AND user_id=?', (sid, g.user_id)).fetchone()
+    if not seq:
+        db.close()
+        return jsonify({'error': 'Sequence not found or not editable'}), 404
+    step = db.execute('SELECT step_order FROM outreach_sequence_steps WHERE id=? AND sequence_id=?',
+                      (step_id, sid)).fetchone()
+    if step:
+        removed_order = dict(step)['step_order']
+        # Remove any outreach events referencing this step before deleting
+        db.execute('DELETE FROM outreach_events WHERE step_id=?', (step_id,))
+        db.execute('DELETE FROM outreach_sequence_steps WHERE id=? AND sequence_id=?', (step_id, sid))
+        db.execute("""UPDATE outreach_sequence_steps SET step_order = step_order - 1
+            WHERE sequence_id=? AND step_order > ?""", (sid, removed_order))
+        db.execute("UPDATE outreach_sequences SET step_count=MAX(step_count-1,0), updated_at=CURRENT_TIMESTAMP WHERE id=?", (sid,))
+        db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/outreach/sequences/<sid>', methods=['DELETE'])
+@require_auth
+def api_delete_sequence_c40a(sid):
+    """Delete a custom sequence (not system sequences)."""
+    db = get_db()
+    seq = db.execute('SELECT id, is_system FROM outreach_sequences WHERE id=? AND user_id=?', (sid, g.user_id)).fetchone()
+    if not seq:
+        db.close()
+        return jsonify({'error': 'Sequence not found or not deletable'}), 404
+    if dict(seq).get('is_system'):
+        db.close()
+        return jsonify({'error': 'System sequences cannot be deleted'}), 400
+    # Delete steps, then sequence
+    db.execute('DELETE FROM outreach_events WHERE step_id IN (SELECT id FROM outreach_sequence_steps WHERE sequence_id=?)', (sid,))
+    db.execute('DELETE FROM outreach_sequence_steps WHERE sequence_id=?', (sid,))
+    db.execute('DELETE FROM outreach_sequences WHERE id=?', (sid,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+# --- Outreach Campaign Endpoints ---
+
+@app.route('/api/outreach/campaigns', methods=['POST'])
+@require_auth
+def api_create_outreach_campaign_c40a():
+    """Create a new outreach campaign."""
+    data = request.get_json() or {}
+    db = get_db()
+    sequence_id = data.get('sequence_id')
+    if not sequence_id:
+        db.close()
+        return jsonify({'error': 'sequence_id is required'}), 400
+    # Verify sequence exists
+    seq = db.execute('SELECT id, name FROM outreach_sequences WHERE id=? AND (is_system=1 OR user_id=?)',
+                     (sequence_id, g.user_id)).fetchone()
+    if not seq:
+        db.close()
+        return jsonify({'error': 'Sequence not found'}), 404
+    cid = str(uuid.uuid4())
+    name = data.get('name', f'Campaign - {dict(seq)["name"]}')
+    description = data.get('description', '')
+    campaign_type = data.get('campaign_type', 'recruiting')
+    territory_id = data.get('territory_id')
+    job_id = data.get('job_id')
+    send_start = data.get('send_window_start', '09:00')
+    send_end = data.get('send_window_end', '18:00')
+    db.execute("""INSERT INTO outreach_campaigns (id, user_id, name, description, campaign_type, sequence_id,
+        territory_id, job_id, send_window_start, send_window_end)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (cid, g.user_id, name, description, campaign_type, sequence_id, territory_id, job_id, send_start, send_end))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'campaign': {'id': cid, 'name': name, 'status': 'draft'}}), 201
+
+@app.route('/api/outreach/campaigns', methods=['GET'])
+@require_auth
+def api_list_outreach_campaigns_c40a():
+    """List outreach campaigns for the RSC."""
+    db = get_db()
+    status_filter = request.args.get('status')
+    sql = """SELECT oc.*, os.name as sequence_name, rt.name as territory_name, j.title as job_title
+        FROM outreach_campaigns oc
+        LEFT JOIN outreach_sequences os ON oc.sequence_id = os.id
+        LEFT JOIN rsc_territories rt ON oc.territory_id = rt.id
+        LEFT JOIN jobs j ON oc.job_id = j.id
+        WHERE oc.user_id=?"""
+    params = [g.user_id]
+    if status_filter:
+        sql += " AND oc.status=?"
+        params.append(status_filter)
+    sql += " ORDER BY oc.created_at DESC"
+    rows = db.execute(sql, params).fetchall()
+    db.close()
+    return jsonify({'campaigns': [dict(r) for r in rows]})
+
+@app.route('/api/outreach/campaigns/<cid>', methods=['GET'])
+@require_auth
+def api_get_outreach_campaign_c40a(cid):
+    """Get campaign detail with sequence steps and contact stats."""
+    db = get_db()
+    row = db.execute("""SELECT oc.*, os.name as sequence_name, rt.name as territory_name, j.title as job_title
+        FROM outreach_campaigns oc
+        LEFT JOIN outreach_sequences os ON oc.sequence_id = os.id
+        LEFT JOIN rsc_territories rt ON oc.territory_id = rt.id
+        LEFT JOIN jobs j ON oc.job_id = j.id
+        WHERE oc.id=? AND oc.user_id=?""", (cid, g.user_id)).fetchone()
+    if not row:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    campaign = dict(row)
+    # Get sequence steps
+    steps = db.execute("""SELECT * FROM outreach_sequence_steps WHERE sequence_id=? ORDER BY step_order""",
+                       (campaign['sequence_id'],)).fetchall()
+    campaign['steps'] = [dict(s) for s in steps]
+    # Get contact stats
+    stats = db.execute("""SELECT status, COUNT(*) as cnt FROM outreach_contacts
+        WHERE campaign_id=? GROUP BY status""", (cid,)).fetchall()
+    campaign['contact_stats'] = {dict(s)['status']: dict(s)['cnt'] for s in stats}
+    campaign['contact_count'] = sum(dict(s)['cnt'] for s in stats)
+    db.close()
+    return jsonify({'campaign': campaign})
+
+@app.route('/api/outreach/campaigns/<cid>', methods=['PUT'])
+@require_auth
+def api_update_outreach_campaign_c40a(cid):
+    """Update campaign settings."""
+    data = request.get_json() or {}
+    db = get_db()
+    existing = db.execute('SELECT id, status FROM outreach_campaigns WHERE id=? AND user_id=?',
+                          (cid, g.user_id)).fetchone()
+    if not existing:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    fields = []
+    params = []
+    for key in ('name', 'description', 'send_window_start', 'send_window_end', 'territory_id', 'job_id'):
+        if key in data:
+            fields.append(f"{key}=?")
+            params.append(data[key])
+    if fields:
+        fields.append("updated_at=CURRENT_TIMESTAMP")
+        params.extend([cid, g.user_id])
+        db.execute(f"UPDATE outreach_campaigns SET {', '.join(fields)} WHERE id=? AND user_id=?", params)
+        db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/outreach/campaigns/<cid>', methods=['DELETE'])
+@require_auth
+def api_delete_outreach_campaign_c40a(cid):
+    """Delete a draft campaign."""
+    db = get_db()
+    campaign = db.execute('SELECT status FROM outreach_campaigns WHERE id=? AND user_id=?',
+                          (cid, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    if dict(campaign)['status'] != 'draft':
+        db.close()
+        return jsonify({'error': 'Only draft campaigns can be deleted. Pause the campaign first.'}), 400
+    db.execute('DELETE FROM outreach_events WHERE contact_id IN (SELECT id FROM outreach_contacts WHERE campaign_id=?)', (cid,))
+    db.execute('DELETE FROM outreach_contacts WHERE campaign_id=?', (cid,))
+    db.execute('DELETE FROM outreach_campaigns WHERE id=?', (cid,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+# --- Campaign Contact Enrollment ---
+
+@app.route('/api/outreach/campaigns/<cid>/enroll', methods=['POST'])
+@require_auth
+def api_enroll_contacts_c40a(cid):
+    """Enroll contacts into a campaign. Accepts lead_ids, candidate_ids, or direct contacts."""
+    data = request.get_json() or {}
+    db = get_db()
+    campaign = db.execute('SELECT id, status FROM outreach_campaigns WHERE id=? AND user_id=?',
+                          (cid, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    enrolled = 0
+    skipped = 0
+    # Enroll from lead_ids
+    lead_ids = data.get('lead_ids', [])
+    for lid in lead_ids:
+        lead = db.execute('SELECT * FROM sourced_leads WHERE id=? AND user_id=?', (lid, g.user_id)).fetchone()
+        if lead:
+            lead = dict(lead)
+            # Check for duplicate enrollment
+            existing = db.execute('SELECT id FROM outreach_contacts WHERE campaign_id=? AND email=?',
+                                  (cid, lead.get('email', ''))).fetchone()
+            if existing:
+                skipped += 1
+                continue
+            contact_id = str(uuid.uuid4())
+            db.execute("""INSERT INTO outreach_contacts (id, campaign_id, contact_type, contact_id,
+                first_name, last_name, email, phone, zip_code, status)
+                VALUES (?, ?, 'lead', ?, ?, ?, ?, ?, ?, 'pending')""",
+                (contact_id, cid, lid, lead.get('first_name', ''), lead.get('last_name', ''),
+                 lead.get('email', ''), lead.get('phone', ''), lead.get('zip_code', '')))
+            enrolled += 1
+    # Enroll from candidate_ids
+    candidate_ids = data.get('candidate_ids', [])
+    for candid in candidate_ids:
+        cand = db.execute('SELECT * FROM candidates WHERE id=? AND user_id=?', (candid, g.user_id)).fetchone()
+        if cand:
+            cand = dict(cand)
+            existing = db.execute('SELECT id FROM outreach_contacts WHERE campaign_id=? AND email=?',
+                                  (cid, cand.get('email', ''))).fetchone()
+            if existing:
+                skipped += 1
+                continue
+            contact_id = str(uuid.uuid4())
+            db.execute("""INSERT INTO outreach_contacts (id, campaign_id, contact_type, contact_id,
+                first_name, last_name, email, phone, zip_code, status)
+                VALUES (?, ?, 'candidate', ?, ?, ?, ?, ?, ?, 'pending')""",
+                (contact_id, cid, candid, cand.get('first_name', ''), cand.get('last_name', ''),
+                 cand.get('email', ''), cand.get('phone', ''), cand.get('zip_code', '')))
+            enrolled += 1
+    # Enroll direct contacts (manual entry)
+    contacts = data.get('contacts', [])
+    for c in contacts:
+        email = c.get('email', '')
+        if email:
+            existing = db.execute('SELECT id FROM outreach_contacts WHERE campaign_id=? AND email=?',
+                                  (cid, email)).fetchone()
+            if existing:
+                skipped += 1
+                continue
+        contact_id = str(uuid.uuid4())
+        db.execute("""INSERT INTO outreach_contacts (id, campaign_id, contact_type, contact_id,
+            first_name, last_name, email, phone, zip_code, status)
+            VALUES (?, ?, 'manual', NULL, ?, ?, ?, ?, ?, 'pending')""",
+            (contact_id, cid, c.get('first_name', ''), c.get('last_name', ''),
+             email, c.get('phone', ''), c.get('zip_code', '')))
+        enrolled += 1
+    # Update campaign contact count
+    total = db.execute('SELECT COUNT(*) as cnt FROM outreach_contacts WHERE campaign_id=?', (cid,)).fetchone()
+    db.execute('UPDATE outreach_campaigns SET contact_count=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+               (dict(total)['cnt'], cid))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'enrolled': enrolled, 'skipped': skipped})
+
+@app.route('/api/outreach/campaigns/<cid>/contacts', methods=['GET'])
+@require_auth
+def api_list_campaign_contacts_c40a(cid):
+    """List contacts enrolled in a campaign."""
+    db = get_db()
+    campaign = db.execute('SELECT id FROM outreach_campaigns WHERE id=? AND user_id=?',
+                          (cid, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    status_filter = request.args.get('status')
+    sql = "SELECT * FROM outreach_contacts WHERE campaign_id=?"
+    params = [cid]
+    if status_filter:
+        sql += " AND status=?"
+        params.append(status_filter)
+    sql += " ORDER BY enrolled_at DESC"
+    rows = db.execute(sql, params).fetchall()
+    db.close()
+    return jsonify({'contacts': [dict(r) for r in rows]})
+
+@app.route('/api/outreach/campaigns/<cid>/contacts/<contact_id>', methods=['PUT'])
+@require_auth
+def api_update_campaign_contact_c40a(cid, contact_id):
+    """Pause, resume, or update a contact's status."""
+    data = request.get_json() or {}
+    db = get_db()
+    new_status = data.get('status')
+    if new_status not in ('paused', 'active', 'pending'):
+        db.close()
+        return jsonify({'error': 'Invalid status. Use: paused, active, pending'}), 400
+    db.execute('UPDATE outreach_contacts SET status=? WHERE id=? AND campaign_id=?',
+               (new_status, contact_id, cid))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+@app.route('/api/outreach/campaigns/<cid>/contacts/<contact_id>', methods=['DELETE'])
+@require_auth
+def api_remove_campaign_contact_c40a(cid, contact_id):
+    """Remove a contact from a campaign."""
+    db = get_db()
+    db.execute('DELETE FROM outreach_events WHERE contact_id=?', (contact_id,))
+    db.execute('DELETE FROM outreach_contacts WHERE id=? AND campaign_id=?', (contact_id, cid))
+    total = db.execute('SELECT COUNT(*) as cnt FROM outreach_contacts WHERE campaign_id=?', (cid,)).fetchone()
+    db.execute('UPDATE outreach_campaigns SET contact_count=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+               (dict(total)['cnt'], cid))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+# --- Campaign Execution ---
+
+@app.route('/api/outreach/campaigns/<cid>/activate', methods=['POST'])
+@require_auth
+def api_activate_campaign_c40a(cid):
+    """Activate a campaign — starts the outreach sequence for all enrolled contacts."""
+    db = get_db()
+    campaign = db.execute('SELECT * FROM outreach_campaigns WHERE id=? AND user_id=?',
+                          (cid, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    campaign = dict(campaign)
+    if campaign['status'] not in ('draft', 'paused'):
+        db.close()
+        return jsonify({'error': f'Campaign is {campaign["status"]}, cannot activate'}), 400
+    # Verify sequence has steps
+    step_count = db.execute('SELECT COUNT(*) as cnt FROM outreach_sequence_steps WHERE sequence_id=?',
+                            (campaign['sequence_id'],)).fetchone()
+    if dict(step_count)['cnt'] == 0:
+        db.close()
+        return jsonify({'error': 'Sequence has no steps. Add steps before activating.'}), 400
+    # Verify contacts enrolled
+    contact_count = db.execute('SELECT COUNT(*) as cnt FROM outreach_contacts WHERE campaign_id=?',
+                               (cid,)).fetchone()
+    if dict(contact_count)['cnt'] == 0:
+        db.close()
+        return jsonify({'error': 'No contacts enrolled. Add contacts before activating.'}), 400
+    # Get first step
+    first_step = db.execute("""SELECT * FROM outreach_sequence_steps WHERE sequence_id=? ORDER BY step_order LIMIT 1""",
+                            (campaign['sequence_id'],)).fetchone()
+    first_step = dict(first_step)
+    # Activate all pending contacts — set their first step due time
+    now = datetime.utcnow()
+    next_due = now + timedelta(days=first_step['delay_days'])
+    db.execute("""UPDATE outreach_contacts SET status='active', current_step=1,
+        next_step_due=?, enrolled_at=?
+        WHERE campaign_id=? AND status='pending'""",
+        (next_due.strftime('%Y-%m-%d %H:%M:%S'), now.strftime('%Y-%m-%d %H:%M:%S'), cid))
+    db.execute("""UPDATE outreach_campaigns SET status='active', started_at=?, updated_at=CURRENT_TIMESTAMP
+        WHERE id=?""", (now.strftime('%Y-%m-%d %H:%M:%S'), cid))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'status': 'active'})
+
+@app.route('/api/outreach/campaigns/<cid>/pause', methods=['POST'])
+@require_auth
+def api_pause_campaign_c40a(cid):
+    """Pause all outreach for a campaign."""
+    db = get_db()
+    db.execute("UPDATE outreach_campaigns SET status='paused', updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+               (cid, g.user_id))
+    db.execute("UPDATE outreach_contacts SET status='paused' WHERE campaign_id=? AND status='active'", (cid,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'status': 'paused'})
+
+@app.route('/api/outreach/campaigns/<cid>/resume', methods=['POST'])
+@require_auth
+def api_resume_campaign_c40a(cid):
+    """Resume a paused campaign."""
+    db = get_db()
+    db.execute("UPDATE outreach_campaigns SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+               (cid, g.user_id))
+    db.execute("UPDATE outreach_contacts SET status='active' WHERE campaign_id=? AND status='paused'", (cid,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'status': 'active'})
+
+# --- The Engine Tick: Process Due Steps ---
+
+@app.route('/api/outreach/process', methods=['POST'])
+@require_auth
+def api_process_outreach_c40a():
+    """Process all due outreach steps. This is the heart of the AI agent.
+    Called by cron or manually. Finds contacts with next_step_due <= now,
+    dispatches the appropriate channel action, and advances to next step."""
+    db = get_db()
+    now = datetime.utcnow()
+    now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+
+    # Find all active contacts with due steps across all active campaigns for this user
+    due_contacts = db.execute("""
+        SELECT oc_contact.*, oc_camp.sequence_id, oc_camp.send_window_start, oc_camp.send_window_end,
+               oc_camp.user_id as campaign_user_id, oc_camp.name as campaign_name
+        FROM outreach_contacts oc_contact
+        JOIN outreach_campaigns oc_camp ON oc_contact.campaign_id = oc_camp.id
+        WHERE oc_camp.user_id=? AND oc_camp.status='active'
+            AND oc_contact.status='active'
+            AND oc_contact.next_step_due IS NOT NULL
+            AND oc_contact.next_step_due <= ?
+        ORDER BY oc_contact.next_step_due
+    """, (g.user_id, now_str)).fetchall()
+
+    processed = 0
+    errors = 0
+    results = []
+
+    for contact_row in due_contacts:
+        contact = dict(contact_row)
+        # Get the current step
+        step = db.execute("""SELECT * FROM outreach_sequence_steps
+            WHERE sequence_id=? AND step_order=? LIMIT 1""",
+            (contact['sequence_id'], contact['current_step'])).fetchone()
+
+        if not step:
+            # No more steps — mark completed
+            db.execute("UPDATE outreach_contacts SET status='completed' WHERE id=?", (contact['id'],))
+            processed += 1
+            continue
+
+        step = dict(step)
+        channel = step['channel']
+
+        # Merge template fields
+        user = db.execute('SELECT name, agency_name FROM users WHERE id=?',
+                          (contact['campaign_user_id'],)).fetchone()
+        user = dict(user) if user else {}
+        merge_fields = {
+            'first_name': contact.get('first_name', ''),
+            'last_name': contact.get('last_name', ''),
+            'agency_name': user.get('agency_name', user.get('name', '')),
+            'recruiter_name': user.get('name', ''),
+            'interview_link': '',  # Will be populated when job_id is linked
+            'referral_source': 'Someone in your network',
+        }
+        content = step.get('template_content', '')
+        subject = step.get('template_subject', '')
+        for key, val in merge_fields.items():
+            content = content.replace('{{' + key + '}}', str(val))
+            if subject:
+                subject = subject.replace('{{' + key + '}}', str(val))
+
+        # Dispatch by channel
+        event_type = 'sent'
+        event_metadata = {}
+        success = True
+
+        try:
+            if channel == 'email' and contact.get('email'):
+                try:
+                    from email_service import send_email
+                    send_email(contact['email'], subject, content, contact['campaign_user_id'])
+                    event_metadata = {'to': contact['email'], 'subject': subject}
+                except Exception as e:
+                    event_metadata = {'error': str(e)}
+                    success = True  # Still count as processed, log the attempt
+
+            elif channel == 'sms' and contact.get('phone'):
+                try:
+                    from sms_service import send_sms
+                    result = send_sms(contact['phone'], content, contact['campaign_user_id'])
+                    event_metadata = {'to': contact['phone'], 'sid': result.get('sid', '')}
+                except Exception as e:
+                    event_metadata = {'error': str(e), 'to': contact.get('phone', '')}
+
+            elif channel == 'voice' and contact.get('phone'):
+                try:
+                    from voice_service import initiate_call
+                    call_result = initiate_call(contact['phone'], step.get('voice_script_id', ''),
+                                                contact['campaign_user_id'])
+                    event_metadata = {'to': contact['phone'], 'call_id': call_result.get('call_id', '')}
+                except Exception as e:
+                    event_metadata = {'error': str(e), 'to': contact.get('phone', '')}
+            else:
+                event_metadata = {'skipped': True, 'reason': f'No {channel} contact info'}
+
+        except Exception as e:
+            event_metadata = {'error': str(e)}
+            errors += 1
+
+        # Log the event
+        event_id = str(uuid.uuid4())
+        db.execute("""INSERT INTO outreach_events (id, contact_id, step_id, event_type, channel, metadata, occurred_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (event_id, contact['id'], step['id'], event_type, channel,
+             json.dumps(event_metadata), now_str))
+
+        # Advance to next step
+        next_step_order = contact['current_step'] + 1
+        next_step = db.execute("""SELECT * FROM outreach_sequence_steps
+            WHERE sequence_id=? AND step_order=? LIMIT 1""",
+            (contact['sequence_id'], next_step_order)).fetchone()
+
+        if next_step:
+            next_step = dict(next_step)
+            next_due = now + timedelta(days=next_step['delay_days'])
+            db.execute("""UPDATE outreach_contacts SET current_step=?, last_step_at=?, next_step_due=?
+                WHERE id=?""", (next_step_order, now_str, next_due.strftime('%Y-%m-%d %H:%M:%S'), contact['id']))
+        else:
+            # Last step done — mark completed
+            db.execute("""UPDATE outreach_contacts SET status='completed', last_step_at=?, next_step_due=NULL
+                WHERE id=?""", (now_str, contact['id']))
+
+        processed += 1
+        results.append({'contact_id': contact['id'], 'channel': channel, 'step': contact['current_step'],
+                        'success': success})
+
+    # Check if any campaigns are fully completed
+    active_campaigns = db.execute("""SELECT DISTINCT oc.campaign_id
+        FROM outreach_contacts oc
+        JOIN outreach_campaigns camp ON oc.campaign_id = camp.id
+        WHERE camp.user_id=? AND camp.status='active'""", (g.user_id,)).fetchall()
+
+    for camp_row in active_campaigns:
+        camp_id = dict(camp_row)['campaign_id']
+        remaining = db.execute("""SELECT COUNT(*) as cnt FROM outreach_contacts
+            WHERE campaign_id=? AND status='active'""", (camp_id,)).fetchone()
+        if dict(remaining)['cnt'] == 0:
+            # Update campaign stats
+            responded = db.execute("SELECT COUNT(*) as cnt FROM outreach_contacts WHERE campaign_id=? AND status='replied'",
+                                   (camp_id,)).fetchone()
+            converted = db.execute("SELECT COUNT(*) as cnt FROM outreach_contacts WHERE campaign_id=? AND status='converted'",
+                                   (camp_id,)).fetchone()
+            db.execute("""UPDATE outreach_campaigns SET status='completed', completed_at=?,
+                responded_count=?, converted_count=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (now_str, dict(responded)['cnt'], dict(converted)['cnt'], camp_id))
+
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'processed': processed, 'errors': errors, 'results': results})
+
+# --- Campaign Analytics ---
+
+@app.route('/api/outreach/campaigns/<cid>/analytics', methods=['GET'])
+@require_auth
+def api_outreach_analytics_c40a(cid):
+    """Get per-step analytics for a campaign."""
+    db = get_db()
+    campaign = db.execute('SELECT * FROM outreach_campaigns WHERE id=? AND user_id=?',
+                          (cid, g.user_id)).fetchone()
+    if not campaign:
+        db.close()
+        return jsonify({'error': 'Campaign not found'}), 404
+    campaign = dict(campaign)
+    # Per-step breakdown
+    steps = db.execute("""SELECT * FROM outreach_sequence_steps WHERE sequence_id=? ORDER BY step_order""",
+                       (campaign['sequence_id'],)).fetchall()
+    step_analytics = []
+    for s in steps:
+        s = dict(s)
+        events = db.execute("""SELECT event_type, COUNT(*) as cnt FROM outreach_events
+            WHERE step_id=? AND contact_id IN (SELECT id FROM outreach_contacts WHERE campaign_id=?)
+            GROUP BY event_type""", (s['id'], cid)).fetchall()
+        event_counts = {dict(e)['event_type']: dict(e)['cnt'] for e in events}
+        step_analytics.append({
+            'step_order': s['step_order'],
+            'channel': s['channel'],
+            'delay_days': s['delay_days'],
+            'sent': event_counts.get('sent', 0),
+            'delivered': event_counts.get('delivered', 0),
+            'opened': event_counts.get('opened', 0),
+            'replied': event_counts.get('replied', 0),
+            'converted': event_counts.get('converted', 0),
+            'failed': event_counts.get('failed', 0),
+        })
+    # Overall stats
+    contact_stats = db.execute("""SELECT status, COUNT(*) as cnt FROM outreach_contacts
+        WHERE campaign_id=? GROUP BY status""", (cid,)).fetchall()
+    overall = {dict(s)['status']: dict(s)['cnt'] for s in contact_stats}
+    total = sum(overall.values())
+    db.close()
+    return jsonify({
+        'campaign_id': cid,
+        'total_contacts': total,
+        'status_breakdown': overall,
+        'response_rate': round(overall.get('replied', 0) / max(total, 1) * 100, 1),
+        'conversion_rate': round(overall.get('converted', 0) / max(total, 1) * 100, 1),
+        'steps': step_analytics,
+    })
+
+# --- Inbound Response Handler ---
+
+@app.route('/api/outreach/inbound-reply', methods=['POST'])
+@require_auth
+def api_outreach_inbound_reply_c40a():
+    """Handle inbound reply from a contact. Auto-pauses their sequence."""
+    data = request.get_json() or {}
+    db = get_db()
+    email = data.get('email')
+    phone = data.get('phone')
+    channel = data.get('channel', 'sms')
+
+    # Find the contact across active campaigns
+    if email:
+        contact = db.execute("""SELECT oc.* FROM outreach_contacts oc
+            JOIN outreach_campaigns camp ON oc.campaign_id = camp.id
+            WHERE oc.email=? AND oc.status='active' AND camp.user_id=? LIMIT 1""",
+            (email, g.user_id)).fetchone()
+    elif phone:
+        contact = db.execute("""SELECT oc.* FROM outreach_contacts oc
+            JOIN outreach_campaigns camp ON oc.campaign_id = camp.id
+            WHERE oc.phone=? AND oc.status='active' AND camp.user_id=? LIMIT 1""",
+            (phone, g.user_id)).fetchone()
+    else:
+        db.close()
+        return jsonify({'error': 'email or phone required'}), 400
+
+    if not contact:
+        db.close()
+        return jsonify({'found': False, 'message': 'No active campaign contact found'})
+
+    contact = dict(contact)
+    # Pause sequence and mark as replied
+    db.execute("UPDATE outreach_contacts SET status='replied', next_step_due=NULL WHERE id=?", (contact['id'],))
+    # Log event
+    event_id = str(uuid.uuid4())
+    db.execute("""INSERT INTO outreach_events (id, contact_id, event_type, channel, metadata)
+        VALUES (?, ?, 'replied', ?, ?)""",
+        (event_id, contact['id'], channel, json.dumps(data.get('metadata', {}))))
+    # Update campaign responded count
+    db.execute("""UPDATE outreach_campaigns SET responded_count = (
+        SELECT COUNT(*) FROM outreach_contacts WHERE campaign_id=? AND status='replied'
+    ), updated_at=CURRENT_TIMESTAMP WHERE id=?""", (contact['campaign_id'], contact['campaign_id']))
+    db.commit()
+    db.close()
+    return jsonify({'found': True, 'contact_id': contact['id'], 'status': 'replied',
+                    'message': 'Contact sequence paused. RSC notified.'})
+
+# --- Outreach Settings Page Route ---
+
+@app.route('/outreach-sequences')
+@require_auth
+def outreach_sequences_page_c40a():
+    return render_template('app.html', page='outreach-sequences', user=g.user)
+
+@app.route('/territory-setup')
+@require_auth
+def territory_setup_page_c40a():
+    return render_template('app.html', page='territory-setup', user=g.user)
+
+@app.route('/outreach-campaigns')
+@require_auth
+def outreach_campaigns_page_c40a():
+    return render_template('app.html', page='outreach-campaigns', user=g.user)
+
+
 # ======================== INIT & RUN ========================
 
 if __name__ == '__main__':

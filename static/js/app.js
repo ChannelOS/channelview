@@ -283,6 +283,9 @@ const pages = {
   'referral-links': renderReferralLinks,
   'job-syndication': renderJobSyndication,
   'voice-agent': renderVoiceAgent,
+  'territory-setup': renderTerritorySetup,
+  'outreach-sequences': renderOutreachSequences,
+  'outreach-campaigns': renderOutreachCampaigns,
 };
 
 // ==================== TAB DESCRIPTORS ====================
@@ -302,6 +305,9 @@ const TAB_DESCRIPTORS = {
   'job-board': {title:'My Job Board', desc:"Your own branded job board page that lists every open position. Share the link on your website, social media, or marketing materials. Candidates browse your jobs and apply directly \u2014 no third-party job site needed."},
   'job-syndication': {title:'Post to Job Sites', desc:"Push your open positions to Indeed, Google Jobs, and other job boards from right here. Applications flow back into ChannelView automatically, so you get the reach of major job sites without the hassle of managing listings in multiple places."},
   'voice-agent': {title:'AI Screening Calls', desc:"Let AI do your initial phone screens. Set up a voice agent with your screening questions, and it will call candidates, have a natural conversation, and report back with results. You save hours of phone time and still get the information you need to decide who moves forward."},
+  'territory-setup': {title:'My Territory', desc:"Define your recruiting territory so the AI agent knows where to focus. Set your center ZIP code and radius, or pick specific ZIP codes and states. Every outreach campaign will respect these boundaries so you only contact candidates who can realistically get to your office."},
+  'outreach-sequences': {title:'Outreach Sequences', desc:"Sequences are the playbooks your AI agent follows. Each sequence is a series of timed steps \u2014 emails, texts, and voice calls \u2014 that go out automatically over days or weeks. Start with the built-in templates or build your own from scratch."},
+  'outreach-campaigns': {title:'AI Campaigns', desc:"Campaigns put your sequences to work. Pick a sequence, enroll your contacts, set your territory, and activate. The AI agent handles the rest \u2014 sending every email, text, and call on schedule, pausing when someone replies, and reporting results back to you."},
 
   // ===== TRACK =====
   'candidates': {title:'All Candidates', desc:"Every person who\u2019s ever applied, been invited, or been added to your system is here. Search, filter, and sort by status, score, source, or date. This is your single source of truth for where every candidate stands in your process."},
@@ -418,7 +424,10 @@ function subNav(tabs, activePage) {
 // Section configs for sub-nav tabs
 var SECTION_TABS = {
   outreach: [
-    {label: 'Campaigns', page: 'campaigns'},
+    {label: 'AI Campaigns', page: 'outreach-campaigns'},
+    {label: 'Sequences', page: 'outreach-sequences'},
+    {label: 'My Territory', page: 'territory-setup'},
+    {label: 'Email Campaigns', page: 'campaigns'},
     {label: 'Find Leads', page: 'lead-sourcing'},
     {label: 'Referral Links', page: 'referral-links'},
     {label: 'Job Board', page: 'job-board'},
@@ -11397,6 +11406,823 @@ async function deleteCampaign(campId) {
     toast('Campaign deleted', 'success');
     renderCampaigns();
   } catch (e) { toast('Failed to delete: ' + e.message, 'error'); }
+}
+
+
+// ==================== CYCLE 40A: TERRITORY SETUP ====================
+
+async function renderTerritorySetup() {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>' +
+    sectionSubNav('outreach', 'territory-setup') + tabDescriptor('territory-setup') +
+    '<div id="territory-content"><p style="color:#999">Loading...</p></div></div>';
+  try {
+    const res = await api('GET', '/api/territories');
+    const territories = res.territories || [];
+    const c = document.getElementById('territory-content');
+    let html = `<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+      <button onclick="showCreateTerritory()" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px">+ New Territory</button>
+    </div>`;
+    if (!territories.length) {
+      html += `<div style="background:#f9fafb;border-radius:12px;padding:40px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">&#127759;</div>
+        <h3 style="margin:0 0 8px;color:#111">No territories defined yet</h3>
+        <p style="color:#6b7280;margin:0 0 16px">Set up your recruiting territory so the AI agent knows which ZIP codes to target. Start by entering your office ZIP code and a radius.</p>
+        <button onclick="showCreateTerritory()" style="background:#0ace0a;color:#000;font-weight:600;padding:10px 20px;border:none;border-radius:6px;cursor:pointer">Define Your Territory</button>
+      </div>`;
+    } else {
+      html += '<div style="display:grid;gap:16px">';
+      for (const t of territories) {
+        const zipCount = (t.zip_codes || []).length;
+        const stateList = (t.states || []).join(', ') || 'All';
+        html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px">
+          <div style="display:flex;justify-content:space-between;align-items:start">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:16px;color:#111">${t.name}</h3>
+              <p style="margin:0;font-size:13px;color:#6b7280">Center: <strong>${t.center_zip || 'N/A'}</strong> &bull; Radius: <strong>${t.radius_miles} mi</strong></p>
+              <p style="margin:4px 0 0;font-size:13px;color:#6b7280">States: ${stateList} &bull; ${zipCount} ZIP code${zipCount !== 1 ? 's' : ''} defined</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button onclick="showEditTerritory('${t.id}')" style="background:#f3f4f6;border:1px solid #d1d5db;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer">Edit</button>
+              <button onclick="deleteTerritory('${t.id}')" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer">Delete</button>
+            </div>
+          </div>
+          ${zipCount > 0 ? '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px">' +
+            t.zip_codes.slice(0, 20).map(z => '<span style="background:#f0fdf0;color:#166534;font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid #bbf7d0">' + z + '</span>').join('') +
+            (zipCount > 20 ? '<span style="color:#9ca3af;font-size:12px;padding:3px 0">+' + (zipCount - 20) + ' more</span>' : '') +
+            '</div>' : ''}
+        </div>`;
+      }
+      html += '</div>';
+    }
+    c.innerHTML = html;
+    window._territories = territories;
+  } catch (e) { document.getElementById('territory-content').innerHTML = '<p style="color:red">Failed to load territories.</p>'; }
+}
+
+function showCreateTerritory() {
+  const modal = document.createElement('div');
+  modal.id = 'modal-territory';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">Define Territory</h2>
+      <button onclick="document.getElementById('modal-territory').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Territory Name</label>
+        <input id="terr-name" placeholder="e.g. Nashville Metro" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Center ZIP Code</label>
+          <input id="terr-zip" placeholder="37064" maxlength="5" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Radius (miles)</label>
+          <input id="terr-radius" type="number" value="25" min="5" max="200" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">States (comma-separated)</label>
+        <input id="terr-states" placeholder="TN, KY, AL" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">Optional. Leave blank to use all states within your radius.</p>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Specific ZIP Codes (optional)</label>
+        <textarea id="terr-zips" rows="3" placeholder="37064, 37067, 37069, 37027..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box"></textarea>
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">Comma-separated. If provided, only these ZIP codes will be targeted regardless of radius.</p>
+      </div>
+      <button onclick="saveTerritory()" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Save Territory</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function saveTerritory(editId) {
+  const name = document.getElementById('terr-name').value.trim();
+  const center_zip = document.getElementById('terr-zip').value.trim();
+  const radius_miles = parseInt(document.getElementById('terr-radius').value) || 25;
+  const statesRaw = document.getElementById('terr-states').value.trim();
+  const zipsRaw = document.getElementById('terr-zips').value.trim();
+  if (!name) { toast('Territory name is required', 'error'); return; }
+  const states = statesRaw ? statesRaw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
+  const zip_codes = zipsRaw ? zipsRaw.split(',').map(z => z.trim()).filter(Boolean) : [];
+  const payload = { name, center_zip, radius_miles, states, zip_codes };
+  try {
+    if (editId) {
+      await api('PUT', '/api/territories/' + editId, payload);
+      toast('Territory updated', 'success');
+    } else {
+      await api('POST', '/api/territories', payload);
+      toast('Territory created!', 'success');
+    }
+    const m = document.getElementById('modal-territory');
+    if (m) m.remove();
+    renderTerritorySetup();
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function showEditTerritory(tid) {
+  const territories = window._territories || [];
+  const t = territories.find(x => x.id === tid);
+  if (!t) { toast('Territory not found', 'error'); return; }
+  showCreateTerritory();
+  setTimeout(() => {
+    document.getElementById('terr-name').value = t.name || '';
+    document.getElementById('terr-zip').value = t.center_zip || '';
+    document.getElementById('terr-radius').value = t.radius_miles || 25;
+    document.getElementById('terr-states').value = (t.states || []).join(', ');
+    document.getElementById('terr-zips').value = (t.zip_codes || []).join(', ');
+    // Swap button to update
+    const btn = document.querySelector('#modal-territory button[onclick="saveTerritory()"]');
+    if (btn) {
+      btn.textContent = 'Update Territory';
+      btn.setAttribute('onclick', "saveTerritory('" + tid + "')");
+    }
+  }, 50);
+}
+
+async function deleteTerritory(tid) {
+  if (!confirm('Delete this territory? Campaigns using it will keep running but won\'t have geographic filtering.')) return;
+  try {
+    await api('DELETE', '/api/territories/' + tid);
+    toast('Territory deleted', 'success');
+    renderTerritorySetup();
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+// ==================== CYCLE 40A: OUTREACH SEQUENCES ====================
+
+async function renderOutreachSequences() {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>' +
+    sectionSubNav('outreach', 'outreach-sequences') + tabDescriptor('outreach-sequences') +
+    '<div id="seq-content"><p style="color:#999">Loading...</p></div></div>';
+  try {
+    const res = await api('GET', '/api/outreach/sequences');
+    const seqs = res.sequences || [];
+    const c = document.getElementById('seq-content');
+    const systemSeqs = seqs.filter(s => s.is_system);
+    const customSeqs = seqs.filter(s => !s.is_system);
+    let html = `<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+      <button onclick="showCreateSequence()" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px">+ New Sequence</button>
+    </div>`;
+
+    // Custom sequences first
+    if (customSeqs.length) {
+      html += '<h3 style="font-size:15px;color:#374151;margin:0 0 12px">Your Sequences</h3><div style="display:grid;gap:12px;margin-bottom:28px">';
+      for (const s of customSeqs) html += renderSequenceCard(s, false);
+      html += '</div>';
+    }
+
+    // System sequences
+    html += '<h3 style="font-size:15px;color:#374151;margin:0 0 12px">Built-In Templates</h3><div style="display:grid;gap:12px">';
+    for (const s of systemSeqs) html += renderSequenceCard(s, true);
+    html += '</div>';
+
+    c.innerHTML = html;
+    window._sequences = seqs;
+  } catch (e) { document.getElementById('seq-content').innerHTML = '<p style="color:red">Failed to load sequences.</p>'; }
+}
+
+function renderSequenceCard(s, isSystem) {
+  const channelIcons = { email: '&#9993;', sms: '&#128172;', voice: '&#128222;' };
+  const typeColors = { recruiting: '#0ace0a', sales: '#3b82f6', general: '#8b5cf6' };
+  const tc = typeColors[s.sequence_type] || '#6b7280';
+  return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;cursor:pointer" onclick="showSequenceDetail('${s.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:start">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <h3 style="margin:0;font-size:16px;color:#111">${s.name}</h3>
+          ${isSystem ? '<span style="background:#f0fdf0;color:#166534;font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid #bbf7d0">System</span>' : ''}
+          <span style="background:${tc}15;color:${tc};font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px">${s.sequence_type}</span>
+        </div>
+        <p style="margin:0;font-size:13px;color:#6b7280">${s.description || 'No description'}</p>
+      </div>
+      <span style="background:#f3f4f6;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;color:#374151">${s.step_count || 0} step${(s.step_count || 0) !== 1 ? 's' : ''}</span>
+    </div>
+  </div>`;
+}
+
+async function showSequenceDetail(sid) {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><p style="color:#999">Loading sequence...</p></div>';
+  try {
+    const res = await api('GET', '/api/outreach/sequences/' + sid);
+    const seq = res.sequence;
+    const steps = seq.steps || [];
+    const isSystem = !!seq.is_system;
+    const channelLabels = { email: 'Email', sms: 'SMS Text', voice: 'AI Voice Call' };
+    const channelIcons = { email: '&#9993;', sms: '&#128172;', voice: '&#128222;' };
+
+    let html = '<div style="padding:32px">';
+    html += breadcrumb('Sequences', 'outreach-sequences', seq.name);
+    html += `<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:24px">
+      <div>
+        <h1 style="font-size:24px;margin:0 0 4px">${seq.name}</h1>
+        <p style="margin:0;font-size:14px;color:#6b7280">${seq.description || ''}</p>
+      </div>
+      ${!isSystem ? '<button onclick="deleteSequence(\'' + sid + '\')" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer">Delete Sequence</button>' : ''}
+    </div>`;
+
+    // Steps timeline
+    html += '<div style="margin-bottom:24px">';
+    if (!steps.length) {
+      html += `<div style="background:#f9fafb;border-radius:10px;padding:32px;text-align:center">
+        <p style="color:#6b7280;margin:0">No steps yet. Add your first step below.</p>
+      </div>`;
+    } else {
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const isLast = i === steps.length - 1;
+        html += `<div style="display:flex;gap:16px;position:relative">
+          <div style="display:flex;flex-direction:column;align-items:center;min-width:40px">
+            <div style="width:36px;height:36px;border-radius:50%;background:#0ace0a;color:#000;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">${step.step_order}</div>
+            ${!isLast ? '<div style="width:2px;flex:1;background:#d1fad1;min-height:60px"></div>' : ''}
+          </div>
+          <div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:${isLast ? '0' : '12'}px">
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:18px">${channelIcons[step.channel] || ''}</span>
+                <strong style="font-size:14px">${channelLabels[step.channel] || step.channel}</strong>
+                <span style="color:#9ca3af;font-size:13px">&bull; ${step.delay_days === 0 ? 'Immediately' : 'Wait ' + step.delay_days + ' day' + (step.delay_days !== 1 ? 's' : '')}</span>
+              </div>
+              ${!isSystem ? '<div style="display:flex;gap:6px"><button onclick="editSequenceStep(\'' + sid + '\',\'' + step.id + '\')" style="background:none;border:1px solid #d1d5db;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Edit</button><button onclick="deleteSequenceStep(\'' + sid + '\',\'' + step.id + '\')" style="background:none;border:1px solid #fecaca;color:#dc2626;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Remove</button></div>' : ''}
+            </div>
+            ${step.template_subject ? '<p style="margin:0 0 4px;font-size:13px;color:#374151"><strong>Subject:</strong> ' + step.template_subject + '</p>' : ''}
+            <p style="margin:0;font-size:13px;color:#6b7280;white-space:pre-wrap;max-height:80px;overflow:hidden">${(step.template_content || '').substring(0, 200)}${(step.template_content || '').length > 200 ? '...' : ''}</p>
+          </div>
+        </div>`;
+      }
+    }
+    html += '</div>';
+
+    // Add step button
+    if (!isSystem) {
+      html += `<button onclick="showAddStepModal('${sid}', ${steps.length})" style="background:#111;color:#fff;font-weight:600;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px">+ Add Step</button>`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+    window._currentSequenceId = sid;
+  } catch (e) { el.innerHTML = '<div style="padding:32px"><p style="color:red">Failed to load sequence: ' + e.message + '</p></div>'; }
+}
+
+function showAddStepModal(sid, stepCount) {
+  const nextOrder = stepCount + 1;
+  const modal = document.createElement('div');
+  modal.id = 'modal-step';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">Add Step ${nextOrder}</h2>
+      <button onclick="document.getElementById('modal-step').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Channel</label>
+        <select id="step-channel" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box" onchange="toggleStepSubject()">
+          <option value="email">Email</option>
+          <option value="sms">SMS Text</option>
+          <option value="voice">AI Voice Call</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Wait (days before sending)</label>
+        <input id="step-delay" type="number" value="${nextOrder === 1 ? 0 : 2}" min="0" max="90" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">${nextOrder === 1 ? 'Set to 0 to send immediately when the campaign starts.' : 'Days after the previous step before this one fires.'}</p>
+      </div>
+      <div id="step-subject-wrap">
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Subject Line</label>
+        <input id="step-subject" placeholder="e.g. {{first_name}}, quick question about your career" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Message Content</label>
+        <textarea id="step-content" rows="6" placeholder="Hi {{first_name}}, ..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box"></textarea>
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">Merge fields: {{first_name}}, {{last_name}}, {{agency_name}}, {{recruiter_name}}, {{interview_link}}</p>
+      </div>
+      <button onclick="saveSequenceStep('${sid}')" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Add Step</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+function toggleStepSubject() {
+  const ch = document.getElementById('step-channel').value;
+  const wrap = document.getElementById('step-subject-wrap');
+  if (wrap) wrap.style.display = (ch === 'email') ? 'block' : 'none';
+}
+
+async function saveSequenceStep(sid, editStepId) {
+  const channel = document.getElementById('step-channel').value;
+  const delay_days = parseInt(document.getElementById('step-delay').value) || 0;
+  const template_subject = (document.getElementById('step-subject') || {}).value || '';
+  const template_content = document.getElementById('step-content').value.trim();
+  if (!template_content) { toast('Message content is required', 'error'); return; }
+  try {
+    if (editStepId) {
+      await api('PUT', '/api/outreach/sequences/' + sid + '/steps/' + editStepId, { channel, delay_days, template_subject, template_content });
+      toast('Step updated', 'success');
+    } else {
+      await api('POST', '/api/outreach/sequences/' + sid + '/steps', { channel, delay_days, template_subject, template_content });
+      toast('Step added!', 'success');
+    }
+    const m = document.getElementById('modal-step');
+    if (m) m.remove();
+    showSequenceDetail(sid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function editSequenceStep(sid, stepId) {
+  try {
+    const res = await api('GET', '/api/outreach/sequences/' + sid);
+    const step = (res.sequence.steps || []).find(s => s.id === stepId);
+    if (!step) { toast('Step not found', 'error'); return; }
+    showAddStepModal(sid, 0); // reuses modal
+    setTimeout(() => {
+      document.querySelector('#modal-step h2').textContent = 'Edit Step';
+      document.getElementById('step-channel').value = step.channel;
+      document.getElementById('step-delay').value = step.delay_days;
+      if (document.getElementById('step-subject')) document.getElementById('step-subject').value = step.template_subject || '';
+      document.getElementById('step-content').value = step.template_content || '';
+      toggleStepSubject();
+      const btn = document.querySelector('#modal-step button[onclick*="saveSequenceStep"]');
+      if (btn) {
+        btn.textContent = 'Save Changes';
+        btn.setAttribute('onclick', "saveSequenceStep('" + sid + "','" + stepId + "')");
+      }
+    }, 50);
+  } catch (e) { toast('Failed to load step', 'error'); }
+}
+
+async function deleteSequenceStep(sid, stepId) {
+  if (!confirm('Remove this step from the sequence?')) return;
+  try {
+    await api('DELETE', '/api/outreach/sequences/' + sid + '/steps/' + stepId);
+    toast('Step removed', 'success');
+    showSequenceDetail(sid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+function showCreateSequence() {
+  const modal = document.createElement('div');
+  modal.id = 'modal-sequence';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">New Sequence</h2>
+      <button onclick="document.getElementById('modal-sequence').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Sequence Name</label>
+        <input id="newseq-name" placeholder="e.g. Nashville Producer Push" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Description</label>
+        <input id="newseq-desc" placeholder="What this sequence is for" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Type</label>
+        <select id="newseq-type" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+          <option value="recruiting">Recruiting</option>
+          <option value="sales">Sales</option>
+          <option value="general">General</option>
+        </select>
+      </div>
+      <button onclick="createSequence()" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Create Sequence</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function createSequence() {
+  const name = document.getElementById('newseq-name').value.trim();
+  const description = document.getElementById('newseq-desc').value.trim();
+  const sequence_type = document.getElementById('newseq-type').value;
+  if (!name) { toast('Sequence name is required', 'error'); return; }
+  try {
+    const res = await api('POST', '/api/outreach/sequences', { name, description, sequence_type });
+    toast('Sequence created!', 'success');
+    const m = document.getElementById('modal-sequence');
+    if (m) m.remove();
+    showSequenceDetail(res.sequence.id);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function deleteSequence(sid) {
+  if (!confirm('Delete this sequence? Existing campaigns using it will not be affected.')) return;
+  try {
+    await api('DELETE', '/api/outreach/sequences/' + sid);
+    toast('Sequence deleted', 'success');
+    renderOutreachSequences();
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+// ==================== CYCLE 40A: AI OUTREACH CAMPAIGNS ====================
+
+async function renderOutreachCampaigns() {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>' +
+    sectionSubNav('outreach', 'outreach-campaigns') + tabDescriptor('outreach-campaigns') +
+    '<div id="oc-content"><p style="color:#999">Loading...</p></div></div>';
+  try {
+    const res = await api('GET', '/api/outreach/campaigns');
+    const camps = res.campaigns || [];
+    const c = document.getElementById('oc-content');
+    let html = `<div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+      <button onclick="showCreateOutreachCampaign()" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 24px;border:none;border-radius:8px;cursor:pointer;font-size:14px">+ New AI Campaign</button>
+    </div>`;
+    if (!camps.length) {
+      html += `<div style="background:#f9fafb;border-radius:12px;padding:40px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">&#129302;</div>
+        <h3 style="margin:0 0 8px;color:#111">No AI campaigns yet</h3>
+        <p style="color:#6b7280;margin:0 0 16px">Create your first multi-channel campaign to let the AI agent handle outreach across email, SMS, and voice \u2014 all on autopilot.</p>
+        <button onclick="showCreateOutreachCampaign()" style="background:#0ace0a;color:#000;font-weight:600;padding:10px 20px;border:none;border-radius:6px;cursor:pointer">Launch Your First AI Campaign</button>
+      </div>`;
+    } else {
+      html += '<div style="display:grid;gap:16px">';
+      for (const camp of camps) {
+        const statusColors = {draft:'#f59e0b',active:'#10b981',paused:'#6b7280',completed:'#3b82f6'};
+        const sc = statusColors[camp.status] || '#6b7280';
+        html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;cursor:pointer" onclick="showOutreachCampaignDetail('${camp.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:16px;color:#111">${camp.name}</h3>
+              <p style="margin:0;font-size:13px;color:#6b7280">${camp.sequence_name || 'No sequence'} ${camp.territory_name ? '&bull; ' + camp.territory_name : ''}</p>
+            </div>
+            <span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:4px 10px;border-radius:12px;text-transform:uppercase">${camp.status}</span>
+          </div>
+          <div style="display:flex;gap:20px;margin-top:12px;font-size:13px;color:#6b7280">
+            <span>Contacts: <strong style="color:#111">${camp.contact_count || 0}</strong></span>
+            <span>Responded: <strong style="color:#111">${camp.responded_count || 0}</strong></span>
+            <span>Converted: <strong style="color:#111">${camp.converted_count || 0}</strong></span>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    c.innerHTML = html;
+  } catch (e) { document.getElementById('oc-content').innerHTML = '<p style="color:red">Failed to load campaigns.</p>'; }
+}
+
+async function showCreateOutreachCampaign() {
+  // Load sequences and territories for dropdowns
+  let seqs = [], terrs = [];
+  try {
+    const sr = await api('GET', '/api/outreach/sequences');
+    seqs = sr.sequences || [];
+  } catch (e) {}
+  try {
+    const tr = await api('GET', '/api/territories');
+    terrs = tr.territories || [];
+  } catch (e) {}
+  if (!seqs.length) { toast('Create an outreach sequence first before launching a campaign.', 'error'); return; }
+  const seqOpts = seqs.map(s => '<option value="' + s.id + '">' + s.name + ' (' + (s.step_count||0) + ' steps)</option>').join('');
+  const terrOpts = '<option value="">No territory filter</option>' + terrs.map(t => '<option value="' + t.id + '">' + t.name + ' (' + t.center_zip + ', ' + t.radius_miles + 'mi)</option>').join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-oc';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">New AI Campaign</h2>
+      <button onclick="document.getElementById('modal-oc').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Campaign Name</label>
+        <input id="oc-name" placeholder="e.g. Q2 Producer Outreach" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Outreach Sequence</label>
+        <select id="oc-sequence" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${seqOpts}</select>
+        <p style="font-size:11px;color:#9ca3af;margin:3px 0 0">The AI will follow this sequence's steps (email, SMS, voice) in order.</p>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Territory</label>
+        <select id="oc-territory" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">${terrOpts}</select>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Campaign Type</label>
+        <select id="oc-type" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+          <option value="recruiting">Recruiting</option>
+          <option value="sales">Sales / Appointment Setting</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Send Window Start</label>
+          <input id="oc-send-start" type="time" value="09:00" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Send Window End</label>
+          <input id="oc-send-end" type="time" value="18:00" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+      </div>
+      <button onclick="createOutreachCampaign()" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Create Campaign</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function createOutreachCampaign() {
+  const name = document.getElementById('oc-name').value.trim();
+  const sequence_id = document.getElementById('oc-sequence').value;
+  const territory_id = document.getElementById('oc-territory').value || null;
+  const campaign_type = document.getElementById('oc-type').value;
+  const send_window_start = document.getElementById('oc-send-start').value;
+  const send_window_end = document.getElementById('oc-send-end').value;
+  if (!name) { toast('Campaign name is required', 'error'); return; }
+  try {
+    const res = await api('POST', '/api/outreach/campaigns', { name, sequence_id, territory_id, campaign_type, send_window_start, send_window_end });
+    toast('Campaign created!', 'success');
+    const m = document.getElementById('modal-oc');
+    if (m) m.remove();
+    showOutreachCampaignDetail(res.campaign.id);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function showOutreachCampaignDetail(cid) {
+  const el = document.getElementById('page-content');
+  el.innerHTML = '<div style="padding:32px"><p style="color:#999">Loading campaign...</p></div>';
+  try {
+    const res = await api('GET', '/api/outreach/campaigns/' + cid);
+    const camp = res.campaign;
+    const steps = camp.steps || [];
+    const statusColors = {draft:'#f59e0b',active:'#10b981',paused:'#6b7280',completed:'#3b82f6'};
+    const sc = statusColors[camp.status] || '#6b7280';
+    const channelLabels = { email: 'Email', sms: 'SMS', voice: 'Voice' };
+
+    let html = '<div style="padding:32px">';
+    html += breadcrumb('AI Campaigns', 'outreach-campaigns', camp.name);
+
+    // Header
+    html += `<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <h1 style="font-size:24px;margin:0">${camp.name}</h1>
+          <span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:4px 10px;border-radius:12px;text-transform:uppercase">${camp.status}</span>
+        </div>
+        <p style="margin:0;font-size:14px;color:#6b7280">${camp.sequence_name || ''} ${camp.territory_name ? '&bull; ' + camp.territory_name : ''}</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${camp.status === 'draft' ? '<button onclick="activateOutreachCampaign(\'' + cid + '\')" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px">Activate Campaign</button>' : ''}
+        ${camp.status === 'active' ? '<button onclick="pauseOutreachCampaign(\'' + cid + '\')" style="background:#f3f4f6;border:1px solid #d1d5db;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">Pause</button>' : ''}
+        ${camp.status === 'paused' ? '<button onclick="resumeOutreachCampaign(\'' + cid + '\')" style="background:#0ace0a;color:#000;font-weight:700;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px">Resume</button>' : ''}
+        ${camp.status === 'draft' ? '<button onclick="deleteOutreachCampaign(\'' + cid + '\')" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:10px 16px;border-radius:8px;font-size:14px;cursor:pointer">Delete</button>' : ''}
+      </div>
+    </div>`;
+
+    // Stats cards
+    const stats = camp.contact_stats || {};
+    const totalContacts = camp.contact_count || 0;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px">
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#111">${totalContacts}</div>
+        <div style="font-size:13px;color:#6b7280">Total Contacts</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#10b981">${stats.active || 0}</div>
+        <div style="font-size:13px;color:#6b7280">Active</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#3b82f6">${stats.replied || 0}</div>
+        <div style="font-size:13px;color:#6b7280">Replied</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#8b5cf6">${stats.completed || 0}</div>
+        <div style="font-size:13px;color:#6b7280">Completed</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:#0ace0a">${stats.converted || 0}</div>
+        <div style="font-size:13px;color:#6b7280">Converted</div>
+      </div>
+    </div>`;
+
+    // Sequence steps visualization
+    if (steps.length) {
+      html += '<h3 style="font-size:16px;margin:0 0 12px;color:#374151">Sequence Steps</h3>';
+      html += '<div style="display:flex;gap:0;margin-bottom:28px;overflow-x:auto">';
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        html += `<div style="flex:0 0 auto;min-width:160px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;text-align:center;position:relative">
+          <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">Step ${step.step_order}</div>
+          <div style="font-size:15px;font-weight:600;color:#111;margin-bottom:2px">${channelLabels[step.channel] || step.channel}</div>
+          <div style="font-size:12px;color:#6b7280">${step.delay_days === 0 ? 'Immediate' : 'Day ' + step.delay_days}</div>
+        </div>`;
+        if (i < steps.length - 1) {
+          html += '<div style="display:flex;align-items:center;padding:0 4px"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M5 10h10m-4-4l4 4-4 4" stroke="#d1d5db" stroke-width="2" fill="none"/></svg></div>';
+        }
+      }
+      html += '</div>';
+    }
+
+    // Enroll contacts section
+    if (camp.status === 'draft' || camp.status === 'active') {
+      html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:28px">
+        <h3 style="font-size:16px;margin:0 0 12px;color:#374151">Add Contacts</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="showEnrollLeads('${cid}')" style="background:#111;color:#fff;font-weight:600;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px">From Leads</button>
+          <button onclick="showEnrollManual('${cid}')" style="background:#fff;border:1px solid #d1d5db;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px">Add Manually</button>
+        </div>
+      </div>`;
+    }
+
+    // Contacts list
+    html += '<h3 style="font-size:16px;margin:0 0 12px;color:#374151">Enrolled Contacts</h3>';
+    html += '<div id="oc-contacts-list"><p style="color:#999">Loading contacts...</p></div>';
+
+    html += '</div>';
+    el.innerHTML = html;
+
+    // Load contacts
+    loadCampaignContacts(cid);
+  } catch (e) { el.innerHTML = '<div style="padding:32px"><p style="color:red">Failed to load campaign: ' + e.message + '</p></div>'; }
+}
+
+async function loadCampaignContacts(cid) {
+  const c = document.getElementById('oc-contacts-list');
+  try {
+    const res = await api('GET', '/api/outreach/campaigns/' + cid + '/contacts');
+    const contacts = res.contacts || [];
+    if (!contacts.length) {
+      c.innerHTML = '<div style="background:#f9fafb;border-radius:8px;padding:24px;text-align:center;color:#6b7280">No contacts enrolled yet. Add contacts using the buttons above.</div>';
+      return;
+    }
+    const statusColors = {pending:'#f59e0b',active:'#10b981',paused:'#6b7280',completed:'#3b82f6',replied:'#8b5cf6',converted:'#0ace0a',bounced:'#ef4444',opted_out:'#dc2626'};
+    let html = '<div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb">';
+    html += '<th style="padding:10px 16px;text-align:left;font-weight:600;color:#374151">Name</th>';
+    html += '<th style="padding:10px 16px;text-align:left;font-weight:600;color:#374151">Email</th>';
+    html += '<th style="padding:10px 16px;text-align:left;font-weight:600;color:#374151">Phone</th>';
+    html += '<th style="padding:10px 16px;text-align:left;font-weight:600;color:#374151">Step</th>';
+    html += '<th style="padding:10px 16px;text-align:left;font-weight:600;color:#374151">Status</th>';
+    html += '<th style="padding:10px 16px;text-align:right;font-weight:600;color:#374151">Actions</th>';
+    html += '</tr></thead><tbody>';
+    for (const ct of contacts) {
+      const sc = statusColors[ct.status] || '#6b7280';
+      html += `<tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:10px 16px;color:#111">${ct.first_name || ''} ${ct.last_name || ''}</td>
+        <td style="padding:10px 16px;color:#6b7280">${ct.email || '-'}</td>
+        <td style="padding:10px 16px;color:#6b7280">${ct.phone || '-'}</td>
+        <td style="padding:10px 16px;color:#374151">${ct.current_step || '-'}</td>
+        <td style="padding:10px 16px"><span style="background:${sc}15;color:${sc};font-size:12px;font-weight:600;padding:3px 8px;border-radius:10px">${ct.status}</span></td>
+        <td style="padding:10px 16px;text-align:right">
+          <button onclick="removeOutreachContact('${cid}','${ct.id}')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">Remove</button>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+    c.innerHTML = html;
+  } catch (e) { c.innerHTML = '<p style="color:red">Failed to load contacts.</p>'; }
+}
+
+async function showEnrollLeads(cid) {
+  try {
+    const res = await api('GET', '/api/leads');
+    const leads = res.leads || [];
+    if (!leads.length) { toast('No sourced leads found. Import leads from the Find Leads tab first.', 'error'); return; }
+    const modal = document.createElement('div');
+    modal.id = 'modal-enroll';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+    let leadRows = '';
+    for (const l of leads.slice(0, 100)) {
+      leadRows += `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6;cursor:pointer">
+        <input type="checkbox" class="enroll-lead-cb" value="${l.id}" style="width:18px;height:18px">
+        <div>
+          <div style="font-size:14px;color:#111">${l.first_name || ''} ${l.last_name || ''}</div>
+          <div style="font-size:12px;color:#6b7280">${l.email || ''} ${l.zip_code ? '&bull; ZIP: ' + l.zip_code : ''}</div>
+        </div>
+      </label>`;
+    }
+    modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:28px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="margin:0;font-size:20px">Enroll Leads</h2>
+        <button onclick="document.getElementById('modal-enroll').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:13px;cursor:pointer"><input type="checkbox" id="enroll-all" onclick="document.querySelectorAll('.enroll-lead-cb').forEach(c=>c.checked=this.checked)" style="margin-right:6px"> Select All (${leads.length})</label>
+      </div>
+      <div style="max-height:400px;overflow-y:auto;margin-bottom:16px">${leadRows}</div>
+      <button onclick="enrollSelectedLeads('${cid}')" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Enroll Selected</button>
+    </div>`;
+    document.body.appendChild(modal);
+  } catch (e) { toast('Failed to load leads: ' + e.message, 'error'); }
+}
+
+async function enrollSelectedLeads(cid) {
+  const checked = document.querySelectorAll('.enroll-lead-cb:checked');
+  const lead_ids = Array.from(checked).map(c => c.value);
+  if (!lead_ids.length) { toast('Select at least one lead', 'error'); return; }
+  try {
+    const res = await api('POST', '/api/outreach/campaigns/' + cid + '/enroll', { lead_ids });
+    toast(res.enrolled + ' lead(s) enrolled' + (res.skipped ? ', ' + res.skipped + ' skipped (duplicate)' : ''), 'success');
+    const m = document.getElementById('modal-enroll');
+    if (m) m.remove();
+    showOutreachCampaignDetail(cid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+function showEnrollManual(cid) {
+  const modal = document.createElement('div');
+  modal.id = 'modal-enroll-manual';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;padding:28px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0;font-size:20px">Add Contact Manually</h2>
+      <button onclick="document.getElementById('modal-enroll-manual').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">&times;</button>
+    </div>
+    <div style="display:grid;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">First Name</label>
+          <input id="em-first" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Last Name</label>
+          <input id="em-last" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Email</label>
+        <input id="em-email" type="email" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Phone</label>
+          <input id="em-phone" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">ZIP Code</label>
+          <input id="em-zip" maxlength="5" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+      </div>
+      <button onclick="enrollManualContact('${cid}')" style="background:#0ace0a;color:#000;font-weight:700;padding:12px;border:none;border-radius:8px;cursor:pointer;font-size:15px;width:100%">Add Contact</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function enrollManualContact(cid) {
+  const first_name = document.getElementById('em-first').value.trim();
+  const last_name = document.getElementById('em-last').value.trim();
+  const email = document.getElementById('em-email').value.trim();
+  const phone = document.getElementById('em-phone').value.trim();
+  const zip_code = document.getElementById('em-zip').value.trim();
+  if (!email && !phone) { toast('Email or phone is required', 'error'); return; }
+  try {
+    const res = await api('POST', '/api/outreach/campaigns/' + cid + '/enroll', {
+      contacts: [{ first_name, last_name, email, phone, zip_code }]
+    });
+    toast('Contact added!', 'success');
+    const m = document.getElementById('modal-enroll-manual');
+    if (m) m.remove();
+    showOutreachCampaignDetail(cid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function activateOutreachCampaign(cid) {
+  if (!confirm('Activate this campaign? The AI agent will start sending outreach on the configured schedule.')) return;
+  try {
+    const res = await api('POST', '/api/outreach/campaigns/' + cid + '/activate');
+    toast('Campaign activated! The AI agent is now running.', 'success');
+    showOutreachCampaignDetail(cid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function pauseOutreachCampaign(cid) {
+  try {
+    await api('POST', '/api/outreach/campaigns/' + cid + '/pause');
+    toast('Campaign paused', 'success');
+    showOutreachCampaignDetail(cid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function resumeOutreachCampaign(cid) {
+  try {
+    await api('POST', '/api/outreach/campaigns/' + cid + '/resume');
+    toast('Campaign resumed', 'success');
+    showOutreachCampaignDetail(cid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function deleteOutreachCampaign(cid) {
+  if (!confirm('Delete this campaign and all enrolled contacts? This cannot be undone.')) return;
+  try {
+    await api('DELETE', '/api/outreach/campaigns/' + cid);
+    toast('Campaign deleted', 'success');
+    renderOutreachCampaigns();
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
+}
+
+async function removeOutreachContact(cid, contactId) {
+  if (!confirm('Remove this contact from the campaign?')) return;
+  try {
+    await api('DELETE', '/api/outreach/campaigns/' + cid + '/contacts/' + contactId);
+    toast('Contact removed', 'success');
+    loadCampaignContacts(cid);
+  } catch (e) { toast('Failed: ' + e.message, 'error'); }
 }
 
 
