@@ -291,7 +291,7 @@ const pages = {
 // ==================== TAB DESCRIPTORS ====================
 const TAB_DESCRIPTORS = {
   // ===== HOME =====
-  'dashboard': {title:'Dashboard', desc:"This is your command center. Everything happening in your recruiting world \u2014 active jobs, recent candidates, interview completions, and key stats \u2014 all in one view so you know exactly where things stand without clicking around."},
+  'dashboard': {title:'Home', desc:"Your command center. Everything happening in your recruiting world \u2014 active jobs, candidates, AI campaign activity, and key stats \u2014 all in one view. Use the quick actions below to jump straight to what you need."},
 
   // ===== BUILD =====
   'jobs-manage': {title:'My Jobs', desc:"Start here. Create a job posting for each position you\u2019re hiring for, then attach an interview and launch campaigns. Every candidate who applies flows into your pipeline automatically. The more jobs you post, the more candidates you attract."},
@@ -421,24 +421,15 @@ function subNav(tabs, activePage) {
     '</div>';
 }
 
-// Section configs for sub-nav tabs
+// Section configs for sub-nav tabs (Cycle 40B: simplified)
 var SECTION_TABS = {
   outreach: [
     {label: 'AI Campaigns', page: 'outreach-campaigns'},
     {label: 'Sequences', page: 'outreach-sequences'},
     {label: 'My Territory', page: 'territory-setup'},
-    {label: 'Email Campaigns', page: 'campaigns'},
     {label: 'Find Leads', page: 'lead-sourcing'},
-    {label: 'Referral Links', page: 'referral-links'},
-    {label: 'Job Board', page: 'job-board'},
-    {label: 'Post to Job Sites', page: 'job-syndication'},
+    {label: 'Email Blasts', page: 'campaigns'},
     {label: 'AI Calls', page: 'voice-agent'}
-  ],
-  insights: [
-    {label: 'Analytics', page: 'analytics'},
-    {label: 'Pipeline Funnel', page: 'pipeline-funnel'},
-    {label: 'Candidate Sources', page: 'source-tracking'},
-    {label: 'AI Scores', page: 'ai'}
   ],
   candidates: [
     {label: 'Pipeline', page: 'enhanced-kanban'},
@@ -447,13 +438,19 @@ var SECTION_TABS = {
   ],
   settings: [
     {label: 'General', page: 'settings'},
+    {label: 'Analytics', page: 'analytics'},
+    {label: 'Pipeline Funnel', page: 'pipeline-funnel'},
+    {label: 'Candidate Sources', page: 'source-tracking'},
     {label: 'Brand Colors', page: 'branding'},
     {label: 'Email Templates', page: 'email-templates'},
     {label: 'Email Delivery', page: 'email-delivery'},
     {label: 'My Team', page: 'team'},
     {label: 'Automation', page: 'auto-rules'},
     {label: 'Integrations', page: 'integrations-hub'},
-    {label: 'Agency Systems', page: 'ams-integrations'}
+    {label: 'Agency Systems', page: 'ams-integrations'},
+    {label: 'Referral Links', page: 'referral-links'},
+    {label: 'Job Board', page: 'job-board'},
+    {label: 'Job Sites', page: 'job-syndication'}
   ]
 };
 
@@ -598,9 +595,30 @@ async function renderDashboard() {
     window._dashData = data;
     content.innerHTML = `
       <div class="page-header">
-        <div><h1>Dashboard</h1><p class="subtitle">Welcome back, ${APP_USER.name}</p></div>
+        <div><h1>Home</h1><p class="subtitle">Welcome back, ${APP_USER.name}</p></div>
       </div>
       ${tabDescriptor('dashboard')}
+
+      <!-- Cycle 40B: Quick Action Bar -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">
+        <a href="/jobs-manage" style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;text-decoration:none;transition:border-color 0.15s,box-shadow 0.15s" onmouseover="this.style.borderColor='#0ace0a';this.style.boxShadow='0 2px 8px rgba(10,206,10,0.12)'" onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'">
+          <div style="width:40px;height:40px;border-radius:10px;background:#f0fdf0;display:flex;align-items:center;justify-content:center;font-size:20px">&#128188;</div>
+          <div><div style="font-size:14px;font-weight:700;color:#111">Post a Job</div><div style="font-size:12px;color:#6b7280">Create a new position</div></div>
+        </a>
+        <a href="/outreach-campaigns" style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;text-decoration:none;transition:border-color 0.15s,box-shadow 0.15s" onmouseover="this.style.borderColor='#0ace0a';this.style.boxShadow='0 2px 8px rgba(10,206,10,0.12)'" onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'">
+          <div style="width:40px;height:40px;border-radius:10px;background:#f0fdf0;display:flex;align-items:center;justify-content:center;font-size:20px">&#129302;</div>
+          <div><div style="font-size:14px;font-weight:700;color:#111">Launch AI Campaign</div><div style="font-size:12px;color:#6b7280">Automated outreach</div></div>
+        </a>
+        <a href="/lead-sourcing" style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;text-decoration:none;transition:border-color 0.15s,box-shadow 0.15s" onmouseover="this.style.borderColor='#0ace0a';this.style.boxShadow='0 2px 8px rgba(10,206,10,0.12)'" onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'">
+          <div style="width:40px;height:40px;border-radius:10px;background:#f0fdf0;display:flex;align-items:center;justify-content:center;font-size:20px">&#128269;</div>
+          <div><div style="font-size:14px;font-weight:700;color:#111">Import Leads</div><div style="font-size:12px;color:#6b7280">Add contacts to reach</div></div>
+        </a>
+        <a href="/enhanced-kanban" style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;text-decoration:none;transition:border-color 0.15s,box-shadow 0.15s" onmouseover="this.style.borderColor='#0ace0a';this.style.boxShadow='0 2px 8px rgba(10,206,10,0.12)'" onmouseout="this.style.borderColor='#e5e7eb';this.style.boxShadow='none'">
+          <div style="width:40px;height:40px;border-radius:10px;background:#f0fdf0;display:flex;align-items:center;justify-content:center;font-size:20px">&#128202;</div>
+          <div><div style="font-size:14px;font-weight:700;color:#111">View Pipeline</div><div style="font-size:12px;color:#6b7280">See all candidates</div></div>
+        </a>
+      </div>
+
       <div class="stat-grid">
         <div class="stat-card stat-card-drillable" onclick="toggleStatDrill('interviews')" data-drill="interviews">
           <div class="stat-label">Active Interviews</div><div class="stat-value">${s.active_interviews}</div>
@@ -3782,7 +3800,7 @@ async function renderAnalytics() {
 
     content.innerHTML = `
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'analytics')}
+      ${sectionSubNav('settings', 'analytics')}
       <div class="page-header" style="margin-top:0">
         <div><h2 style="font-size:18px;margin:0">Hiring Analytics</h2><p class="subtitle">How your recruiting is going</p></div>
         <div class="page-actions">
@@ -3839,7 +3857,7 @@ async function renderAnalytics() {
   } catch(e) {
     content.innerHTML = `
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'analytics')}
+      ${sectionSubNav('settings', 'analytics')}
       <div class="empty-state"><h3>Hiring Analytics</h3><p>Nothing to report yet — once candidates start completing interviews, you'll see completion rates, scores, and hiring trends here.</p></div>`;
   }
 }
@@ -3860,7 +3878,7 @@ async function renderAiInsights() {
 
     content.innerHTML = `
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'ai')}
+      ${sectionSubNav('settings', 'ai')}
       <div class="page-header" style="margin-top:0">
         <div><h2 style="font-size:18px;margin:0">AI Scores</h2><p class="subtitle">See how AI rated your candidates</p></div>
       </div>
@@ -3966,7 +3984,7 @@ async function renderAiInsights() {
   } catch (err) {
     content.innerHTML = `
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'ai')}
+      ${sectionSubNav('settings', 'ai')}
       <div class="empty-state"><h3>Interview Insights</h3><p>No scores yet. Once candidates finish their interviews, AI will automatically rate their responses and give you a summary — no extra work on your end.</p></div>`;
   }
 }
@@ -8177,7 +8195,7 @@ async function renderPipelineFunnel() {
   content.innerHTML = `
     <div style="max-width:1100px">
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'pipeline-funnel')}
+      ${sectionSubNav('settings', 'pipeline-funnel')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Hiring Funnel</h2>
@@ -8260,7 +8278,7 @@ async function renderPipelineFunnel() {
   } catch(e) {
     content.innerHTML = `
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'pipeline-funnel')}
+      ${sectionSubNav('settings', 'pipeline-funnel')}
       <div class="empty-state"><h3>Pipeline Funnel</h3><p>Nothing to report yet — once candidates start moving through your pipeline stages, you'll see conversion rates and bottlenecks here.</p></div>`;
   }
 }
@@ -8712,7 +8730,7 @@ async function renderSourceTracking() {
   content.innerHTML = `
     <div style="max-width:900px">
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'source-tracking')}
+      ${sectionSubNav('settings', 'source-tracking')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Candidate Sources</h2>
@@ -8768,7 +8786,7 @@ async function renderSourceTracking() {
   } catch(e) {
     content.innerHTML = `
       <h1 style="font-size:24px;margin:0 0 8px">Insights</h1>
-      ${sectionSubNav('insights', 'source-tracking')}
+      ${sectionSubNav('settings', 'source-tracking')}
       <div class="empty-state"><h3>Candidate Sources</h3><p>Nothing to report yet — once candidates start applying, you'll see which sources (referrals, campaigns, job boards) are bringing in the best people.</p></div>`;
   }
 }
@@ -8797,7 +8815,7 @@ async function renderJobBoardSettings() {
   content.innerHTML = `
     <div style="max-width:700px">
       <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
-      ${sectionSubNav('outreach', 'job-board')}
+      ${sectionSubNav('settings', 'job-board')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Job Board</h2>
@@ -9522,7 +9540,7 @@ async function renderReferralLinks() {
   content.innerHTML = `
     <div style="max-width:900px">
       <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
-      ${sectionSubNav('outreach', 'referral-links')}
+      ${sectionSubNav('settings', 'referral-links')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Referral Links</h2>
@@ -9669,7 +9687,7 @@ async function renderJobSyndication() {
   content.innerHTML = `
     <div style="max-width:900px">
       <h1 style="font-size:24px;margin:0 0 8px">Outreach</h1>
-      ${sectionSubNav('outreach', 'job-syndication')}
+      ${sectionSubNav('settings', 'job-syndication')}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Post to Job Sites</h2>
