@@ -20461,6 +20461,96 @@ def outreach_campaigns_page_c40a():
     return render_template('app.html', page='outreach-campaigns', user=g.user)
 
 
+# ======================== CYCLE 40C: GUIDED SETUP WIZARD ========================
+
+@app.route('/api/setup-wizard/status', methods=['GET'])
+@require_auth
+def api_setup_wizard_status_c40c():
+    """Return which setup steps the RSC has completed.
+    Checks real data: territory, job, email config, campaign."""
+    db = get_db()
+    uid = g.user_id
+
+    # 1. Territory defined?
+    territory = db.execute(
+        'SELECT id FROM rsc_territories WHERE user_id=? LIMIT 1', (uid,)
+    ).fetchone()
+    has_territory = territory is not None
+
+    # 2. First job posted?
+    job = db.execute(
+        'SELECT id FROM jobs WHERE user_id=? LIMIT 1', (uid,)
+    ).fetchone()
+    has_job = job is not None
+
+    # 3. Email delivery configured? (SMTP or SendGrid)
+    user_row = db.execute(
+        'SELECT smtp_host, sendgrid_api_key_hash FROM users WHERE id=?', (uid,)
+    ).fetchone()
+    user = dict(user_row) if user_row else {}
+    has_email = bool(user.get('smtp_host')) or bool(user.get('sendgrid_api_key_hash'))
+
+    # 4. First campaign created?
+    campaign = db.execute(
+        'SELECT id FROM outreach_campaigns WHERE user_id=? LIMIT 1', (uid,)
+    ).fetchone()
+    has_campaign = campaign is not None
+
+    db.close()
+
+    steps = [
+        {'key': 'territory',  'label': 'Define Your Territory',    'done': has_territory,
+         'description': 'Set up the geographic area where you recruit producers.'},
+        {'key': 'job',        'label': 'Post Your First Job',      'done': has_job,
+         'description': 'Create a job listing to attract candidates.'},
+        {'key': 'email',      'label': 'Set Up Email Delivery',    'done': has_email,
+         'description': 'Connect SMTP or SendGrid so outreach emails actually send.'},
+        {'key': 'campaign',   'label': 'Launch First AI Campaign', 'done': has_campaign,
+         'description': 'Create an AI-powered outreach campaign to find producers.'},
+    ]
+    completed = sum(1 for s in steps if s['done'])
+    return jsonify({
+        'steps': steps,
+        'completed': completed,
+        'total': len(steps),
+        'all_done': completed == len(steps)
+    })
+
+
+@app.route('/api/setup-wizard/dismiss', methods=['POST'])
+@require_auth
+def api_setup_wizard_dismiss_c40c():
+    """Let the RSC hide the setup wizard permanently."""
+    db = get_db()
+    # Add column if not exists
+    try:
+        db.execute('ALTER TABLE users ADD COLUMN setup_wizard_dismissed INTEGER DEFAULT 0')
+        db.commit()
+    except:
+        pass
+    db.execute('UPDATE users SET setup_wizard_dismissed=1, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+               (g.user_id,))
+    db.commit()
+    db.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/setup-wizard/dismissed', methods=['GET'])
+@require_auth
+def api_setup_wizard_dismissed_c40c():
+    """Check if setup wizard has been dismissed."""
+    db = get_db()
+    try:
+        db.execute('ALTER TABLE users ADD COLUMN setup_wizard_dismissed INTEGER DEFAULT 0')
+        db.commit()
+    except:
+        pass
+    row = db.execute('SELECT setup_wizard_dismissed FROM users WHERE id=?', (g.user_id,)).fetchone()
+    db.close()
+    dismissed = bool(dict(row).get('setup_wizard_dismissed')) if row else False
+    return jsonify({'dismissed': dismissed})
+
+
 # ======================== INIT & RUN ========================
 
 if __name__ == '__main__':

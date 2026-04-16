@@ -586,6 +586,30 @@ async function onbComplete(destination) {
 
 // ==================== DASHBOARD ====================
 
+// ======================== CYCLE 40C: SETUP WIZARD HELPERS ========================
+
+async function dismissSetupWizard() {
+  if (!confirm('Hide the setup guide? You can always complete these steps from their respective pages.')) return;
+  try {
+    await api('/api/setup-wizard/dismiss', { method: 'POST' });
+    var wiz = document.getElementById('setup-wizard');
+    if (wiz) wiz.style.display = 'none';
+    showToast('Setup guide dismissed');
+  } catch(e) { showToast('Error: ' + (e.message || e), 'error'); }
+}
+
+function launchSetupStep(key) {
+  var routes = {
+    territory: '/territory-setup',
+    job: '/jobs-manage',
+    email: '/settings',
+    campaign: '/outreach-campaigns'
+  };
+  if (routes[key]) {
+    window.location.href = routes[key];
+  }
+}
+
 async function renderDashboard() {
   content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>Loading dashboard...</div>';
   try {
@@ -593,11 +617,55 @@ async function renderDashboard() {
     const s = data.stats;
     // Store dashboard data for drill-downs
     window._dashData = data;
+
+    // Cycle 40C: Check setup wizard status
+    var wizardHtml = '';
+    try {
+      var wzDismissed = await api('/api/setup-wizard/dismissed');
+      if (!wzDismissed.dismissed) {
+        var wzStatus = await api('/api/setup-wizard/status');
+        if (!wzStatus.all_done) {
+          var pct = Math.round((wzStatus.completed / wzStatus.total) * 100);
+          wizardHtml = `
+          <div id="setup-wizard" class="card" style="margin-bottom:24px;border:2px solid #0ace0a;border-radius:12px;overflow:hidden">
+            <div style="padding:20px 24px;background:linear-gradient(135deg,#f0fdf0 0%,#fff 100%);display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <h3 style="margin:0 0 4px 0;font-size:18px;color:#111">Get Started with ChannelView</h3>
+                <p style="margin:0;font-size:13px;color:#6b7280">Complete these steps to start recruiting producers with AI</p>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:13px;font-weight:600;color:#0ace0a">${wzStatus.completed}/${wzStatus.total} done</div>
+                <button onclick="dismissSetupWizard()" style="background:none;border:none;cursor:pointer;color:#999;font-size:18px" title="Dismiss">&times;</button>
+              </div>
+            </div>
+            <div style="height:4px;background:#e5e7eb"><div style="height:4px;background:#0ace0a;width:${pct}%;transition:width 0.3s"></div></div>
+            <div style="padding:16px 24px;display:grid;gap:0">
+              ${wzStatus.steps.map((step, i) => `
+                <div class="setup-step" style="display:flex;align-items:center;gap:16px;padding:14px 0;${i < wzStatus.steps.length - 1 ? 'border-bottom:1px solid #f3f4f6' : ''}">
+                  <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;${step.done ? 'background:#0ace0a;color:#fff' : 'background:#f3f4f6;color:#6b7280'}">
+                    ${step.done ? '&#10003;' : (i + 1)}
+                  </div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:14px;font-weight:600;color:${step.done ? '#999' : '#111'};${step.done ? 'text-decoration:line-through' : ''}">${step.label}</div>
+                    <div style="font-size:12px;color:#6b7280;margin-top:1px">${step.description}</div>
+                  </div>
+                  ${step.done ? '<span style="font-size:12px;color:#0ace0a;font-weight:600;white-space:nowrap">Complete</span>' : `<button class="btn btn-sm btn-primary" onclick="launchSetupStep('${step.key}')" style="white-space:nowrap;font-size:12px;padding:6px 14px">Set Up</button>`}
+                </div>
+              `).join('')}
+            </div>
+          </div>`;
+        }
+      }
+    } catch(wzErr) { /* wizard API not available, skip silently */ }
+
     content.innerHTML = `
       <div class="page-header">
         <div><h1>Home</h1><p class="subtitle">Welcome back, ${APP_USER.name}</p></div>
       </div>
       ${tabDescriptor('dashboard')}
+
+      <!-- Cycle 40C: Setup Wizard -->
+      ${wizardHtml}
 
       <!-- Cycle 40B: Quick Action Bar -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">
