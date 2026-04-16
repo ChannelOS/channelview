@@ -866,6 +866,48 @@ async function renderDashboard() {
       }
     } catch(wzErr) { /* wizard API not available, skip silently */ }
 
+    // Cycle 46.1: Always-visible Agency Setup panel (walkthroughs)
+    var setupWalkthroughsHtml = '';
+    try {
+      var wtData = await api('/api/walkthrough/flows');
+      var wtFlows = (wtData && wtData.flows) || [];
+      if (wtFlows.length) {
+        var wtDoneCount = wtFlows.filter(function(f){ return f.status === 'completed'; }).length;
+        var wtTotal = wtFlows.length;
+        var wtPct = wtTotal ? Math.round((wtDoneCount / wtTotal) * 100) : 0;
+        var flowCards = wtFlows.map(function(f){
+          var statusLabel, statusColor, btnLabel, btnStyle;
+          if (f.status === 'completed') { statusLabel = 'Complete'; statusColor = '#0ace0a'; btnLabel = 'Redo'; btnStyle = 'background:#f9fafb;color:#111;border:1px solid #e5e7eb'; }
+          else if (f.status === 'in_progress') { statusLabel = 'In progress - step ' + ((f.step_index||0)+1) + ' of ' + (f.total_steps||'?'); statusColor = '#f59e0b'; btnLabel = 'Continue'; btnStyle = 'background:#0ace0a;color:#000;border:none'; }
+          else if (f.status === 'skipped') { statusLabel = 'Skipped'; statusColor = '#9ca3af'; btnLabel = 'Start'; btnStyle = 'background:#0ace0a;color:#000;border:none'; }
+          else { statusLabel = 'Not started'; statusColor = '#9ca3af'; btnLabel = 'Start walkthrough'; btnStyle = 'background:#0ace0a;color:#000;border:none'; }
+          return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
+            +   '<div style="font-size:14px;font-weight:700;color:#111">' + (f.title || f.flow_key) + '</div>'
+            +   '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';white-space:nowrap">' + statusLabel + '</span>'
+            + '</div>'
+            + '<div style="font-size:12px;color:#6b7280;line-height:1.4;flex:1">' + (f.description || '') + '</div>'
+            + '<button onclick="WalkthroughPanel.open(\'' + f.flow_key + '\', { onComplete: function(){ renderDashboard(); } })" '
+            +   'style="' + btnStyle + ';font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;width:100%">'
+            +   btnLabel
+            + '</button>'
+            + '</div>';
+        }).join('');
+        setupWalkthroughsHtml =
+          '<div class="card" style="margin-bottom:24px;padding:20px 24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+          +   '<h3 style="margin:0;font-size:16px;color:#111">Agency Setup</h3>'
+          +   '<span style="font-size:12px;color:#6b7280">' + wtDoneCount + '/' + wtTotal + ' done</span>'
+          + '</div>'
+          + '<p style="margin:0 0 14px;font-size:13px;color:#6b7280">Short, guided conversations that tell your AI agent how to recruit for you. Redo any of them anytime.</p>'
+          + '<div style="height:4px;background:#f3f4f6;border-radius:2px;margin-bottom:16px;overflow:hidden"><div style="height:4px;background:#0ace0a;width:' + wtPct + '%;transition:width 0.3s"></div></div>'
+          + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">'
+          + flowCards
+          + '</div>'
+          + '</div>';
+      }
+    } catch(wtErr) { /* walkthrough API not available, skip silently */ }
+
     content.innerHTML = `
       <div class="page-header">
         <div><h1>Home</h1><p class="subtitle">Welcome back, ${APP_USER.name}</p></div>
@@ -874,6 +916,9 @@ async function renderDashboard() {
 
       <!-- Cycle 40C: Setup Wizard -->
       ${wizardHtml}
+
+      <!-- Cycle 46.1: Always-visible Agency Setup walkthroughs -->
+      ${setupWalkthroughsHtml}
 
       <!-- Cycle 40B: Quick Action Bar -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">
