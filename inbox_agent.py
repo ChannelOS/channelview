@@ -48,16 +48,23 @@ INBOX_ENCRYPTION_KEY = os.environ.get('INBOX_ENCRYPTION_KEY', '')
 
 # Scopes requested during OAuth.
 # - openid/email/profile/offline_access: needed to get an ID token + refresh token
-# - Mail.Read / Mail.Send: primary mailbox read and send
-# - Mail.Read.Shared / Mail.Send.Shared: delegated/shared mailboxes (scenario B)
-# NOTE: Calendar.Read / Calendar.ReadWrite will be added in tasks #10-12 when we
-# build the morning brief. They must also be added as delegated API permissions
-# on the Azure app registration before being requested here, or AAD throws
-# AADSTS650053 ("scope does not exist on the resource").
+# - Mail.Read / Mail.Send: primary mailbox read and send (user consent only)
+#
+# NOTE on scope choices:
+#   Mail.Read.Shared / Mail.Send.Shared were intentionally REMOVED. Those scopes
+#   trigger "Need admin approval" on any tenant where the user isn't a Global
+#   Admin. Since Joe connects multiple M365 mailboxes across tenants he doesn't
+#   admin, requiring shared-mailbox permissions would block him on every
+#   third-party tenant. If we ever want to support shared mailboxes, it should
+#   be a separate opt-in OAuth flow, not a blanket requirement.
+#
+#   Calendar.Read / Calendar.ReadWrite will be added in tasks #10-12 when we
+#   build the morning brief. They also need to be added as delegated API
+#   permissions on the Azure app registration before being requested here, or
+#   AAD throws AADSTS650053 ("scope does not exist on the resource").
 OAUTH_SCOPES = [
     'openid', 'email', 'profile', 'offline_access',
     'Mail.Read', 'Mail.Send',
-    'Mail.Read.Shared', 'Mail.Send.Shared',
 ]
 
 AUTHORIZE_URL = f'https://login.microsoftonline.com/{MS_TENANT}/oauth2/v2.0/authorize'
@@ -572,18 +579,3 @@ def register_inbox_routes(app):
         path = request.path or '/'
 
         # Health check
-        if path == '/__inbox/health':
-            return {
-                'ok': True,
-                'service': 'inbox-agent',
-                'time': datetime.utcnow().isoformat() + 'Z',
-            }
-
-        handler = _INBOX_ROUTES.get(path)
-        if handler is None:
-            abort(404)
-
-        if request.method != 'GET':
-            abort(405)
-
-        return handler()
