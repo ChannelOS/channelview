@@ -581,4 +581,9 @@ def register_inbox_routes(app):
         if handler is None:
             abort(404)
 
-        if request.method != 'G
+        if request.method != 'GET':
+            abort(405)
+
+        return handler()
+
+    return app
