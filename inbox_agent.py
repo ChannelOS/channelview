@@ -420,7 +420,20 @@ def _is_inbox_host() -> bool:
     host = (request.host or '').lower()
     # Strip port if present
     host = host.split(':')[0]
-    return host == INBOX_HOST.lower()
+    match = host == INBOX_HOST.lower()
+    # TEMPORARY DEBUG — remove after diagnosis
+    try:
+        print(
+            f"[inbox-dbg] path={request.path!r} "
+            f"request.host={request.host!r} "
+            f"Host-header={request.headers.get('Host')!r} "
+            f"XFH={request.headers.get('X-Forwarded-Host')!r} "
+            f"INBOX_HOST={INBOX_HOST!r} match={match}",
+            flush=True,
+        )
+    except Exception:
+        pass
+    return match
 
 
 def _handle_landing():
@@ -579,3 +592,18 @@ def register_inbox_routes(app):
         path = request.path or '/'
 
         # Health check
+        if path == '/__inbox/health':
+            return {
+                'ok': True,
+                'service': 'inbox-agent',
+                'time': datetime.utcnow().isoformat() + 'Z',
+            }
+
+        handler = _INBOX_ROUTES.get(path)
+        if handler is None:
+            abort(404)
+
+        if request.method != 'GET':
+            abort(405)
+
+        return handler()
