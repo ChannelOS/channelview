@@ -420,20 +420,7 @@ def _is_inbox_host() -> bool:
     host = (request.host or '').lower()
     # Strip port if present
     host = host.split(':')[0]
-    match = host == INBOX_HOST.lower()
-    # TEMPORARY DEBUG — remove after diagnosis
-    try:
-        print(
-            f"[inbox-dbg] path={request.path!r} "
-            f"request.host={request.host!r} "
-            f"Host-header={request.headers.get('Host')!r} "
-            f"XFH={request.headers.get('X-Forwarded-Host')!r} "
-            f"INBOX_HOST={INBOX_HOST!r} match={match}",
-            flush=True,
-        )
-    except Exception:
-        pass
-    return match
+    return host == INBOX_HOST.lower()
 
 
 def _handle_landing():
