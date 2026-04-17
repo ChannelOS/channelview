@@ -50,12 +50,14 @@ INBOX_ENCRYPTION_KEY = os.environ.get('INBOX_ENCRYPTION_KEY', '')
 # - openid/email/profile/offline_access: needed to get an ID token + refresh token
 # - Mail.Read / Mail.Send: primary mailbox read and send
 # - Mail.Read.Shared / Mail.Send.Shared: delegated/shared mailboxes (scenario B)
-# - Calendar.Read / Calendar.ReadWrite: future morning brief (#10-12)
+# NOTE: Calendar.Read / Calendar.ReadWrite will be added in tasks #10-12 when we
+# build the morning brief. They must also be added as delegated API permissions
+# on the Azure app registration before being requested here, or AAD throws
+# AADSTS650053 ("scope does not exist on the resource").
 OAUTH_SCOPES = [
     'openid', 'email', 'profile', 'offline_access',
     'Mail.Read', 'Mail.Send',
     'Mail.Read.Shared', 'Mail.Send.Shared',
-    'Calendar.Read', 'Calendar.ReadWrite',
 ]
 
 AUTHORIZE_URL = f'https://login.microsoftonline.com/{MS_TENANT}/oauth2/v2.0/authorize'
@@ -585,5 +587,3 @@ def register_inbox_routes(app):
             abort(405)
 
         return handler()
-
-    return app
