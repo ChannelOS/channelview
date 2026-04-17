@@ -1,0 +1,584 @@
+"""
+Inbox Agent — Connect-Outlook landing page and OAuth flow.
+Served at https://inbox.mychannelview.com/ via host-header routing.
+
+Entry points (callable from app.py):
+    init_inbox_schema()            — creates inbox_users table (idempotent)
+    register_inbox_routes(app)     — adds the /, /auth/microsoft/start, /auth/microsoft/callback,
+                                     /auth/success routes. Active only when
+                                     request.host == INBOX_HOST.
+
+Env vars required:
+    MS_CLIENT_ID                   (Azure app ID)
+    MS_CLIENT_SECRET               (Azure app secret)
+    MS_TENANT                      (default: "common")
+    INBOX_REDIRECT_URI             (e.g. https://inbox.mychannelview.com/auth/microsoft/callback)
+    INBOX_ENCRYPTION_KEY           (Fernet key for refresh-token at-rest encryption)
+    INBOX_HOST                     (default: "inbox.mychannelview.com")
+"""
+import os
+import secrets
+import urllib.parse
+import urllib.request
+import urllib.error
+import json
+import base64
+import hashlib
+import hmac
+import re
+from datetime import datetime
+
+from flask import request, redirect, abort, make_response, render_template_string
+
+from database import get_db
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+INBOX_HOST = os.environ.get('INBOX_HOST', 'inbox.mychannelview.com')
+MS_CLIENT_ID = os.environ.get('MS_CLIENT_ID', '')
+MS_CLIENT_SECRET = os.environ.get('MS_CLIENT_SECRET', '')
+MS_TENANT = os.environ.get('MS_TENANT', 'common')
+INBOX_REDIRECT_URI = os.environ.get(
+    'INBOX_REDIRECT_URI',
+    f'https://{INBOX_HOST}/auth/microsoft/callback'
+)
+INBOX_ENCRYPTION_KEY = os.environ.get('INBOX_ENCRYPTION_KEY', '')
+
+# Scopes requested during OAuth.
+# - openid/email/profile/offline_access: needed to get an ID token + refresh token
+# - Mail.Read / Mail.Send: primary mailbox read and send
+# - Mail.Read.Shared / Mail.Send.Shared: delegated/shared mailboxes (scenario B)
+# - Calendar.Read / Calendar.ReadWrite: future morning brief (#10-12)
+OAUTH_SCOPES = [
+    'openid', 'email', 'profile', 'offline_access',
+    'Mail.Read', 'Mail.Send',
+    'Mail.Read.Shared', 'Mail.Send.Shared',
+    'Calendar.Read', 'Calendar.ReadWrite',
+]
+
+AUTHORIZE_URL = f'https://login.microsoftonline.com/{MS_TENANT}/oauth2/v2.0/authorize'
+TOKEN_URL = f'https://login.microsoftonline.com/{MS_TENANT}/oauth2/v2.0/token'
+
+STATE_COOKIE = 'inbox_oauth_state'
+
+
+# ---------------------------------------------------------------------------
+# Schema
+# ---------------------------------------------------------------------------
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS inbox_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ms_object_id TEXT UNIQUE NOT NULL,
+    ms_tenant_id TEXT,
+    email TEXT NOT NULL,
+    display_name TEXT,
+    first_name TEXT,
+    alias TEXT UNIQUE NOT NULL,
+    refresh_token_enc TEXT,
+    scopes TEXT,
+    brief_enabled INTEGER DEFAULT 1,
+    brief_time_local TEXT DEFAULT '07:00',
+    timezone TEXT DEFAULT 'America/Chicago',
+    last_brief_sent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_users_email ON inbox_users(email);
+CREATE INDEX IF NOT EXISTS idx_inbox_users_alias ON inbox_users(alias);
+"""
+
+
+def init_inbox_schema():
+    """Create inbox_users table if it does not exist. Idempotent."""
+    try:
+        conn = get_db(autocommit=True)
+        # Postgres does not support AUTOINCREMENT — rewrite if running PG
+        sql = SCHEMA
+        if os.environ.get('DATABASE_URL', '').startswith('postgres'):
+            sql = sql.replace(
+                'INTEGER PRIMARY KEY AUTOINCREMENT',
+                'SERIAL PRIMARY KEY'
+            ).replace(
+                'brief_enabled INTEGER DEFAULT 1',
+                'brief_enabled BOOLEAN DEFAULT TRUE'
+            )
+        conn.executescript(sql) if hasattr(conn, 'executescript') else [
+            conn.cursor().execute(stmt) for stmt in sql.split(';') if stmt.strip()
+        ]
+        try:
+            conn.close()
+        except Exception:
+            pass
+    except Exception as e:
+        # Don't crash app startup if inbox schema fails — log and continue.
+        print(f"[inbox_agent] init_inbox_schema failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Encryption (refresh token at rest)
+# ---------------------------------------------------------------------------
+
+def _derive_key(passphrase: str) -> bytes:
+    """Derive a 32-byte key from the env passphrase."""
+    return hashlib.sha256(passphrase.encode('utf-8')).digest()
+
+
+def encrypt_token(plaintext: str) -> str:
+    """Encrypt a refresh token using AES-via-XOR-with-HMAC (stdlib-only).
+
+    NOT best-in-class; it's a pragmatic stdlib approach until we wire in the
+    `cryptography` library. Token is XOR'd with an HKDF-like stream derived
+    from the key, and HMAC-signed for integrity.
+    """
+    if not INBOX_ENCRYPTION_KEY:
+        raise RuntimeError('INBOX_ENCRYPTION_KEY not set')
+    key = _derive_key(INBOX_ENCRYPTION_KEY)
+    nonce = secrets.token_bytes(16)
+    stream = b''
+    counter = 0
+    while len(stream) < len(plaintext.encode('utf-8')):
+        stream += hashlib.sha256(key + nonce + counter.to_bytes(4, 'big')).digest()
+        counter += 1
+    pt_bytes = plaintext.encode('utf-8')
+    ct = bytes(a ^ b for a, b in zip(pt_bytes, stream[:len(pt_bytes)]))
+    mac = hmac.new(key, nonce + ct, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(nonce + mac + ct).decode('ascii')
+
+
+def decrypt_token(ciphertext: str) -> str:
+    if not INBOX_ENCRYPTION_KEY:
+        raise RuntimeError('INBOX_ENCRYPTION_KEY not set')
+    key = _derive_key(INBOX_ENCRYPTION_KEY)
+    raw = base64.urlsafe_b64decode(ciphertext.encode('ascii'))
+    nonce, mac, ct = raw[:16], raw[16:48], raw[48:]
+    expected = hmac.new(key, nonce + ct, hashlib.sha256).digest()
+    if not hmac.compare_digest(mac, expected):
+        raise ValueError('MAC check failed — refresh token tampered with')
+    stream = b''
+    counter = 0
+    while len(stream) < len(ct):
+        stream += hashlib.sha256(key + nonce + counter.to_bytes(4, 'big')).digest()
+        counter += 1
+    return bytes(a ^ b for a, b in zip(ct, stream[:len(ct)])).decode('utf-8')
+
+
+# ---------------------------------------------------------------------------
+# Alias generator
+# ---------------------------------------------------------------------------
+
+def _slug(name: str) -> str:
+    s = re.sub(r'[^a-z0-9]+', '', (name or '').lower())
+    return s[:20] or 'user'
+
+
+def generate_alias(first_name: str, existing_check) -> str:
+    """
+    Generate a unique `firstname-XXXX@inbox.mychannelview.com` local part.
+    `existing_check` is a callable(alias) -> bool that returns True if taken.
+    Returns the local part only (no @domain).
+    """
+    base = _slug(first_name)
+    for _ in range(10):
+        suffix = secrets.token_hex(2)  # 4 hex chars
+        candidate = f'{base}-{suffix}'
+        if not existing_check(candidate):
+            return candidate
+    # Extremely unlikely to hit 10 collisions; use timestamp as fallback
+    return f'{base}-{secrets.token_hex(4)}'
+
+
+def _alias_exists(alias: str) -> bool:
+    conn = get_db()
+    try:
+        cur = conn.execute('SELECT 1 FROM inbox_users WHERE alias = ?', (alias,))
+        return cur.fetchone() is not None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# OAuth helpers
+# ---------------------------------------------------------------------------
+
+def _build_authorize_url(state: str) -> str:
+    params = {
+        'client_id': MS_CLIENT_ID,
+        'response_type': 'code',
+        'redirect_uri': INBOX_REDIRECT_URI,
+        'response_mode': 'query',
+        'scope': ' '.join(OAUTH_SCOPES),
+        'state': state,
+        'prompt': 'select_account',
+    }
+    return f'{AUTHORIZE_URL}?{urllib.parse.urlencode(params)}'
+
+
+def _exchange_code_for_tokens(code: str) -> dict:
+    data = urllib.parse.urlencode({
+        'client_id': MS_CLIENT_ID,
+        'client_secret': MS_CLIENT_SECRET,
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': INBOX_REDIRECT_URI,
+        'scope': ' '.join(OAUTH_SCOPES),
+    }).encode('utf-8')
+    req = urllib.request.Request(
+        TOKEN_URL,
+        data=data,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode('utf-8')
+            return json.loads(body)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'token exchange failed: {e.code} {body}')
+
+
+def _parse_id_token(id_token: str) -> dict:
+    """Decode an ID token payload WITHOUT signature verification.
+    OK here because the token came directly from Microsoft over TLS in the
+    token-endpoint response we just made — it's not a user-supplied value.
+    """
+    parts = id_token.split('.')
+    if len(parts) != 3:
+        return {}
+    payload_b64 = parts[1] + '=' * (-len(parts[1]) % 4)
+    try:
+        return json.loads(base64.urlsafe_b64decode(payload_b64).decode('utf-8'))
+    except Exception:
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Templates (inline to keep feature self-contained)
+# ---------------------------------------------------------------------------
+
+LANDING_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inbox Agent — Channel One</title>
+<style>
+ :root{--green:#0ace0a;--green-dark:#08a808;--ink:#111;--muted:#555;--line:#e5e5e5}
+ *{box-sizing:border-box}
+ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+      margin:0;color:var(--ink);background:#fff;line-height:1.55}
+ .wrap{max-width:620px;margin:0 auto;padding:64px 24px 80px}
+ .logo{font-weight:800;letter-spacing:-.02em;font-size:18px;color:#000;display:flex;align-items:center;gap:8px;margin-bottom:48px}
+ .logo .u{display:inline-block;width:22px;height:22px;background:var(--green);border-radius:4px}
+ h1{font-size:34px;line-height:1.15;margin:0 0 16px;letter-spacing:-.01em}
+ .lede{font-size:17px;color:var(--muted);margin:0 0 36px;max-width:520px}
+ .card{border:1px solid var(--line);border-radius:12px;padding:28px;margin-bottom:20px;background:#fff}
+ .card h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;color:#000}
+ .card p{margin:0 0 16px;color:var(--muted);font-size:15px}
+ .cta{display:inline-flex;align-items:center;gap:10px;background:#000;color:#fff;border:0;
+      padding:14px 22px;border-radius:8px;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer}
+ .cta:hover{background:#222}
+ .cta.green{background:var(--green);color:#000}
+ .cta.green:hover{background:var(--green-dark)}
+ .steps{counter-reset:step;padding:0;margin:0 0 8px;list-style:none}
+ .steps li{counter-increment:step;padding:6px 0 6px 34px;position:relative;font-size:15px;color:var(--muted)}
+ .steps li::before{content:counter(step);position:absolute;left:0;top:4px;width:24px;height:24px;
+      border-radius:50%;background:var(--green);color:#000;font-weight:700;font-size:13px;
+      display:flex;align-items:center;justify-content:center}
+ .foot{margin-top:48px;padding-top:24px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+ .foot a{color:#000}
+ .ms-logo{width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="u"></span> CHANNEL ONE &nbsp;·&nbsp; Inbox Agent</div>
+
+  <h1>An email address that thinks.</h1>
+  <p class="lede">Forward something to Inbox Agent — a scheduling back-and-forth, a messy client thread,
+  a half-written reply you don't want to finish — and it handles the next step for you.
+  Replies, drafts, summaries, follow-ups, reminders, all inside your existing inbox.</p>
+
+  <div class="card">
+    <h2>Connect Outlook to get started</h2>
+    <p>Takes about two minutes. You'll sign in with your Microsoft 365 account and approve
+    read/send permissions. When you're done, you'll get a personal forwarding address wired
+    straight to your mailbox.</p>
+    <a class="cta green" href="/auth/microsoft/start">
+      <svg class="ms-logo" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg"><path fill="#f1511b" d="M1 1h10v10H1z"/><path fill="#80cc28" d="M12 1h10v10H12z"/><path fill="#00adef" d="M1 12h10v10H1z"/><path fill="#fbbc09" d="M12 12h10v10H12z"/></svg>
+      Connect Outlook
+    </a>
+  </div>
+
+  <div class="card">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>Sign in with your Microsoft 365 account (multi-business inboxes are supported — one connect covers all of them)</li>
+      <li>Approve the read/send permissions (standard Microsoft Graph scopes, revocable any time)</li>
+      <li>Get your personal forwarding address: <code>yourname-a3f8@inbox.mychannelview.com</code></li>
+      <li>Forward any thread to it, or email <code>agent@inbox.mychannelview.com</code> with a plain-English ask</li>
+    </ol>
+  </div>
+
+  <div class="foot">
+    Questions? Email <a href="mailto:joe@channelonestrategies.com">joe@channelonestrategies.com</a>.
+    Revoke access any time at <a href="https://account.microsoft.com/privacy">account.microsoft.com/privacy</a>.
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+SUCCESS_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>You're connected — Inbox Agent</title>
+<style>
+ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+      margin:0;color:#111;background:#fff;line-height:1.55}
+ .wrap{max-width:620px;margin:0 auto;padding:64px 24px 80px}
+ .logo{font-weight:800;letter-spacing:-.02em;font-size:18px;color:#000;display:flex;align-items:center;gap:8px;margin-bottom:48px}
+ .logo .u{display:inline-block;width:22px;height:22px;background:#0ace0a;border-radius:4px}
+ h1{font-size:32px;line-height:1.15;margin:0 0 16px;letter-spacing:-.01em}
+ p{font-size:16px;color:#555;margin:0 0 18px}
+ .alias-box{background:#f6fff6;border:1px solid #c6efc6;border-radius:10px;padding:20px 22px;margin:22px 0 30px}
+ .alias-box .label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#2a7a2a;margin-bottom:8px}
+ .alias-box .addr{font-size:22px;font-weight:700;color:#000;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+ .card{border:1px solid #e5e5e5;border-radius:12px;padding:24px;margin-bottom:16px}
+ .card h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;color:#000}
+ .card p{margin:0 0 8px}
+ code{background:#f4f4f4;padding:2px 6px;border-radius:4px;font-size:14px}
+ .foot{margin-top:40px;font-size:13px;color:#888}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="u"></span> CHANNEL ONE &nbsp;·&nbsp; Inbox Agent</div>
+  <h1>You're connected, {{ first_name }}.</h1>
+  <p>Inbox Agent is now wired to <strong>{{ email }}</strong>. Here's your personal forwarding address:</p>
+
+  <div class="alias-box">
+    <div class="label">Your address</div>
+    <div class="addr">{{ alias }}@inbox.mychannelview.com</div>
+  </div>
+
+  <div class="card">
+    <h2>How to use it</h2>
+    <p>Forward or CC <code>{{ alias }}@inbox.mychannelview.com</code> on any thread you want the agent to act on.</p>
+    <p>Or email <code>agent@inbox.mychannelview.com</code> directly with a plain-English ask — "summarize the Oracle thread", "draft a follow-up to Henderson", "what's on my plate Thursday".</p>
+  </div>
+
+  <div class="card">
+    <h2>Coming soon</h2>
+    <p>Daily morning brief with your calendar, overnight triage, and open follow-ups — lands in your inbox at 7am. You'll get an email when it's live.</p>
+  </div>
+
+  <div class="foot">
+    Something off? Reply to the confirmation email — Joe's watching it personally for early users.
+    Revoke access at <a href="https://account.microsoft.com/privacy">account.microsoft.com/privacy</a>.
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+ERROR_HTML = r"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Connection failed</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:80px auto;padding:0 20px;color:#111}h1{color:#c00}a{color:#000}</style>
+</head><body>
+<h1>Connection didn't go through</h1>
+<p>Something went sideways during the Microsoft sign-in handoff. The error was:</p>
+<pre style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap">{{ message }}</pre>
+<p><a href="/">← Try again</a> or email <a href="mailto:joe@channelonestrategies.com">joe@channelonestrategies.com</a>.</p>
+</body></html>
+"""
+
+
+# ---------------------------------------------------------------------------
+# Route registration
+# ---------------------------------------------------------------------------
+
+def _is_inbox_host() -> bool:
+    host = (request.host or '').lower()
+    # Strip port if present
+    host = host.split(':')[0]
+    return host == INBOX_HOST.lower()
+
+
+def _handle_landing():
+    return LANDING_HTML
+
+
+def _handle_auth_start():
+    if not MS_CLIENT_ID or not MS_CLIENT_SECRET:
+        return render_template_string(
+            ERROR_HTML,
+            message='Server not configured (MS_CLIENT_ID / MS_CLIENT_SECRET missing).'
+        ), 500
+    state = secrets.token_urlsafe(24)
+    url = _build_authorize_url(state)
+    resp = make_response(redirect(url, code=302))
+    resp.set_cookie(
+        STATE_COOKIE, state,
+        max_age=600, secure=True, httponly=True, samesite='Lax'
+    )
+    return resp
+
+
+def _handle_auth_callback():
+    err = request.args.get('error')
+    if err:
+        desc = request.args.get('error_description', '')
+        return render_template_string(ERROR_HTML, message=f'{err}: {desc}'), 400
+
+    code = request.args.get('code')
+    state = request.args.get('state')
+    cookie_state = request.cookies.get(STATE_COOKIE)
+
+    if not code or not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        return render_template_string(
+            ERROR_HTML,
+            message='State mismatch — possible CSRF. Please start over.'
+        ), 400
+
+    try:
+        tokens = _exchange_code_for_tokens(code)
+    except Exception as e:
+        return render_template_string(ERROR_HTML, message=str(e)), 500
+
+    refresh_token = tokens.get('refresh_token', '')
+    id_token = tokens.get('id_token', '')
+    scopes_granted = tokens.get('scope', '')
+
+    if not refresh_token:
+        return render_template_string(
+            ERROR_HTML,
+            message='No refresh token returned — offline_access scope may be missing.'
+        ), 500
+
+    claims = _parse_id_token(id_token)
+    ms_object_id = claims.get('oid') or claims.get('sub', '')
+    ms_tenant_id = claims.get('tid', '')
+    email = (claims.get('email')
+             or claims.get('preferred_username')
+             or claims.get('upn')
+             or '').lower()
+    display_name = claims.get('name', '')
+    if display_name:
+        first_name = claims.get('given_name') or display_name.split(' ')[0]
+    else:
+        first_name = claims.get('given_name') or 'user'
+
+    if not ms_object_id or not email:
+        return render_template_string(
+            ERROR_HTML,
+            message='Microsoft did not return a usable account identity.'
+        ), 500
+
+    conn = get_db(autocommit=True)
+    try:
+        cur = conn.execute(
+            'SELECT id, alias FROM inbox_users WHERE ms_object_id = ?',
+            (ms_object_id,)
+        )
+        existing = cur.fetchone()
+        refresh_enc = encrypt_token(refresh_token)
+
+        if existing:
+            try:
+                alias = existing['alias']
+            except (TypeError, KeyError, IndexError):
+                alias = existing[1]
+            conn.execute(
+                """UPDATE inbox_users
+                   SET refresh_token_enc = ?, email = ?, display_name = ?,
+                       first_name = ?, scopes = ?, ms_tenant_id = ?,
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE ms_object_id = ?""",
+                (refresh_enc, email, display_name, first_name,
+                 scopes_granted, ms_tenant_id, ms_object_id)
+            )
+        else:
+            alias = generate_alias(first_name, _alias_exists)
+            conn.execute(
+                """INSERT INTO inbox_users
+                   (ms_object_id, ms_tenant_id, email, display_name, first_name,
+                    alias, refresh_token_enc, scopes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (ms_object_id, ms_tenant_id, email, display_name,
+                 first_name, alias, refresh_enc, scopes_granted)
+            )
+    except Exception as e:
+        return render_template_string(ERROR_HTML, message=f'Database error: {e}'), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    resp = make_response(redirect('/auth/success', code=302))
+    resp.set_cookie('inbox_alias', alias, max_age=300, secure=True, httponly=False, samesite='Lax')
+    resp.set_cookie('inbox_first', first_name, max_age=300, secure=True, httponly=False, samesite='Lax')
+    resp.set_cookie('inbox_email', email, max_age=300, secure=True, httponly=False, samesite='Lax')
+    resp.set_cookie(STATE_COOKIE, '', max_age=0, secure=True, httponly=True)
+    return resp
+
+
+def _handle_auth_success():
+    alias = request.cookies.get('inbox_alias', 'your-alias')
+    first_name = request.cookies.get('inbox_first', 'there')
+    email = request.cookies.get('inbox_email', 'your account')
+    return render_template_string(
+        SUCCESS_HTML, alias=alias, first_name=first_name, email=email
+    )
+
+
+# Map of path -> handler for the inbox host. Keep this narrow; any path not
+# listed returns 404 on the inbox host (we don't want to leak channelview UI
+# through inbox.mychannelview.com).
+_INBOX_ROUTES = {
+    '/': _handle_landing,
+    '/auth/microsoft/start': _handle_auth_start,
+    '/auth/microsoft/callback': _handle_auth_callback,
+    '/auth/success': _handle_auth_success,
+}
+
+
+def register_inbox_routes(app):
+    """Install a before_request hook that serves inbox.mychannelview.com
+    entirely, leaving channelview (mychannelview.com) untouched.
+
+    Because this runs as a before_request, it pre-empts Flask's route
+    dispatcher for inbox-host requests — even if channelview has a `/`
+    route registered, inbox gets there first.
+    """
+
+    @app.before_request
+    def _inbox_host_dispatcher():
+        if not _is_inbox_host():
+            return None  # Let channelview's normal routing handle it
+
+        path = request.path or '/'
+
+        # Health check
+        if path == '/__inbox/health':
+            return {
+                'ok': True,
+                'service': 'inbox-agent',
+                'time': datetime.utcnow().isoformat() + 'Z',
+            }
+
+        handler = _INBOX_ROUTES.get(path)
+        if handler is None:
+            abort(404)
+
+        if request.method != 'G

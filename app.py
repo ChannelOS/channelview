@@ -13,11 +13,16 @@ import jwt
 from database import get_db, init_db
 from config import config as app_config
 from storage_service import create_storage
+from inbox_agent import init_inbox_schema, register_inbox_routes
 
 # Initialize database tables on import (needed for Gunicorn which skips __main__)
 init_db()
+init_inbox_schema()
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
+# Host-based routing: serves inbox.mychannelview.com as the Inbox Agent,
+# leaves mychannelview.com as the ChannelView app.
+register_inbox_routes(app)
 _app_start_time = time.time()
 
 # Security: Require SECRET_KEY in production
