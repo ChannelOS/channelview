@@ -3462,6 +3462,14 @@ def init_db():
         except Exception:
             pass
 
+    # ======================== CYCLE 48: RESUME UPLOAD ON INBOUND APPLY ========================
+    # resume_url on unassigned_candidates so resumes attached to applicants in
+    # no-coverage zips are preserved and forwarded when an RSC claims them.
+    try:
+        conn.execute("ALTER TABLE unassigned_candidates ADD COLUMN resume_url TEXT")
+    except Exception:
+        pass
+
     try:
         conn.commit()
     except:

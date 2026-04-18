@@ -19906,12 +19906,20 @@ def _find_default_interview_for_user(db, user_id):
 def api_public_apply_inbound_c47():
     """Public inbound apply endpoint for channelcareers.io.
 
+    Accepts JSON or multipart/form-data. Optional resume file (PDF/DOCX, <=5MB).
     Body: {first_name, last_name, email, phone?, zip, source?, utm_source?, utm_medium?, utm_campaign?}
+    File: resume (optional, multipart only)
     Routes by zip to the best-match RSC subscriber. If no RSC covers the zip,
-    the candidate is held in the unassigned_candidates pool.
+    the candidate is held in the unassigned_candidates pool (resume preserved).
     """
     import secrets as _secrets
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
+
+    # Detect JSON vs multipart form
+    if request.content_type and request.content_type.startswith('multipart/form-data'):
+        data = request.form.to_dict()
+    else:
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+
     first_name = (data.get('first_name') or '').strip()
     last_name = (data.get('last_name') or '').strip()
     email = (data.get('email') or '').strip().lower()
@@ -19928,6 +19936,25 @@ def api_public_apply_inbound_c47():
         return jsonify({'error': 'Invalid email address', 'code': 'bad_email'}), 400
     if not zipcode.isdigit() or len(zipcode) != 5:
         return jsonify({'error': 'Invalid ZIP code (must be 5 digits)', 'code': 'bad_zip'}), 400
+
+    # ---- Cycle 48: optional resume attachment ----
+    resume_file = request.files.get('resume') if request.files else None
+    resume_ext = None
+    if resume_file and resume_file.filename:
+        allowed_ext = {'.pdf', '.docx', '.doc'}
+        ext = os.path.splitext(resume_file.filename)[1].lower()
+        if ext not in allowed_ext:
+            return jsonify({'error': 'Resume must be a PDF or Word document', 'code': 'bad_resume_type'}), 400
+        resume_file.stream.seek(0, os.SEEK_END)
+        size = resume_file.stream.tell()
+        resume_file.stream.seek(0)
+        if size > 5 * 1024 * 1024:
+            return jsonify({'error': 'Resume must be under 5MB', 'code': 'resume_too_large'}), 400
+        if size < 50:
+            return jsonify({'error': 'Resume file appears empty', 'code': 'bad_resume'}), 400
+        resume_ext = ext
+    else:
+        resume_file = None
 
     ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
 
@@ -19981,6 +20008,20 @@ def api_public_apply_inbound_c47():
             placeholders = ','.join(['?'] * len(base_cols))
             db.execute("INSERT INTO candidates (" + ','.join(base_cols) + ") VALUES (" + placeholders + ")", base_vals)
 
+            # ---- Cycle 48: save resume if attached ----
+            resume_url = None
+            if resume_file and resume_ext:
+                try:
+                    os.makedirs(RESUME_UPLOAD_DIR, exist_ok=True)
+                    safe_name = f"{candidate_id}_resume{resume_ext}"
+                    file_path = os.path.join(RESUME_UPLOAD_DIR, safe_name)
+                    resume_file.save(file_path)
+                    resume_url = f"/static/uploads/resumes/{safe_name}"
+                    if 'resume_url' in cand_cols:
+                        db.execute("UPDATE candidates SET resume_url=? WHERE id=?", (resume_url, candidate_id))
+                except Exception:
+                    resume_url = None  # resume failed but don't reject the application
+
             try:
                 auto_advance_candidate(db, candidate_id, 'candidate_created')
             except Exception:
@@ -19994,6 +20035,7 @@ def api_public_apply_inbound_c47():
                 'rsc_name': matched.get('agency_name') or matched.get('rsc_name') or '',
                 'next_step': 'You will receive an email shortly with next steps for your interview.',
                 'token': token,
+                'resume_saved': bool(resume_url),
             }), 201
 
         # No match - hold in unassigned pool
@@ -20010,17 +20052,37 @@ def api_public_apply_inbound_c47():
             }), 200
 
         u_id = str(uuid.uuid4())
-        db.execute("""
-            INSERT INTO unassigned_candidates
-              (id, first_name, last_name, email, phone, zip, source, utm_source, utm_medium, utm_campaign, applied_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (u_id, first_name, last_name, email, phone, zipcode, source,
-              utm_source, utm_medium, utm_campaign, datetime.utcnow().isoformat()))
+        u_cols = [r['name'] for r in db.execute("PRAGMA table_info(unassigned_candidates)").fetchall()]
+        base_u_cols = ['id', 'first_name', 'last_name', 'email', 'phone', 'zip', 'source', 'utm_source', 'utm_medium', 'utm_campaign', 'applied_at']
+        base_u_vals = [u_id, first_name, last_name, email, phone, zipcode, source,
+                       utm_source, utm_medium, utm_campaign, datetime.utcnow().isoformat()]
+
+        # ---- Cycle 48: save resume if attached (pre-insert so we can include in row) ----
+        resume_url = None
+        if resume_file and resume_ext:
+            try:
+                os.makedirs(RESUME_UPLOAD_DIR, exist_ok=True)
+                safe_name = f"u_{u_id}_resume{resume_ext}"
+                file_path = os.path.join(RESUME_UPLOAD_DIR, safe_name)
+                resume_file.save(file_path)
+                resume_url = f"/static/uploads/resumes/{safe_name}"
+            except Exception:
+                resume_url = None
+
+        if resume_url and 'resume_url' in u_cols:
+            base_u_cols.append('resume_url'); base_u_vals.append(resume_url)
+
+        placeholders = ','.join(['?'] * len(base_u_cols))
+        db.execute(
+            "INSERT INTO unassigned_candidates (" + ','.join(base_u_cols) + ") VALUES (" + placeholders + ")",
+            base_u_vals,
+        )
         db.commit()
         db.close()
         return jsonify({
             'status': 'unassigned',
             'message': "We don't have an opportunity in your area right now, but we'll keep your profile on file and reach out when one opens up.",
+            'resume_saved': bool(resume_url),
         }), 202
     except Exception as e:
         try:
@@ -20123,6 +20185,7 @@ def api_claim_unassigned_c47(uid):
         ('zip_code', u.get('zip')),
         ('routed_at', datetime.utcnow().isoformat()),
         ('portal_status', 'not_started'),
+        ('resume_url', u.get('resume_url')),
     ]:
         if col in cand_cols:
             base_cols.append(col); base_vals.append(val)
