@@ -70,11 +70,53 @@ class PgConnectionWrapper:
         sql_out = ''.join(result)
         # Convert SQLite datetime functions to PostgreSQL
         sql_out = sql_out.replace("datetime('now')", "NOW()")
+        # datetime('now', '-N hours/days/minutes/seconds') → (NOW() - INTERVAL 'N unit')
+        sql_out = re.sub(
+            r"datetime\(\s*'now'\s*,\s*'([+-])\s*(\d+)\s*(second|seconds|minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)'\s*\)",
+            lambda m: "(NOW() " + ("- " if m.group(1) == '-' else "+ ") + "INTERVAL '" + m.group(2) + " " + m.group(3) + "')",
+            sql_out,
+            flags=re.IGNORECASE
+        )
+        # datetime(col, '+N unit') or datetime(col, '-N unit') → (col::timestamp ± INTERVAL 'N unit')
+        sql_out = re.sub(
+            r"datetime\(\s*(\w+)\s*,\s*'([+-])\s*(\d+)\s*(second|seconds|minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)'\s*\)",
+            lambda m: "(" + m.group(1) + "::timestamp " + ("- " if m.group(2) == '-' else "+ ") + "INTERVAL '" + m.group(3) + " " + m.group(4) + "')",
+            sql_out,
+            flags=re.IGNORECASE
+        )
         # datetime(col, '+' || minutes || ' minutes') → col + (minutes || ' minutes')::INTERVAL
         sql_out = re.sub(
             r"datetime\((\w+),\s*'\+'\s*\|\|\s*(\w+)\s*\|\|\s*'\s*minutes'\)",
             r"(\1 + (\2 || ' minutes')::INTERVAL)",
             sql_out
+        )
+        # julianday(a) - julianday(b) → EXTRACT(EPOCH FROM (a - b))/86400.0
+        sql_out = re.sub(
+            r"julianday\(\s*([\w\.]+)\s*\)\s*-\s*julianday\(\s*([\w\.]+)\s*\)",
+            r"(EXTRACT(EPOCH FROM (\1::timestamp - \2::timestamp))/86400.0)",
+            sql_out,
+            flags=re.IGNORECASE
+        )
+        # strftime('%W', col) → TO_CHAR(col::timestamp, 'IW')
+        sql_out = re.sub(
+            r"strftime\(\s*'%W'\s*,\s*([\w\.]+)\s*\)",
+            r"TO_CHAR(\1::timestamp, 'IW')",
+            sql_out,
+            flags=re.IGNORECASE
+        )
+        # strftime('%Y-%m-%d', col) → TO_CHAR(col::timestamp, 'YYYY-MM-DD')
+        sql_out = re.sub(
+            r"strftime\(\s*'%Y-%m-%d'\s*,\s*([\w\.]+)\s*\)",
+            r"TO_CHAR(\1::timestamp, 'YYYY-MM-DD')",
+            sql_out,
+            flags=re.IGNORECASE
+        )
+        # strftime('%Y-%m', col) → TO_CHAR(col::timestamp, 'YYYY-MM')
+        sql_out = re.sub(
+            r"strftime\(\s*'%Y-%m'\s*,\s*([\w\.]+)\s*\)",
+            r"TO_CHAR(\1::timestamp, 'YYYY-MM')",
+            sql_out,
+            flags=re.IGNORECASE
         )
         # Replace SQLite double-quoted strings with single quotes in concatenation
         sql_out = sql_out.replace('|| " " ||', "|| ' ' ||")

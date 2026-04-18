@@ -4439,8 +4439,8 @@ def api_system_monitoring_c29():
             'new_users': db.execute('SELECT COUNT(*) as cnt FROM users WHERE created_at>=?', (day_ago,)).fetchone()['cnt'],
             'new_candidates': db.execute('SELECT COUNT(*) as cnt FROM candidates WHERE created_at>=?', (day_ago,)).fetchone()['cnt'],
             'completed_interviews': db.execute("SELECT COUNT(*) as cnt FROM candidates WHERE status='completed' AND completed_at>=?", (day_ago,)).fetchone()['cnt'],
-            'emails_sent': db.execute("SELECT COUNT(*) as cnt FROM email_log WHERE created_at>=? AND status='sent'", (day_ago,)).fetchone()['cnt'] if 'email_log' in [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()] else 0,
-            'emails_failed': db.execute("SELECT COUNT(*) as cnt FROM email_log WHERE created_at>=? AND status='failed'", (day_ago,)).fetchone()['cnt'] if 'email_log' in [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()] else 0,
+            'emails_sent': (db.execute("SELECT COUNT(*) as cnt FROM email_log WHERE created_at>=? AND status='sent'", (day_ago,)).fetchone() or {'cnt': 0})['cnt'],
+            'emails_failed': (db.execute("SELECT COUNT(*) as cnt FROM email_log WHERE created_at>=? AND status='failed'", (day_ago,)).fetchone() or {'cnt': 0})['cnt'],
         },
         'usage_7d': {
             'new_users': db.execute('SELECT COUNT(*) as cnt FROM users WHERE created_at>=?', (week_ago,)).fetchone()['cnt'],
@@ -13989,12 +13989,14 @@ async function submitLead() {{
 @require_role('admin')
 def api_db_info_c22():
     """Get database engine info and migration readiness."""
+    from database import USE_POSTGRES
     db = get_db()
-    # SQLite version
-    version = dict(db.execute('SELECT sqlite_version() as v').fetchone())['v']
-
-    # Table count
-    tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+    if USE_POSTGRES:
+        version = dict(db.execute("SELECT version() as v").fetchone())['v']
+        tables = db.execute("SELECT table_name as name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name").fetchall()
+    else:
+        version = dict(db.execute('SELECT sqlite_version() as v').fetchone())['v']
+        tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
     table_names = [dict(t)['name'] for t in tables]
 
     # Row counts for key tables
@@ -14004,15 +14006,17 @@ def api_db_info_c22():
             cnt = dict(db.execute(f'SELECT COUNT(*) as cnt FROM {table}').fetchone())['cnt']
             counts[table] = cnt
 
-    # DB file size
-    import os as _os
-    db_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'channelview.db')
-    db_size_mb = round(_os.path.getsize(db_path) / (1024 * 1024), 2) if _os.path.exists(db_path) else 0
+    # DB file size (SQLite only)
+    db_size_mb = 0
+    if not USE_POSTGRES:
+        import os as _os
+        db_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'channelview.db')
+        db_size_mb = round(_os.path.getsize(db_path) / (1024 * 1024), 2) if _os.path.exists(db_path) else 0
 
     db.close()
 
     return jsonify({
-        'engine': 'sqlite',
+        'engine': 'postgres' if USE_POSTGRES else 'sqlite',
         'version': version,
         'db_size_mb': db_size_mb,
         'total_tables': len(table_names),
@@ -14035,22 +14039,36 @@ def api_db_info_c22():
 @require_role('admin')
 def api_export_schema_c22():
     """Export the full database schema for PostgreSQL migration planning."""
+    from database import USE_POSTGRES
     db = get_db()
-    tables = db.execute(
-        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    ).fetchall()
+    schema = []
+    if USE_POSTGRES:
+        tables = db.execute(
+            "SELECT table_name as name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name"
+        ).fetchall()
+        for t in tables:
+            d = dict(t)
+            cols = db.execute(
+                "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema='public' AND table_name=%s ORDER BY ordinal_position",
+                (d['name'],)
+            ).fetchall()
+            col_defs = [f"{dict(c)['column_name']} {dict(c)['data_type']}" for c in cols]
+            create_sql = f"CREATE TABLE {d['name']} (\n  " + ",\n  ".join(col_defs) + "\n)"
+            schema.append({'table': d['name'], 'create_sql': create_sql})
+    else:
+        tables = db.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        ).fetchall()
+        for t in tables:
+            d = dict(t)
+            schema.append({'table': d['name'], 'create_sql': d['sql']})
     db.close()
 
-    schema = []
-    for t in tables:
-        d = dict(t)
-        schema.append({'table': d['name'], 'create_sql': d['sql']})
-
     return jsonify({
-        'engine': 'sqlite',
+        'engine': 'postgres' if USE_POSTGRES else 'sqlite',
         'schema': schema,
         'total_tables': len(schema),
-        'export_format': 'sqlite_create_statements',
+        'export_format': 'postgres_describe' if USE_POSTGRES else 'sqlite_create_statements',
         'postgres_migration_tip': 'Use pgloader or manual schema conversion. Replace TEXT PRIMARY KEY with UUID, TIMESTAMP with TIMESTAMPTZ, INTEGER DEFAULT 0 with BOOLEAN DEFAULT FALSE where appropriate.'
     })
 
