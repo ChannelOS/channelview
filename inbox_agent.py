@@ -46,6 +46,13 @@ INBOX_REDIRECT_URI = os.environ.get(
 )
 INBOX_ENCRYPTION_KEY = os.environ.get('INBOX_ENCRYPTION_KEY', '')
 
+# --- Agent / inbound config ---
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+ANTHROPIC_MODEL = os.environ.get('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001')
+POSTMARK_SERVER_TOKEN = os.environ.get('POSTMARK_SERVER_TOKEN', '')
+POSTMARK_INBOUND_TOKEN = os.environ.get('POSTMARK_INBOUND_TOKEN', '')  # Optional: verifies webhook origin
+AGENT_FROM_ADDRESS = os.environ.get('AGENT_FROM_ADDRESS', f'agent@{INBOX_HOST}')
+
 # Scopes requested during OAuth.
 # - openid/email/profile/offline_access: needed to get an ID token + refresh token
 # - Mail.Read / Mail.Send: primary mailbox read and send (user consent only)
@@ -413,6 +420,192 @@ ERROR_HTML = r"""<!DOCTYPE html>
 
 
 # ---------------------------------------------------------------------------
+# Agent plumbing: Claude call, Postmark send, thread extraction
+# ---------------------------------------------------------------------------
+
+def _http_post_json(url: str, headers: dict, body: dict, timeout: int = 30) -> dict:
+    """Small stdlib-only JSON POST helper. Returns parsed JSON response body."""
+    data = json.dumps(body).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode('utf-8')
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'HTTP {e.code} from {url}: {err_body}')
+
+
+def claude_summarize(thread_text: str, requester_email: str = '') -> str:
+    """Call Anthropic API to summarize a forwarded email thread.
+    Returns plain-text summary suitable for email reply.
+    """
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError('ANTHROPIC_API_KEY not set — cannot summarize.')
+
+    # Cap input to keep cost/latency sane. ~40k chars is roughly 10k tokens.
+    capped = thread_text[:40000]
+    if len(thread_text) > 40000:
+        capped += "\n\n[truncated — original was {} chars]".format(len(thread_text))
+
+    system_prompt = (
+        "You are Inbox Agent, a sharp executive assistant who summarizes email "
+        "threads forwarded to you. Produce a crisp plain-text summary of the "
+        "thread. Structure it as: (1) one-sentence TL;DR, (2) the key people "
+        "involved and their positions, (3) the 2-5 main points or decisions, "
+        "(4) any explicit asks of the reader, (5) suggested next step if one "
+        "is obvious. Skip signatures, legal boilerplate, and quoted duplicates. "
+        "Be direct. No preamble. No sign-off. Plain text only (no markdown)."
+    )
+
+    user_content = (
+        f"Forwarded by: {requester_email}\n\n"
+        f"--- BEGIN THREAD ---\n{capped}\n--- END THREAD ---"
+    )
+
+    result = _http_post_json(
+        'https://api.anthropic.com/v1/messages',
+        headers={
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+        },
+        body={
+            'model': ANTHROPIC_MODEL,
+            'max_tokens': 1024,
+            'system': system_prompt,
+            'messages': [{'role': 'user', 'content': user_content}],
+        },
+        timeout=60,
+    )
+    # Response shape: {"content":[{"type":"text","text":"..."}], ...}
+    blocks = result.get('content', [])
+    text_parts = [b.get('text', '') for b in blocks if b.get('type') == 'text']
+    return ('\n'.join(text_parts)).strip() or '(empty summary)'
+
+
+def postmark_send(to: str, subject: str, text_body: str, reply_to: str = '') -> dict:
+    """Send a plain-text email via Postmark. Returns parsed response."""
+    if not POSTMARK_SERVER_TOKEN:
+        raise RuntimeError('POSTMARK_SERVER_TOKEN not set — cannot send reply.')
+    body = {
+        'From': AGENT_FROM_ADDRESS,
+        'To': to,
+        'Subject': subject,
+        'TextBody': text_body,
+        'MessageStream': 'outbound',
+    }
+    if reply_to:
+        body['ReplyTo'] = reply_to
+    return _http_post_json(
+        'https://api.postmarkapp.com/email',
+        headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Postmark-Server-Token': POSTMARK_SERVER_TOKEN,
+        },
+        body=body,
+        timeout=20,
+    )
+
+
+def _strip_html(html: str) -> str:
+    """Very lightweight HTML -> text. Good enough for email bodies."""
+    if not html:
+        return ''
+    # Drop script/style blocks entirely
+    html = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    # Convert <br> and </p> to newlines
+    html = re.sub(r'<\s*br\s*/?>', '\n', html, flags=re.IGNORECASE)
+    html = re.sub(r'</\s*p\s*>', '\n\n', html, flags=re.IGNORECASE)
+    # Strip remaining tags
+    text = re.sub(r'<[^>]+>', '', html)
+    # Basic entity decode
+    text = (text
+            .replace('&nbsp;', ' ')
+            .replace('&amp;', '&')
+            .replace('&lt;', '<')
+            .replace('&gt;', '>')
+            .replace('&quot;', '"')
+            .replace('&#39;', "'"))
+    # Collapse excess blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def extract_thread_text(payload: dict) -> str:
+    """Pull the best-available body text from a Postmark inbound payload."""
+    text = (payload.get('TextBody') or '').strip()
+    if text:
+        return text
+    html = payload.get('HtmlBody') or ''
+    if html:
+        return _strip_html(html)
+    stripped = (payload.get('StrippedTextReply') or '').strip()
+    return stripped
+
+
+def _extract_recipient_alias(payload: dict) -> str:
+    """From a Postmark inbound payload, find our alias in the recipients.
+    Checks ToFull, CcFull, BccFull for any address ending in INBOX_HOST.
+    Returns the local part (before @) of the first match, or ''.
+    """
+    candidates = []
+    for key in ('ToFull', 'CcFull', 'BccFull'):
+        for r in payload.get(key) or []:
+            addr = (r.get('Email') or '').lower().strip()
+            if addr:
+                candidates.append(addr)
+    # Fallback to plain To/Cc/Bcc strings
+    for key in ('To', 'Cc', 'Bcc', 'OriginalRecipient'):
+        v = payload.get(key) or ''
+        if not v:
+            continue
+        # "Name <addr@x>, Name2 <addr2@x>"
+        for part in re.findall(r'<([^>]+)>|([^,\s]+@[^,\s]+)', v):
+            addr = (part[0] or part[1]).lower().strip()
+            if addr:
+                candidates.append(addr)
+
+    host = INBOX_HOST.lower()
+    for addr in candidates:
+        if addr.endswith('@' + host):
+            local = addr.split('@', 1)[0]
+            return local
+    return ''
+
+
+def _lookup_user_by_alias(alias: str):
+    """Return (id, email, first_name, alias) or None."""
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            'SELECT id, email, first_name, alias FROM inbox_users WHERE alias = ?',
+            (alias,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        try:
+            return {
+                'id': row['id'],
+                'email': row['email'],
+                'first_name': row['first_name'],
+                'alias': row['alias'],
+            }
+        except (TypeError, KeyError, IndexError):
+            return {
+                'id': row[0], 'email': row[1],
+                'first_name': row[2], 'alias': row[3],
+            }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Route registration
 # ---------------------------------------------------------------------------
 
@@ -551,6 +744,123 @@ def _handle_auth_success():
     )
 
 
+def _handle_inbound():
+    """Postmark inbound webhook.
+    Expects a JSON body from Postmark's inbound stream. Looks up the target
+    alias in inbox_users, runs the forwarded thread through Claude, and
+    emails the summary back to the sender.
+    Always returns 200 to Postmark after logging — Postmark retries on non-2xx
+    and we never want duplicate summaries.
+    """
+    # Optional webhook-auth: if POSTMARK_INBOUND_TOKEN is set, require it on a
+    # query arg ?token=... so only Postmark (or anyone we trust) can POST here.
+    if POSTMARK_INBOUND_TOKEN:
+        supplied = request.args.get('token', '')
+        if not secrets.compare_digest(supplied, POSTMARK_INBOUND_TOKEN):
+            print('[inbox_agent] inbound rejected: bad token')
+            return ('forbidden', 403)
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+    except Exception as e:
+        print(f'[inbox_agent] inbound: failed to parse JSON: {e}')
+        return ('bad json', 200)  # 200 so Postmark doesn't retry junk
+
+    from_email = (payload.get('From') or '').lower().strip()
+    from_name = payload.get('FromName') or ''
+    subject = payload.get('Subject') or '(no subject)'
+    message_id = payload.get('MessageID') or ''
+
+    print(f'[inbox_agent] inbound from={from_email!r} subject={subject!r} msgid={message_id!r}')
+
+    alias = _extract_recipient_alias(payload)
+    if not alias:
+        print('[inbox_agent] inbound: no alias found in recipients; dropping')
+        return ('no alias', 200)
+
+    user = _lookup_user_by_alias(alias)
+    if not user:
+        print(f'[inbox_agent] inbound: alias {alias!r} not found in inbox_users')
+        # Silently drop — don't reveal whether alias exists
+        return ('unknown alias', 200)
+
+    # Security gate: the inbound sender must be the mailbox owner. Prevents
+    # a random outsider from triggering summaries on behalf of a connected user.
+    if from_email != (user['email'] or '').lower():
+        print(f'[inbox_agent] inbound: sender {from_email!r} != owner {user["email"]!r}; rejecting')
+        # Bounce with a polite note (to the actual sender), but only once per
+        # message by relying on Postmark's dedupe on MessageID.
+        try:
+            postmark_send(
+                to=from_email,
+                subject=f'Re: {subject}',
+                text_body=(
+                    "Thanks for the note. This address is wired to a specific "
+                    "Microsoft 365 mailbox and only accepts forwards from that "
+                    "mailbox's owner. If you're the owner, forward from the "
+                    "signed-in account. Otherwise, please contact the owner "
+                    "directly.\n\n— Inbox Agent"
+                ),
+            )
+        except Exception as e:
+            print(f'[inbox_agent] bounce send failed: {e}')
+        return ('sender mismatch', 200)
+
+    thread = extract_thread_text(payload)
+    if not thread:
+        print('[inbox_agent] inbound: empty body; nothing to summarize')
+        try:
+            postmark_send(
+                to=from_email,
+                subject=f'Re: {subject}',
+                text_body=(
+                    "I got your message but couldn't find any thread text to "
+                    "summarize. Try forwarding the original email (not just a "
+                    "link or an attachment).\n\n— Inbox Agent"
+                ),
+            )
+        except Exception:
+            pass
+        return ('empty body', 200)
+
+    # Summarize via Claude
+    try:
+        summary = claude_summarize(thread, requester_email=from_email)
+    except Exception as e:
+        print(f'[inbox_agent] summarize failed: {e}')
+        try:
+            postmark_send(
+                to=from_email,
+                subject=f'Re: {subject}',
+                text_body=(
+                    "Inbox Agent hit a snag running the summary. I've logged "
+                    "it — try forwarding again in a few minutes. If it keeps "
+                    "happening, reply to this note and Joe will take a look.\n\n"
+                    f"(debug: {str(e)[:200]})\n\n— Inbox Agent"
+                ),
+            )
+        except Exception:
+            pass
+        return ('summarize error', 200)
+
+    # Reply to the forwarder with the summary
+    reply_subject = subject if subject.lower().startswith('re:') else f'Re: {subject}'
+    reply_body = (
+        f"Hi {user['first_name'] or 'there'} —\n\n"
+        f"{summary}\n\n"
+        "— Inbox Agent\n"
+        "(Reply to this email if the summary missed something; I'll take another pass.)"
+    )
+    try:
+        postmark_send(to=from_email, subject=reply_subject, text_body=reply_body)
+    except Exception as e:
+        print(f'[inbox_agent] reply send failed: {e}')
+        return ('send error', 200)
+
+    print(f'[inbox_agent] inbound: summary delivered to {from_email} for alias {alias}')
+    return ('ok', 200)
+
+
 # Map of path -> handler for the inbox host. Keep this narrow; any path not
 # listed returns 404 on the inbox host (we don't want to leak channelview UI
 # through inbox.mychannelview.com).
@@ -559,6 +869,12 @@ _INBOX_ROUTES = {
     '/auth/microsoft/start': _handle_auth_start,
     '/auth/microsoft/callback': _handle_auth_callback,
     '/auth/success': _handle_auth_success,
+}
+
+# POST-only routes (webhooks, form posts). Listed separately so the dispatcher
+# can enforce the correct method per route.
+_INBOX_POST_ROUTES = {
+    '/__inbox/inbound': _handle_inbound,
 }
 
 
@@ -586,11 +902,20 @@ def register_inbox_routes(app):
                 'time': datetime.utcnow().isoformat() + 'Z',
             }
 
+        # POST-only routes (webhooks) get first dibs
+        if request.method == 'POST':
+            post_handler = _INBOX_POST_ROUTES.get(path)
+            if post_handler is not None:
+                return post_handler()
+            # POSTing to a GET-only route => 405
+            if path in _INBOX_ROUTES:
+                abort(405)
+            abort(404)
+
+        # GET (and HEAD) — look up in the GET route table
         handler = _INBOX_ROUTES.get(path)
         if handler is None:
             abort(404)
-
-        if request.method != 'GET':
+        if request.method not in ('GET', 'HEAD'):
             abort(405)
-
         return handler()
