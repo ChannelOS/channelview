@@ -3326,6 +3326,142 @@ def init_db():
         except:
             pass
 
+    # ======================== CYCLE 47: ZIP ROUTING ENGINE + INBOUND APPLY ========================
+    # Master zip->lat/lng table used by route_zip_to_rsc() for Haversine distance filtering.
+    # Seeded lazily with the 38 US metro centers covering all 5 RSC regions; production can
+    # later swap in a full GeoNames/USPS dataset of ~41k US zips without schema changes.
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS zip_geo (
+        zip TEXT PRIMARY KEY,
+        lat REAL NOT NULL,
+        lng REAL NOT NULL,
+        city TEXT,
+        state TEXT
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_zip_geo_state ON zip_geo(state)")
+
+    # Unassigned candidates: inbound apply-inbound requests that couldn't be routed to any RSC.
+    # Acts as a demand-driven sales queue ("47 candidates in zip X are waiting for a subscriber").
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS unassigned_candidates (
+        id TEXT PRIMARY KEY,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT,
+        zip TEXT NOT NULL,
+        source TEXT DEFAULT 'channelcareers',
+        utm_source TEXT,
+        utm_medium TEXT,
+        utm_campaign TEXT,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        claimed_by_user_id TEXT,
+        claimed_at TIMESTAMP,
+        FOREIGN KEY (claimed_by_user_id) REFERENCES users(id)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_unassigned_zip ON unassigned_candidates(zip)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_unassigned_claimed ON unassigned_candidates(claimed_by_user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_unassigned_applied ON unassigned_candidates(applied_at)")
+
+    # Routing columns on candidates (idempotent ALTERs)
+    for alter in [
+        "ALTER TABLE candidates ADD COLUMN territory_id TEXT",
+        "ALTER TABLE candidates ADD COLUMN routed_at TIMESTAMP",
+        "ALTER TABLE candidates ADD COLUMN utm_source TEXT",
+        "ALTER TABLE candidates ADD COLUMN utm_medium TEXT",
+        "ALTER TABLE candidates ADD COLUMN utm_campaign TEXT",
+        "ALTER TABLE candidates ADD COLUMN zip_code TEXT",
+    ]:
+        try:
+            conn.execute(alter)
+        except Exception:
+            pass
+    for idx in [
+        "CREATE INDEX IF NOT EXISTS idx_candidates_territory ON candidates(territory_id)",
+        "CREATE INDEX IF NOT EXISTS idx_candidates_utm_source ON candidates(utm_source)",
+        "CREATE INDEX IF NOT EXISTS idx_candidates_zip ON candidates(zip_code)",
+    ]:
+        try:
+            conn.execute(idx)
+        except Exception:
+            pass
+
+    # Rate limiting: per-IP apply-inbound throttle
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS apply_inbound_rate_limit (
+        ip TEXT PRIMARY KEY,
+        last_apply_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        apply_count_today INTEGER DEFAULT 1,
+        window_started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+    # Seed zip_geo with ~38 US metro centers covering all 5 RSC regions + low-density fallbacks
+    try:
+        have_any = conn.execute("SELECT COUNT(*) FROM zip_geo").fetchone()[0]
+        if have_any < 20:
+            seed_zips = [
+                # Northwest region
+                ('98101', 47.6062, -122.3321, 'Seattle', 'WA'),
+                ('97201', 45.5152, -122.6784, 'Portland', 'OR'),
+                ('83702', 43.6150, -116.2023, 'Boise', 'ID'),
+                ('59101', 45.7833, -108.5007, 'Billings', 'MT'),
+                ('99501', 61.2181, -149.9003, 'Anchorage', 'AK'),
+                ('99701', 64.8378, -147.7164, 'Fairbanks', 'AK'),
+                # Southwest region
+                ('75201', 32.7767, -96.7970, 'Dallas', 'TX'),
+                ('77002', 29.7604, -95.3698, 'Houston', 'TX'),
+                ('78701', 30.2672, -97.7431, 'Austin', 'TX'),
+                ('78205', 29.4241, -98.4936, 'San Antonio', 'TX'),
+                ('85001', 33.4484, -112.0740, 'Phoenix', 'AZ'),
+                ('85701', 32.2226, -110.9747, 'Tucson', 'AZ'),
+                ('87501', 35.6870, -105.9378, 'Santa Fe', 'NM'),
+                ('89101', 36.1699, -115.1398, 'Las Vegas', 'NV'),
+                # California (Southwest-adjacent)
+                ('90001', 33.9731, -118.2479, 'Los Angeles', 'CA'),
+                ('94102', 37.7749, -122.4194, 'San Francisco', 'CA'),
+                ('92101', 32.7157, -117.1611, 'San Diego', 'CA'),
+                ('95814', 38.5816, -121.4944, 'Sacramento', 'CA'),
+                # Northeast region
+                ('10001', 40.7128, -74.0060, 'New York', 'NY'),
+                ('02108', 42.3601, -71.0589, 'Boston', 'MA'),
+                ('19103', 39.9526, -75.1652, 'Philadelphia', 'PA'),
+                ('15222', 40.4406, -79.9959, 'Pittsburgh', 'PA'),
+                ('21201', 39.2904, -76.6122, 'Baltimore', 'MD'),
+                ('20001', 38.9072, -77.0369, 'Washington', 'DC'),
+                # Southeast region
+                ('33101', 25.7617, -80.1918, 'Miami', 'FL'),
+                ('32801', 28.5383, -81.3792, 'Orlando', 'FL'),
+                ('32202', 30.3322, -81.6557, 'Jacksonville', 'FL'),
+                ('30303', 33.7490, -84.3880, 'Atlanta', 'GA'),
+                ('28202', 35.2271, -80.8431, 'Charlotte', 'NC'),
+                ('37201', 36.1627, -86.7816, 'Nashville', 'TN'),
+                ('70112', 29.9511, -90.0715, 'New Orleans', 'LA'),
+                # North region
+                ('60601', 41.8781, -87.6298, 'Chicago', 'IL'),
+                ('55101', 44.9537, -93.0900, 'St Paul', 'MN'),
+                ('55401', 44.9778, -93.2650, 'Minneapolis', 'MN'),
+                ('48201', 42.3314, -83.0458, 'Detroit', 'MI'),
+                ('53202', 43.0389, -87.9065, 'Milwaukee', 'WI'),
+                ('64101', 39.0997, -94.5786, 'Kansas City', 'MO'),
+                ('80202', 39.7392, -104.9903, 'Denver', 'CO'),
+                # Low-density / fallback zips for diagnostics
+                ('59718', 45.6770, -111.0429, 'Bozeman', 'MT'),
+                ('82001', 41.1400, -104.8202, 'Cheyenne', 'WY'),
+                ('58501', 46.8083, -100.7837, 'Bismarck', 'ND'),
+                ('57501', 44.3683, -100.3509, 'Pierre', 'SD'),
+            ]
+            for z, la, lg, city, st in seed_zips:
+                conn.execute(
+                    "INSERT OR IGNORE INTO zip_geo (zip, lat, lng, city, state) VALUES (?, ?, ?, ?, ?)",
+                    (z, la, lg, city, st),
+                )
+            conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
     try:
         conn.commit()
     except:

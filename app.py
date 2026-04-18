@@ -2,7 +2,7 @@
 ChannelView - Main Flask Application
 One-way async video interview platform for insurance agencies
 """
-import os, json, uuid, time, functools, hashlib
+import os, json, uuid, time, functools, hashlib, math
 from datetime import datetime, timedelta
 from flask import (Flask, request, jsonify, render_template, send_from_directory,
                    redirect, url_for, make_response, g)
@@ -108,6 +108,7 @@ def csrf_protect():
         '/api/v1/',  # Public API uses API key auth, not cookies
         '/api/integrations/zapier/webhook',  # Zapier inbound webhook
         '/api/voice/webhook',  # Retell AI webhook (uses its own verification)
+        '/api/public/',  # Public endpoints (channelcareers.io apply, etc.) — IP rate-limited
     ]
     if request.method in ('GET', 'HEAD', 'OPTIONS'):
         return
@@ -19737,6 +19738,404 @@ def api_check_zip_territory_c40a(tid, zipcode):
             pass
     db.close()
     return jsonify({'zip': zipcode, 'in_territory': in_territory, 'territory_id': tid})
+
+# ======================== CYCLE 47: ZIP ROUTING ENGINE + INBOUND APPLY ========================
+
+def haversine_miles(lat1, lng1, lat2, lng2):
+    """Great-circle distance between two lat/lng points in statute miles."""
+    try:
+        R = 3958.8  # Earth radius in miles
+        rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
+        dlat = math.radians(lat2 - lat1)
+        dlng = math.radians(lng2 - lng1)
+        a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlng / 2) ** 2
+        return 2 * R * math.asin(math.sqrt(a))
+    except Exception:
+        return 99999.0
+
+
+def _zip_coords(db, zipcode):
+    """Look up lat/lng for a 5-digit zip from zip_geo. Returns (lat, lng) or None."""
+    if not zipcode or len(zipcode) < 5:
+        return None
+    row = db.execute("SELECT lat, lng FROM zip_geo WHERE zip=?", (zipcode[:5],)).fetchone()
+    if not row:
+        return None
+    return (row['lat'], row['lng'])
+
+
+def route_zip_to_rsc(db, zipcode):
+    """Return the best-match RSC (user row dict) for an inbound candidate zip.
+
+    Routing order:
+      1. Any territory with an explicit zip_codes list containing the applicant zip - wins immediately.
+      2. Any active territory whose center_zip is within radius_miles of applicant zip (Haversine).
+         Tie-break: smallest radius wins (tighter territory = closer match),
+         then plan tier priority (enterprise > professional > starter > trial),
+         then round-robin by current pipeline load (lowest candidate count wins).
+      3. No match -> None (caller must route to unassigned queue).
+    """
+    if not zipcode or len(zipcode) < 5:
+        return None
+    zipcode = zipcode[:5]
+
+    # 1. Explicit zip list wins
+    explicit = db.execute("""
+        SELECT t.*, u.id as u_id, u.agency_name, u.name as rsc_name, u.plan, u.email
+        FROM rsc_territories t
+        JOIN users u ON u.id = t.user_id
+        WHERE t.is_active = 1
+    """).fetchall()
+    for r in explicit:
+        d = dict(r)
+        zips = []
+        try:
+            zips = json.loads(d.get('zip_codes') or '[]')
+        except Exception:
+            zips = []
+        if zipcode in zips:
+            return d
+
+    # 2. Radius match via Haversine
+    coords = _zip_coords(db, zipcode)
+    if not coords:
+        return None
+    applicant_lat, applicant_lng = coords
+
+    candidates = []
+    for r in explicit:
+        d = dict(r)
+        center = d.get('center_zip')
+        radius = d.get('radius_miles') or 25
+        if not center:
+            continue
+        c = _zip_coords(db, center)
+        if not c:
+            continue
+        dist = haversine_miles(applicant_lat, applicant_lng, c[0], c[1])
+        if dist <= radius:
+            d['_distance_miles'] = dist
+            d['_radius_miles'] = radius
+            candidates.append(d)
+
+    if not candidates:
+        return None
+
+    # Tie-break: plan tier priority
+    tier_rank = {'enterprise': 0, 'professional': 1, 'pro': 1, 'starter': 2, 'trial': 3, None: 4}
+
+    def pipeline_load(user_id):
+        try:
+            row = db.execute(
+                "SELECT COUNT(*) as c FROM candidates WHERE user_id=? AND status NOT IN ('hired','rejected','archived')",
+                (user_id,),
+            ).fetchone()
+            return row['c'] if row else 0
+        except Exception:
+            return 0
+
+    def sort_key(c):
+        return (
+            c['_radius_miles'],
+            tier_rank.get((c.get('plan') or '').lower(), 4),
+            pipeline_load(c['user_id']),
+            c['_distance_miles'],
+        )
+
+    candidates.sort(key=sort_key)
+    return candidates[0]
+
+
+def _check_apply_rate_limit(db, ip):
+    """IP-based rate limit for public apply endpoint. Returns True if allowed, False if blocked.
+
+    Window: 10 applications per IP per 24 hours. Automatically resets window after 24h.
+    """
+    if not ip:
+        return True
+    row = db.execute("SELECT * FROM apply_inbound_rate_limit WHERE ip=?", (ip,)).fetchone()
+    now = datetime.utcnow()
+    if not row:
+        db.execute(
+            "INSERT INTO apply_inbound_rate_limit (ip, last_apply_at, apply_count_today, window_started_at) VALUES (?, ?, 1, ?)",
+            (ip, now.isoformat(), now.isoformat()),
+        )
+        return True
+    r = dict(row)
+    try:
+        window_start = datetime.fromisoformat(r.get('window_started_at') or now.isoformat())
+    except Exception:
+        window_start = now
+    if (now - window_start) > timedelta(hours=24):
+        db.execute(
+            "UPDATE apply_inbound_rate_limit SET apply_count_today=1, window_started_at=?, last_apply_at=? WHERE ip=?",
+            (now.isoformat(), now.isoformat(), ip),
+        )
+        return True
+    count = (r.get('apply_count_today') or 0) + 1
+    if count > 10:
+        return False
+    db.execute(
+        "UPDATE apply_inbound_rate_limit SET apply_count_today=?, last_apply_at=? WHERE ip=?",
+        (count, now.isoformat(), ip),
+    )
+    return True
+
+
+def _find_default_interview_for_user(db, user_id):
+    """Find the RSC's default active interview to attach inbound candidates to."""
+    try:
+        row = db.execute(
+            "SELECT id FROM interviews WHERE user_id=? AND status='active' AND public_apply_enabled=1 ORDER BY created_at DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        if row:
+            return row['id']
+        row = db.execute(
+            "SELECT id FROM interviews WHERE user_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        if row:
+            return row['id']
+    except Exception:
+        pass
+    return None
+
+
+@app.route('/api/public/apply-inbound', methods=['POST'])
+def api_public_apply_inbound_c47():
+    """Public inbound apply endpoint for channelcareers.io.
+
+    Body: {first_name, last_name, email, phone?, zip, source?, utm_source?, utm_medium?, utm_campaign?}
+    Routes by zip to the best-match RSC subscriber. If no RSC covers the zip,
+    the candidate is held in the unassigned_candidates pool.
+    """
+    import secrets as _secrets
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    first_name = (data.get('first_name') or '').strip()
+    last_name = (data.get('last_name') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    phone = (data.get('phone') or '').strip()
+    zipcode = (data.get('zip') or data.get('zip_code') or '').strip()[:5]
+    source = (data.get('source') or 'channelcareers').strip()
+    utm_source = (data.get('utm_source') or '').strip() or None
+    utm_medium = (data.get('utm_medium') or '').strip() or None
+    utm_campaign = (data.get('utm_campaign') or '').strip() or None
+
+    if not first_name or not last_name or not email or not zipcode:
+        return jsonify({'error': 'first_name, last_name, email, and zip are required', 'code': 'missing_fields'}), 400
+    if '@' not in email or '.' not in email.split('@')[-1]:
+        return jsonify({'error': 'Invalid email address', 'code': 'bad_email'}), 400
+    if not zipcode.isdigit() or len(zipcode) != 5:
+        return jsonify({'error': 'Invalid ZIP code (must be 5 digits)', 'code': 'bad_zip'}), 400
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+
+    db = get_db()
+    try:
+        if not _check_apply_rate_limit(db, ip):
+            db.commit()
+            db.close()
+            return jsonify({'error': 'Too many applications from this IP. Please try again later.', 'code': 'rate_limited'}), 429
+
+        matched = route_zip_to_rsc(db, zipcode)
+
+        interview_id = None
+        if matched:
+            user_id = matched['user_id']
+            interview_id = _find_default_interview_for_user(db, user_id)
+            if not interview_id:
+                matched = None
+
+        if matched and interview_id:
+            existing = db.execute(
+                "SELECT id, token FROM candidates WHERE user_id=? AND email=?",
+                (user_id, email),
+            ).fetchone()
+            if existing:
+                db.close()
+                return jsonify({
+                    'status': 'already_applied',
+                    'message': 'You have already applied. Check your email for next steps.',
+                    'rsc_name': matched.get('agency_name') or matched.get('rsc_name') or '',
+                }), 200
+
+            candidate_id = str(uuid.uuid4())
+            token = _secrets.token_urlsafe(12)
+            territory_id = matched.get('id')
+
+            cand_cols = [r['name'] for r in db.execute("PRAGMA table_info(candidates)").fetchall()]
+            base_cols = ['id', 'user_id', 'interview_id', 'first_name', 'last_name', 'email', 'phone', 'token', 'status', 'source']
+            base_vals = [candidate_id, user_id, interview_id, first_name, last_name, email, phone, token, 'invited', source]
+            for col, val in [
+                ('territory_id', territory_id),
+                ('routed_at', datetime.utcnow().isoformat()),
+                ('utm_source', utm_source),
+                ('utm_medium', utm_medium),
+                ('utm_campaign', utm_campaign),
+                ('zip_code', zipcode),
+                ('portal_status', 'not_started'),
+            ]:
+                if col in cand_cols:
+                    base_cols.append(col); base_vals.append(val)
+            placeholders = ','.join(['?'] * len(base_cols))
+            db.execute("INSERT INTO candidates (" + ','.join(base_cols) + ") VALUES (" + placeholders + ")", base_vals)
+
+            try:
+                auto_advance_candidate(db, candidate_id, 'candidate_created')
+            except Exception:
+                pass
+
+            db.commit()
+            db.close()
+            return jsonify({
+                'status': 'routed',
+                'candidate_id': candidate_id,
+                'rsc_name': matched.get('agency_name') or matched.get('rsc_name') or '',
+                'next_step': 'You will receive an email shortly with next steps for your interview.',
+                'token': token,
+            }), 201
+
+        # No match - hold in unassigned pool
+        existing_u = db.execute(
+            "SELECT id FROM unassigned_candidates WHERE email=? AND zip=?",
+            (email, zipcode),
+        ).fetchone()
+        if existing_u:
+            db.commit()
+            db.close()
+            return jsonify({
+                'status': 'already_applied_unassigned',
+                'message': "We have your info on file. We'll reach out when an opportunity opens in your area.",
+            }), 200
+
+        u_id = str(uuid.uuid4())
+        db.execute("""
+            INSERT INTO unassigned_candidates
+              (id, first_name, last_name, email, phone, zip, source, utm_source, utm_medium, utm_campaign, applied_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (u_id, first_name, last_name, email, phone, zipcode, source,
+              utm_source, utm_medium, utm_campaign, datetime.utcnow().isoformat()))
+        db.commit()
+        db.close()
+        return jsonify({
+            'status': 'unassigned',
+            'message': "We don't have an opportunity in your area right now, but we'll keep your profile on file and reach out when one opens up.",
+        }), 202
+    except Exception as e:
+        try:
+            db.close()
+        except Exception:
+            pass
+        return jsonify({'error': 'Application could not be processed', 'detail': str(e)}), 500
+
+
+@app.route('/api/unassigned-candidates', methods=['GET'])
+@require_auth
+@require_fmo_admin
+def api_list_unassigned_c47():
+    """FMO admin view of unassigned candidates - grouped by zip with counts."""
+    db = get_db()
+    detail = request.args.get('detail') == '1'
+    zip_filter = request.args.get('zip')
+
+    if detail:
+        if zip_filter:
+            rows = db.execute("""
+                SELECT * FROM unassigned_candidates WHERE zip=? AND claimed_by_user_id IS NULL
+                ORDER BY applied_at DESC LIMIT 500
+            """, (zip_filter,)).fetchall()
+        else:
+            rows = db.execute("""
+                SELECT * FROM unassigned_candidates WHERE claimed_by_user_id IS NULL
+                ORDER BY applied_at DESC LIMIT 500
+            """).fetchall()
+        db.close()
+        return jsonify({'candidates': [dict(r) for r in rows]})
+
+    rows = db.execute("""
+        SELECT zip, COUNT(*) as candidate_count,
+               MIN(applied_at) as earliest,
+               MAX(applied_at) as latest
+        FROM unassigned_candidates
+        WHERE claimed_by_user_id IS NULL
+        GROUP BY zip
+        ORDER BY candidate_count DESC, latest DESC
+    """).fetchall()
+    results = []
+    for r in rows:
+        d = dict(r)
+        geo = db.execute("SELECT city, state FROM zip_geo WHERE zip=?", (d['zip'],)).fetchone()
+        if geo:
+            d['city'] = geo['city']
+            d['state'] = geo['state']
+        results.append(d)
+    total = db.execute(
+        "SELECT COUNT(*) as c FROM unassigned_candidates WHERE claimed_by_user_id IS NULL"
+    ).fetchone()['c']
+    db.close()
+    return jsonify({'zips': results, 'total_unassigned': total})
+
+
+@app.route('/api/unassigned-candidates/<uid>/claim', methods=['POST'])
+@require_auth
+@require_fmo_admin
+def api_claim_unassigned_c47(uid):
+    """FMO admin claims an unassigned candidate and assigns them to a specific RSC.
+
+    Body: {user_id: "<rsc_user_id>"}
+    """
+    import secrets as _secrets
+    data = request.get_json() or {}
+    target_user_id = data.get('user_id')
+    if not target_user_id:
+        return jsonify({'error': 'user_id is required'}), 400
+
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM unassigned_candidates WHERE id=? AND claimed_by_user_id IS NULL", (uid,)
+    ).fetchone()
+    if not row:
+        db.close()
+        return jsonify({'error': 'Unassigned candidate not found or already claimed'}), 404
+    u = dict(row)
+
+    target = db.execute("SELECT id FROM users WHERE id=?", (target_user_id,)).fetchone()
+    if not target:
+        db.close()
+        return jsonify({'error': 'Target RSC user not found'}), 404
+
+    interview_id = _find_default_interview_for_user(db, target_user_id)
+    if not interview_id:
+        db.close()
+        return jsonify({'error': 'Target RSC has no active interview to attach candidate to'}), 400
+
+    candidate_id = str(uuid.uuid4())
+    token = _secrets.token_urlsafe(12)
+    cand_cols = [r['name'] for r in db.execute("PRAGMA table_info(candidates)").fetchall()]
+    base_cols = ['id', 'user_id', 'interview_id', 'first_name', 'last_name', 'email', 'phone', 'token', 'status', 'source']
+    base_vals = [candidate_id, target_user_id, interview_id, u['first_name'], u['last_name'], u['email'],
+                 u.get('phone') or '', token, 'invited', u.get('source') or 'channelcareers']
+    for col, val in [
+        ('utm_source', u.get('utm_source')),
+        ('utm_medium', u.get('utm_medium')),
+        ('utm_campaign', u.get('utm_campaign')),
+        ('zip_code', u.get('zip')),
+        ('routed_at', datetime.utcnow().isoformat()),
+        ('portal_status', 'not_started'),
+    ]:
+        if col in cand_cols:
+            base_cols.append(col); base_vals.append(val)
+    placeholders = ','.join(['?'] * len(base_cols))
+    db.execute("INSERT INTO candidates (" + ','.join(base_cols) + ") VALUES (" + placeholders + ")", base_vals)
+
+    db.execute(
+        "UPDATE unassigned_candidates SET claimed_by_user_id=?, claimed_at=? WHERE id=?",
+        (target_user_id, datetime.utcnow().isoformat(), uid),
+    )
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'candidate_id': candidate_id, 'token': token}), 201
 
 # --- Outreach Sequence Endpoints ---
 
