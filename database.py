@@ -78,6 +78,17 @@ class PgConnectionWrapper:
         )
         # Replace SQLite double-quoted strings with single quotes in concatenation
         sql_out = sql_out.replace('|| " " ||', "|| ' ' ||")
+        # SQLite `INSERT OR IGNORE INTO ...` → PostgreSQL `INSERT INTO ... ON CONFLICT DO NOTHING`
+        # Regex handles case-insensitive match and varying whitespace. If the original SQL already
+        # contains its own ON CONFLICT clause we leave it alone; otherwise we append DO NOTHING.
+        if re.search(r"\bINSERT\s+OR\s+IGNORE\b", sql_out, re.IGNORECASE):
+            sql_out = re.sub(r"\bINSERT\s+OR\s+IGNORE\b", "INSERT", sql_out, flags=re.IGNORECASE)
+            if not re.search(r"\bON\s+CONFLICT\b", sql_out, re.IGNORECASE):
+                # Trim trailing semicolons/whitespace before appending
+                sql_out = sql_out.rstrip().rstrip(";")
+                sql_out = sql_out + " ON CONFLICT DO NOTHING"
+        # SQLite `INSERT OR REPLACE INTO ...` is rare in the codebase; we don't translate it
+        # because the Postgres equivalent requires an explicit conflict target column.
         return sql_out
 
     def execute(self, sql, params=None):

@@ -19991,7 +19991,7 @@ def api_public_apply_inbound_c47():
             token = _secrets.token_urlsafe(12)
             territory_id = matched.get('id')
 
-            cand_cols = [r['name'] for r in db.execute("PRAGMA table_info(candidates)").fetchall()]
+            cand_cols = _table_columns_c46(db, 'candidates')
             base_cols = ['id', 'user_id', 'interview_id', 'first_name', 'last_name', 'email', 'phone', 'token', 'status', 'source']
             base_vals = [candidate_id, user_id, interview_id, first_name, last_name, email, phone, token, 'invited', source]
             for col, val in [
@@ -20052,7 +20052,7 @@ def api_public_apply_inbound_c47():
             }), 200
 
         u_id = str(uuid.uuid4())
-        u_cols = [r['name'] for r in db.execute("PRAGMA table_info(unassigned_candidates)").fetchall()]
+        u_cols = _table_columns_c46(db, 'unassigned_candidates')
         base_u_cols = ['id', 'first_name', 'last_name', 'email', 'phone', 'zip', 'source', 'utm_source', 'utm_medium', 'utm_campaign', 'applied_at']
         base_u_vals = [u_id, first_name, last_name, email, phone, zipcode, source,
                        utm_source, utm_medium, utm_campaign, datetime.utcnow().isoformat()]
@@ -20174,7 +20174,7 @@ def api_claim_unassigned_c47(uid):
 
     candidate_id = str(uuid.uuid4())
     token = _secrets.token_urlsafe(12)
-    cand_cols = [r['name'] for r in db.execute("PRAGMA table_info(candidates)").fetchall()]
+    cand_cols = _table_columns_c46(db, 'candidates')
     base_cols = ['id', 'user_id', 'interview_id', 'first_name', 'last_name', 'email', 'phone', 'token', 'status', 'source']
     base_vals = [candidate_id, target_user_id, interview_id, u['first_name'], u['last_name'], u['email'],
                  u.get('phone') or '', token, 'invited', u.get('source') or 'channelcareers']
