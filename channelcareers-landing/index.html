@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Channel Careers - Launch your insurance career</title>
+<meta name="description" content="Apply in 60 seconds. Channel Careers connects motivated candidates with top insurance agencies hiring in your area.">
+<link rel="icon" type="image/png" href="/assets/channel-careers-icon-512.png">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;line-height:1.5}
+body{min-height:100vh}
+a{color:#0ace0a;text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1100px;margin:0 auto;padding:24px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 0 32px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:2px;font-size:22px}
+.logo-mark{background:#0ace0a;color:#000;width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px}
+.logo-sub{font-size:11px;color:#0ace0a;letter-spacing:3px;font-weight:700;text-transform:uppercase;margin-top:2px}
+.hero{display:grid;grid-template-columns:1.1fr 1fr;gap:48px;padding:40px 0 64px;align-items:start}
+.hero-left h1{font-size:clamp(34px,4.6vw,52px);line-height:1.1;font-weight:900;margin-bottom:20px}
+.hero-left h1 .accent{color:#0ace0a}
+.hero-left p.lead{color:#cfcfcf;font-size:18px;line-height:1.6;margin-bottom:24px;max-width:520px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px}
+.chip{background:#1a1a1a;border:1px solid #262626;color:#ccc;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600}
+.chip .dot{color:#0ace0a;margin-right:6px}
+.stats{display:flex;gap:28px;margin-top:20px;flex-wrap:wrap}
+.stat .num{font-size:28px;font-weight:900;color:#0ace0a}
+.stat .label{color:#888;font-size:12px;text-transform:uppercase;letter-spacing:1.5px}
+.card{background:#fff;color:#000;border-radius:12px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.card h2{font-size:22px;font-weight:900;margin-bottom:6px}
+.card .sub{color:#555;font-size:14px;margin-bottom:22px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.field{display:block;margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:700;color:#333;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.field input[type=text],.field input[type=email],.field input[type=tel]{width:100%;padding:12px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;background:#fff;color:#000;transition:border-color .15s}
+.field input:focus{outline:none;border-color:#0ace0a;box-shadow:0 0 0 3px rgba(10,206,10,.15)}
+.file-drop{border:2px dashed #ccc;border-radius:8px;padding:18px;text-align:center;cursor:pointer;transition:all .15s;background:#fafafa}
+.file-drop:hover{border-color:#0ace0a;background:#f0fff0}
+.file-drop.has-file{border-color:#0ace0a;background:#e6fce6}
+.file-drop input[type=file]{display:none}
+.file-drop .file-icon{color:#0ace0a;font-size:22px;font-weight:900;margin-bottom:4px}
+.file-drop .file-text{font-size:14px;color:#333;font-weight:600}
+.file-drop .file-hint{font-size:11px;color:#888;margin-top:4px}
+.file-drop.has-file .file-text{color:#087a08}
+.btn{display:block;width:100%;background:#0ace0a;color:#000;border:none;padding:16px;border-radius:8px;font-size:16px;font-weight:900;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:background .15s;margin-top:8px}
+.btn:hover{background:#08a808}
+.btn:disabled{background:#9fdb9f;cursor:not-allowed}
+.fine-print{color:#777;font-size:11px;margin-top:12px;text-align:center;line-height:1.5}
+.fine-print a{color:#087a08}
+.alert{padding:14px 16px;border-radius:8px;margin-bottom:16px;font-size:14px;font-weight:600;display:none}
+.alert.show{display:block}
+.alert.error{background:#ffe6e6;color:#990000;border:1px solid #ffcccc}
+.alert.success{background:#e6fce6;color:#087a08;border:1px solid #0ace0a}
+.how{padding:64px 0 40px;border-top:1px solid #222}
+.how h2{font-size:28px;font-weight:900;margin-bottom:8px;text-align:center}
+.how .sub{text-align:center;color:#aaa;font-size:15px;margin-bottom:40px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+.step{background:#1a1a1a;border:1px solid #262626;border-radius:10px;padding:24px}
+.step .n{background:#0ace0a;color:#000;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;margin-bottom:14px}
+.step h3{font-size:17px;font-weight:800;margin-bottom:6px}
+.step p{color:#999;font-size:14px;line-height:1.55}
+.foot{border-top:1px solid #222;margin-top:48px;padding:24px 0;color:#666;font-size:12px;text-align:center}
+.foot a{color:#888}
+.foot a:hover{color:#0ace0a}
+@media(max-width:820px){.hero{grid-template-columns:1fr;gap:32px;padding:16px 0 40px}.row{grid-template-columns:1fr}.topbar{padding:8px 0 16px}.logo{font-size:18px}.stats{gap:18px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="logo">
+      <div class="logo-mark">U</div>
+      <div>
+        <div>CHANNEL</div>
+        <div class="logo-sub">Careers</div>
+      </div>
+    </div>
+    <a href="mailto:careers@channelonestrategies.com" style="color:#888;font-size:13px">Contact</a>
+  </header>
+  <section class="hero">
+    <div class="hero-left">
+      <h1>Start your <span class="accent">insurance career</span> today.</h1>
+      <p class="lead">Channel Careers matches motivated candidates with top insurance agencies hiring in your zip code. No long forms. No ghosting. Just a fast interview on your schedule.</p>
+      <div class="chips">
+        <div class="chip"><span class="dot">&#9679;</span> Apply in 60 seconds</div>
+        <div class="chip"><span class="dot">&#9679;</span> Matched locally</div>
+        <div class="chip"><span class="dot">&#9679;</span> Video interview</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="num">310+</div><div class="label">Agencies hiring</div></div>
+        <div class="stat"><div class="num">50</div><div class="label">States</div></div>
+        <div class="stat"><div class="num">24h</div><div class="label">Response time</div></div>
+      </div>
+    </div>
+    <div class="card" id="applyCard">
+      <h2>Apply Now</h2>
+      <p class="sub">Takes about a minute. We'll match you to an agency in your area.</p>
+      <div class="alert error" id="errAlert"></div>
+      <div class="alert success" id="okAlert"></div>
+      <form id="applyForm" novalidate>
+        <div class="row">
+          <div class="field">
+            <label for="first_name">First name</label>
+            <input type="text" id="first_name" name="first_name" required autocomplete="given-name" maxlength="60">
+          </div>
+          <div class="field">
+            <label for="last_name">Last name</label>
+            <input type="text" id="last_name" name="last_name" required autocomplete="family-name" maxlength="60">
+          </div>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required autocomplete="email" maxlength="120">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="phone">Phone (optional)</label>
+            <input type="tel" id="phone" name="phone" autocomplete="tel" maxlength="20">
+          </div>
+          <div class="field">
+            <label for="zip">ZIP code</label>
+            <input type="text" id="zip" name="zip" required autocomplete="postal-code" inputmode="numeric" pattern="[0-9]{5}" maxlength="5">
+          </div>
+        </div>
+        <div class="field">
+          <label for="resume">Resume (optional)</label>
+          <label class="file-drop" id="fileDrop" for="resume">
+            <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx">
+            <div class="file-icon">&#8682;</div>
+            <div class="file-text" id="fileText">Click to upload PDF or Word doc</div>
+            <div class="file-hint">Max 5MB. Optional - you can still apply without it.</div>
+          </label>
+        </div>
+        <input type="hidden" name="source" value="channelcareers">
+        <input type="hidden" name="utm_source" id="utm_source">
+        <input type="hidden" name="utm_medium" id="utm_medium">
+        <input type="hidden" name="utm_campaign" id="utm_campaign">
+        <button type="submit" class="btn" id="submitBtn">Submit Application</button>
+        <p class="fine-print">By applying, you agree to receive interview-related emails from the agency we route you to.</p>
+      </form>
+    </div>
+  </section>
+  <section class="how">
+    <h2>How it works</h2>
+    <p class="sub">Three steps. No gatekeeping.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3>Submit your info</h3><p>Name, email, zip. Optionally attach a resume. Takes under a minute.</p></div>
+      <div class="step"><div class="n">2</div><h3>Matched locally</h3><p>We route you to the insurance agency hiring in your area based on your zip.</p></div>
+      <div class="step"><div class="n">3</div><h3>Video interview</h3><p>You'll get an email with a link to record a quick video interview - on your schedule.</p></div>
+    </div>
+  </section>
+  <footer class="foot">
+    Powered by <a href="https://channelonestrategies.com">Channel One Strategies</a> &nbsp;|&nbsp; <a href="mailto:careers@channelonestrategies.com">careers@channelonestrategies.com</a>
+  </footer>
+</div>
+<script>
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  ['utm_source','utm_medium','utm_campaign'].forEach(function(k){
+    var el = document.getElementById(k);
+    if (el && params.get(k)) el.value = params.get(k);
+  });
+  var form = document.getElementById('applyForm');
+  var submitBtn = document.getElementById('submitBtn');
+  var errAlert = document.getElementById('errAlert');
+  var okAlert = document.getElementById('okAlert');
+  var fileInput = document.getElementById('resume');
+  var fileDrop = document.getElementById('fileDrop');
+  var fileText = document.getElementById('fileText');
+  function showError(msg){
+    okAlert.classList.remove('show');
+    errAlert.textContent = msg;
+    errAlert.classList.add('show');
+    window.scrollTo({top:document.getElementById('applyCard').offsetTop-20, behavior:'smooth'});
+  }
+  function showSuccess(msg){
+    errAlert.classList.remove('show');
+    okAlert.textContent = msg;
+    okAlert.classList.add('show');
+  }
+  fileInput.addEventListener('change', function(){
+    if (fileInput.files && fileInput.files.length > 0) {
+      var f = fileInput.files[0];
+      if (f.size > 5*1024*1024) {
+        showError('Resume must be under 5MB. Please attach a smaller file.');
+        fileInput.value = '';
+        fileText.textContent = 'Click to upload PDF or Word doc';
+        fileDrop.classList.remove('has-file');
+        return;
+      }
+      fileText.textContent = '\u2713 ' + f.name;
+      fileDrop.classList.add('has-file');
+    } else {
+      fileText.textContent = 'Click to upload PDF or Word doc';
+      fileDrop.classList.remove('has-file');
+    }
+  });
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    errAlert.classList.remove('show');
+    okAlert.classList.remove('show');
+    var zip = document.getElementById('zip').value.trim();
+    if (!/^[0-9]{5}$/.test(zip)) {
+      showError('Please enter a 5-digit ZIP code.');
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+    var fd = new FormData(form);
+    fetch('/api/public/apply-inbound', { method: 'POST', body: fd })
+    .then(function(r){ return r.json().then(function(j){ return {status: r.status, body: j}; }); })
+    .then(function(res){
+      var s = res.status, b = res.body || {};
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Application';
+      if (s === 201 && b.status === 'routed') {
+        form.style.display = 'none';
+        showSuccess('Application received! You have been matched with ' + (b.rsc_name || 'a local agency') + '. Check your email for interview instructions.');
+      } else if (s === 200 && b.status === 'already_applied') {
+        form.style.display = 'none';
+        showSuccess(b.message || 'You have already applied. Check your email for next steps.');
+      } else if (s === 200 && b.status === 'already_applied_unassigned') {
+        form.style.display = 'none';
+        showSuccess(b.message || 'We have your info on file. We will reach out when a local opportunity opens.');
+      } else if (s === 201 || s === 200) {
+        form.style.display = 'none';
+        showSuccess('Thanks - your application was received. We will be in touch soon.');
+      } else if (s === 429) {
+        showError('Too many applications from this location. Please try again later.');
+      } else if (b.error) {
+        showError(b.error);
+      } else {
+        showError('Something went wrong. Please try again in a minute.');
+      }
+    }).catch(function(){
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Application';
+      showError('Network error. Please check your connection and try again.');
+    });
+  });
+})();
+</script>
+</body>
+</html>
