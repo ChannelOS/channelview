@@ -1,5 +1,5 @@
 #!/bin/bash
-# ChannelView Production Deploy Script — Cycle 37+
+# ChannelView Production Deploy Script — Cycle 37+ (48.1: landing-page sync)
 # Location on server: /opt/channelview/deploy.sh
 # This script pulls latest code from GitHub and deploys to Docker container
 
@@ -11,17 +11,18 @@ echo "=========================================="
 
 REPO_DIR="/opt/channelview-repo"
 CONTAINER="channelview-app"
+CAREERS_DIR="/opt/channelview/careers-landing"
 
 # Step 1: Pull latest from GitHub
 echo ""
-echo "[1/4] Pulling latest code from GitHub..."
+echo "[1/5] Pulling latest code from GitHub..."
 cd "$REPO_DIR"
 git pull origin main
 echo "  Done."
 
 # Step 2: Copy core application files
 echo ""
-echo "[2/4] Copying core files to container..."
+echo "[2/5] Copying core files to container..."
 docker cp app.py $CONTAINER:/app/app.py
 docker cp database.py $CONTAINER:/app/database.py
 docker cp voice_service.py $CONTAINER:/app/voice_service.py
@@ -32,7 +33,7 @@ echo "  Core files copied."
 
 # Step 3: Copy additional files (templates, services, static assets)
 echo ""
-echo "[3/4] Copying additional files..."
+echo "[3/5] Copying additional files..."
 
 # Templates (candidate-facing pages)
 for tmpl in candidate_interview.html candidate_format_choice.html candidate_done.html candidate_error.html; do
@@ -63,31 +64,39 @@ fi
 
 echo "  Done."
 
-# Step 4: Restart containers
+# Step 4: Sync channelcareers.io landing page (nginx bind-mount, no container restart)
 echo ""
-echo "[4/4] Restarting containers..."
+echo "[4/5] Syncing channelcareers.io landing page..."
+if [ -d "$REPO_DIR/channelcareers-landing" ]; then
+    mkdir -p "$CAREERS_DIR/assets"
+    # Copy index + any top-level files
+    for f in "$REPO_DIR/channelcareers-landing"/*; do
+        if [ -f "$f" ]; then
+            cp "$f" "$CAREERS_DIR/$(basename "$f")"
+            echo "  + $(basename "$f")"
+        fi
+    done
+    # Copy assets (logos, images, css)
+    if [ -d "$REPO_DIR/channelcareers-landing/assets" ]; then
+        for a in "$REPO_DIR/channelcareers-landing/assets"/*; do
+            if [ -f "$a" ]; then
+                cp "$a" "$CAREERS_DIR/assets/$(basename "$a")"
+                echo "  + assets/$(basename "$a")"
+            fi
+        done
+    fi
+    echo "  Landing page synced to $CAREERS_DIR"
+else
+    echo "  (no channelcareers-landing/ in repo — skipping)"
+fi
+
+# Step 5: Restart containers
+echo ""
+echo "[5/5] Restarting containers..."
 docker restart $CONTAINER
 echo "  Container restarted."
 
 # Verify file sizes
 echo ""
 echo "=========================================="
-echo "  Deployment Verification"
-echo "=========================================="
-echo "Core file sizes inside container:"
-docker exec $CONTAINER sh -c 'wc -c /app/app.py /app/database.py /app/voice_service.py /app/static/js/app.js /app/static/css/app.css /app/templates/app.html 2>/dev/null || true'
-echo ""
-echo "Additional files:"
-docker exec $CONTAINER sh -c 'wc -c /app/email_service.py /app/seed_rsc_defaults.py 2>/dev/null || true'
-echo ""
-echo "Templates:"
-docker exec $CONTAINER sh -c 'wc -c /app/templates/candidate_interview.html /app/templates/candidate_format_choice.html /app/templates/candidate_done.html /app/templates/candidate_error.html 2>/dev/null || true'
-echo ""
-echo "Intro files:"
-docker exec $CONTAINER sh -c 'ls -la /app/static/intros/ 2>/dev/null || echo "  No intros directory"'
-echo ""
-echo "Container status:"
-docker ps --filter name=channelview --format "table {{.Names}}\t{{.Status}}"
-echo ""
-echo "Deployment complete! Check https://mychannelview.com"
-echo "=========================================="
+echo "  Deployment Verif
