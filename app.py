@@ -2923,7 +2923,7 @@ def api_seed():
     # ---- Pre-loaded Job: Business Development Representative ----
     # Modeled after real insurance BDR postings. Linked to the first seeded interview.
     first_interview_id = None
-    first_row = db.execute('SELECT id FROM interviews WHERE user_id=? ORDER BY rowid LIMIT 1', (uid,)).fetchone()
+    first_row = db.execute('SELECT id FROM interviews WHERE user_id=? ORDER BY created_at ASC LIMIT 1', (uid,)).fetchone()
     if first_row:
         first_interview_id = first_row['id']
 
