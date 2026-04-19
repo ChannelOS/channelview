@@ -73,6 +73,25 @@ a:hover{color:var(--gd)}
 .col.new li{font-size:15px;color:var(--ink);font-weight:600;padding:10px 0;border-bottom:1px solid var(--gl)}
 .col.new li:last-child{border:0}
 .col.new li::before{content:"● ";color:var(--g);font-size:10px;vertical-align:middle;margin-right:6px}
+.disc{margin-top:48px;padding-top:40px;border-top:1px dashed var(--line)}
+.disc-head{text-align:center;margin-bottom:28px}
+.disc-head h3{font-size:22px;font-weight:900;color:var(--ink);margin-bottom:10px;letter-spacing:-.4px}
+.disc-head p{font-size:14px;color:var(--mute);max-width:600px;margin:0 auto;line-height:1.55}
+.disc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;max-width:960px;margin:0 auto}
+.disc-card{background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:26px 18px;text-align:center;transition:all .15s;display:flex;flex-direction:column;align-items:center}
+.disc-card .letter{width:46px;height:46px;line-height:46px;border-radius:50%;background:var(--soft);color:var(--mute);font-size:20px;font-weight:900;margin-bottom:12px}
+.disc-card .n{font-size:18px;font-weight:900;color:var(--ink);margin-bottom:8px;letter-spacing:-.3px}
+.disc-card .d{font-size:12.5px;color:var(--mute);line-height:1.5;margin-bottom:14px;flex:1}
+.disc-card .fit{font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:5px 12px;border-radius:999px;display:inline-block}
+.disc-card.primary{border-color:var(--g);box-shadow:0 8px 22px rgba(10,206,10,.1)}
+.disc-card.primary .letter{background:var(--g);color:#000}
+.disc-card.primary .fit{background:var(--gl);color:var(--gd)}
+.disc-card.secondary .letter{background:var(--gl);color:var(--gd)}
+.disc-card.secondary .fit{background:var(--soft);color:var(--ink2)}
+.disc-card.faded{background:var(--soft);opacity:.72}
+.disc-card.faded .n{color:var(--ink2)}
+.disc-card.faded .fit{background:#efefef;color:var(--mute)}
+@media(max-width:760px){.disc-grid{grid-template-columns:repeat(2,1fr)}}
 /* How it works — 4 steps */
 .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .step{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 22px;position:relative}
@@ -243,6 +262,38 @@ a:hover{color:var(--gd)}
           <li>People who excel at social media</li>
           <li>A teacher's instinct — make complex ideas simple</li>
         </ul>
+      </div>
+    </div>
+    <div class="disc">
+      <div class="disc-head">
+        <h3>The DISC pattern we see in the new archetype</h3>
+        <p>Top performers we interview today skew toward two profiles. A third often fits. One almost never does anymore.</p>
+      </div>
+      <div class="disc-grid">
+        <div class="disc-card primary">
+          <div class="letter">I</div>
+          <div class="n">Parrot</div>
+          <div class="d">Warm, social, energetic. The advisor people actually look forward to hearing from.</div>
+          <div class="fit">Strong fit</div>
+        </div>
+        <div class="disc-card primary">
+          <div class="letter">S</div>
+          <div class="n">Dove</div>
+          <div class="d">Patient, steady, caring. The listener who makes clients feel genuinely heard.</div>
+          <div class="fit">Strong fit</div>
+        </div>
+        <div class="disc-card secondary">
+          <div class="letter">C</div>
+          <div class="n">Owl</div>
+          <div class="d">Precise, thoughtful, analytical. The teacher who makes the complex feel simple.</div>
+          <div class="fit">Often fits</div>
+        </div>
+        <div class="disc-card faded">
+          <div class="letter">D</div>
+          <div class="n">Eagle</div>
+          <div class="d">Driven, direct, closer. The old model. Still succeeds — just not the default profile anymore.</div>
+          <div class="fit">Less common now</div>
+        </div>
       </div>
     </div>
     <p class="closer">The people thriving in this industry today listen first and translate well — not sell the hardest.</p>
