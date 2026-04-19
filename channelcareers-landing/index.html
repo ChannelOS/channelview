@@ -16,7 +16,7 @@ a:hover{color:var(--gd)}
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
 /* Header */
 .nav{display:flex;align-items:center;justify-content:space-between;padding:20px 0;border-bottom:1px solid var(--line)}
-.nav .logo{height:42px;display:block}
+.nav .logo{height:52px;display:block}
 .nav-right{font-size:13px;color:var(--mute);font-weight:600}
 .nav-right a{color:var(--mute)}
 .nav-right a:hover{color:var(--g)}
@@ -38,6 +38,16 @@ a:hover{color:var(--gd)}
 .shift-tile .icon{font-size:28px;margin-bottom:10px;line-height:1}
 .shift-tile .t{font-size:15px;font-weight:800;margin-bottom:4px}
 .shift-tile .d{font-size:13px;color:var(--mute)}
+.shift-tile{position:relative}
+.shift-tile .num{position:absolute;top:14px;left:16px;font-size:11px;font-weight:800;color:var(--mute);letter-spacing:2px}
+.shift-tile:hover .num{color:var(--gd)}
+.shift-next{max-width:720px;margin:40px auto 0;display:flex;justify-content:flex-end}
+.shift-next a{display:inline-flex;align-items:center;gap:12px;padding:14px 22px;border:1.5px solid var(--ink);border-radius:999px;color:var(--ink);font-weight:800;font-size:14px;letter-spacing:.3px;transition:all .18s;text-decoration:none;background:#fff}
+.shift-next a:hover{background:var(--ink);color:#fff;transform:translateX(4px);box-shadow:0 10px 28px rgba(0,0,0,.12)}
+.shift-next .kk{font-size:10px;color:var(--mute);font-weight:700;letter-spacing:2px;text-transform:uppercase}
+.shift-next a:hover .kk{color:var(--g)}
+.shift-next .arr{font-size:16px;color:var(--g);font-weight:900;transition:transform .18s}
+.shift-next a:hover .arr{transform:translateX(4px);color:#fff}
 .door-hero{text-align:center;margin-bottom:32px;padding-top:4px}
 .door-hero .door-svg{width:116px;height:116px;margin:0 auto;display:block;filter:drop-shadow(0 14px 28px rgba(10,206,10,.22))}
 .door-hero .door-arrow{transform-origin:center;animation:doorStep 1.8s cubic-bezier(.22,1,.36,1) .8s 1 both}
@@ -47,7 +57,7 @@ a:hover{color:var(--gd)}
 @media(prefers-reduced-motion:reduce){.door-arrow{animation:none !important}}
 .door-kicker{margin-top:20px;font-size:12px;color:var(--mute);font-weight:700;letter-spacing:2px;text-transform:uppercase}
 .door-sub{font-size:24px;font-weight:900;color:var(--ink);margin-top:8px;letter-spacing:-.4px;line-height:1.25}
-.step-through{display:flex;align-items:center;gap:22px;background:#1A1A1A;color:#fff;border-radius:16px;padding:22px 28px;margin-top:22px;text-decoration:none;transition:all .2s;border:1px solid #262626}
+.step-through{display:flex;align-items:center;gap:22px;background:#1A1A1A;color:#fff;border-radius:16px;padding:26px 30px;margin:44px auto 0;max-width:720px;text-decoration:none;transition:all .2s;border:1px solid #262626}
 .step-through:hover{background:#0f0f0f;transform:translateY(-2px);box-shadow:0 18px 40px rgba(0,0,0,.28);color:#fff;border-color:var(--g)}
 .step-through .st-door{flex:0 0 60px;display:flex;align-items:center;justify-content:center}
 .step-through .st-door svg{width:60px;height:60px;display:block;transition:transform .3s ease-out}
@@ -177,15 +187,14 @@ a:hover{color:var(--gd)}
 @media(max-width:560px){
   .shifts-grid,.grid6,.grid4,.oldnew,.steps{grid-template-columns:1fr}
   .row{grid-template-columns:1fr}
-  .nav .logo{height:36px}
+  .nav .logo{height:42px}
   .wrap{padding:0 18px}
 }
 </style>
 </head>
 <body>
 <header class="nav wrap">
-  <a href="/" aria-label="Channel Careers"><img src="/assets/channel-careers-logo.svg" alt="Channel Careers" class="logo"></a>
-  <div class="nav-right"><a href="mailto:careers@channelonestrategies.com">Contact</a></div>
+  <a href="/" aria-label="Channel Careers"><img src="/assets/channel-careers-logo-full.png" alt="Channel Careers" class="logo"></a>
 </header>
 
 <section class="hero wrap">
@@ -213,35 +222,24 @@ a:hover{color:var(--gd)}
   </div>
   <div class="shifts-grid">
     <a href="#learning" class="shift-tile">
+      <div class="num">01</div>
       <div class="icon">🎧</div>
       <div class="t">Training you actually want</div>
       <div class="d">Bite-size. Daily. Varied.</div>
     </a>
     <a href="#tools" class="shift-tile">
+      <div class="num">02</div>
       <div class="icon">🤖</div>
       <div class="t">Tools that do the grind</div>
       <div class="d">AI books and runs the meetings.</div>
     </a>
     <a href="#profile" class="shift-tile">
+      <div class="num">03</div>
       <div class="icon">🧑‍🏫</div>
       <div class="t">A new kind of agent</div>
       <div class="d">Teachers and explainers, not closers.</div>
     </a>
   </div>
-  <a href="#apply" class="step-through">
-    <div class="st-door">
-      <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="2" y="2" width="56" height="56" rx="12" fill="#ffffff"/>
-        <rect x="12" y="12" width="36" height="36" rx="6" fill="#1A1A1A"/>
-        <path d="M 19 30 L 33 30 L 33 23 L 44 30 L 33 37 L 33 30 Z" fill="#0ace0a"/>
-      </svg>
-    </div>
-    <div class="st-copy">
-      <div class="st-kicker">Ready to step through?</div>
-      <div class="st-sub">Apply in 60 seconds — no résumé required.</div>
-    </div>
-    <div class="st-arrow">→</div>
-  </a>
 </section>
 
 <section id="learning" class="sec">
@@ -260,6 +258,7 @@ a:hover{color:var(--gd)}
       <div class="tile"><div class="ico">🧠</div><div class="t">AI reinforcement</div><div class="d">Surfaces what you forgot, right when it matters.</div></div>
     </div>
     <p class="closer">Short. Varied. Pragmatic. Delivered the way you already consume information — so it actually sticks.</p>
+    <div class="shift-next"><a href="#tools"><span class="kk">Continue</span><span>Shift 02 · Tools</span><span class="arr">→</span></a></div>
   </div>
 </section>
 
@@ -277,6 +276,7 @@ a:hover{color:var(--gd)}
       <div class="card4"><div class="ico">🔎</div><div class="t">Product lookup, in real time</div><div class="d">No memorization. The right plan surfaces itself.</div></div>
     </div>
     <p class="closer">What used to be "the hustle" is now the part you don't have to do yourself.</p>
+    <div class="shift-next"><a href="#profile"><span class="kk">Continue</span><span>Shift 03 · The profile</span><span class="arr">→</span></a></div>
   </div>
 </section>
 
@@ -341,6 +341,20 @@ a:hover{color:var(--gd)}
       </div>
     </div>
     <p class="closer">The people thriving in this industry today listen first and translate well — not sell the hardest.</p>
+    <a href="#apply" class="step-through">
+      <div class="st-door">
+        <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="2" y="2" width="56" height="56" rx="12" fill="#ffffff"/>
+          <rect x="12" y="12" width="36" height="36" rx="6" fill="#1A1A1A"/>
+          <path d="M 19 30 L 33 30 L 33 23 L 44 30 L 33 37 L 33 30 Z" fill="#0ace0a"/>
+        </svg>
+      </div>
+      <div class="st-copy">
+        <div class="st-kicker">Now you know.</div>
+        <div class="st-sub">Step through. Apply in 60 seconds — no résumé required.</div>
+      </div>
+      <div class="st-arrow">→</div>
+    </a>
   </div>
 </section>
 
@@ -431,9 +445,6 @@ a:hover{color:var(--gd)}
   </div>
 </section>
 
-<footer class="foot">
-  <div class="wrap">Channel Careers — a service of <a href="https://channelonestrategies.com">Channel One Strategies</a> · <a href="mailto:careers@channelonestrategies.com">careers@channelonestrategies.com</a></div>
-</footer>
 
 <script>
 (function(){
