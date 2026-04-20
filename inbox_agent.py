@@ -26,7 +26,12 @@ import base64
 import hashlib
 import hmac
 import re
-from datetime import datetime, timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+except Exception:  # pragma: no cover - extremely old runtime
+    ZoneInfo = None  # type: ignore
 
 from flask import request, redirect, abort, make_response, render_template_string
 
@@ -675,13 +680,20 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> dict:
         '  "key_points": ["short bullets of what was decided or discussed"],\n'
         '  "asks": ["things the thread explicitly asks of the reader"],\n'
         '  "next_step": "one concrete suggested next action, or empty string",\n'
-        '  "dates": [{"when":"Thu Apr 24 at 2pm ET","what":"Pricing call"}],\n'
+        '  "dates": [{"when":"Thu Apr 24 at 2pm ET","what":"Pricing call","start":"2026-04-24T14:00:00","end":"2026-04-24T15:00:00","all_day":false}],\n'
         '  "todos": ["your personal next actions to get this thread moving (imperative, under 12 words each)"],\n'
         '  "draft_reply": "a complete professional draft reply the reader could send, plain text, 3-6 sentences"\n'
         '}\n'
         "Use [] or \"\" for sections that don't apply. Skip signatures, legal "
         "disclaimers, and quoted duplicates. Be direct. Do not wrap the JSON in "
-        "backticks or add any commentary."
+        "backticks or add any commentary. "
+        "For each date, include structured fields `start` and `end` as ISO 8601 "
+        "strings (e.g. 2026-04-24T14:00:00 for timed events, 2026-10-09 for all-day). "
+        "Set `all_day` true if no time is given. Assume America/New_York if the "
+        "thread doesn't specify a timezone. If no end time is given, assume 1 hour "
+        "for timed events and the same day for all-day events. If the year is "
+        "ambiguous, use the current year (2026) or the nearest sensible future date. "
+        "If a date item is truly unparseable, omit `start`/`end` (keep `when`/`what`)."
     )
 
     user_content = (
@@ -744,13 +756,19 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> dict:
     out['asks'] = [str(x).strip() for x in (parsed.get('asks', []) or []) if str(x).strip()]
     out['next_step'] = str(parsed.get('next_step', '') or '').strip()
     dates = parsed.get('dates', []) or []
-    out['dates'] = [
-        {
+    cleaned_dates = []
+    for d in dates:
+        if not isinstance(d, dict):
+            continue
+        item = {
             'when': str(d.get('when', '') or '').strip(),
             'what': str(d.get('what', '') or '').strip(),
+            'start': str(d.get('start', '') or '').strip(),
+            'end': str(d.get('end', '') or '').strip(),
+            'all_day': bool(d.get('all_day', False)),
         }
-        for d in dates if isinstance(d, dict)
-    ]
+        cleaned_dates.append(item)
+    out['dates'] = cleaned_dates
     out['draft_reply'] = str(parsed.get('draft_reply', '') or '').strip()
     return out
 
@@ -802,6 +820,148 @@ def _html_escape(s: str) -> str:
             .replace('<', '&lt;')
             .replace('>', '&gt;')
             .replace('"', '&quot;'))
+
+
+
+# ---------------------------------------------------------------------------
+# .ics calendar attachment helpers (Batch 5)
+# ---------------------------------------------------------------------------
+
+_ICS_TZ_NAME = 'America/New_York'
+
+
+def _ics_escape(text: str) -> str:
+    """Escape a string per RFC 5545 text-value rules."""
+    s = str(text or '')
+    s = s.replace('\\', '\\\\')
+    s = s.replace(';', '\\;')
+    s = s.replace(',', '\\,')
+    s = s.replace('\r\n', '\\n').replace('\n', '\\n').replace('\r', '\\n')
+    return s
+
+
+def _parse_iso_local(value: str):
+    """Parse an ISO 8601 string into (datetime, is_date_only).
+    Returns (None, False) if unparseable. Strips trailing 'Z' if present.
+    """
+    if not value:
+        return (None, False)
+    v = str(value).strip()
+    if not v:
+        return (None, False)
+    # Detect date-only (YYYY-MM-DD) up front.
+    date_only = bool(re.match(r'^\d{4}-\d{2}-\d{2}$', v))
+    # Normalize a trailing Z to +00:00 so fromisoformat accepts it.
+    if v.endswith('Z'):
+        v = v[:-1] + '+00:00'
+    try:
+        dt = datetime.fromisoformat(v)
+    except Exception:
+        return (None, False)
+    return (dt, date_only)
+
+
+def _build_ics(event: dict, organizer_email: str, uid_suffix: str, index: int = 0) -> str:
+    """Build an RFC 5545 VCALENDAR string for a single event.
+
+    event: dict with optional keys `title`/`what`/`when`, `start`, `end`, `all_day`.
+    Raises ValueError if the start cannot be parsed.
+    """
+    title = (event.get('title') or event.get('what') or event.get('when') or 'Event')
+    start_raw = event.get('start') or ''
+    end_raw = event.get('end') or ''
+    all_day = bool(event.get('all_day', False))
+
+    start_dt, start_date_only = _parse_iso_local(start_raw)
+    if start_dt is None:
+        raise ValueError(f'unparseable start: {start_raw!r}')
+    end_dt, end_date_only = _parse_iso_local(end_raw)
+
+    # all_day if explicitly flagged OR start came in as a bare date.
+    if start_date_only:
+        all_day = True
+
+    # Derive a sensible end if missing.
+    if end_dt is None:
+        if all_day:
+            end_dt = start_dt + timedelta(days=1)  # DTEND is exclusive for all-day.
+        else:
+            end_dt = start_dt + timedelta(hours=1)
+
+    # If the end came in as a bare date and we're all-day, bump it by 1 day
+    # so the exclusive DTEND covers the whole last day.
+    if all_day and end_date_only and end_dt.date() == start_dt.date():
+        end_dt = end_dt + timedelta(days=1)
+
+    now_utc = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+
+    # Attach a tzinfo for timed events if naive and zoneinfo is available.
+    tzid = _ICS_TZ_NAME
+    if not all_day:
+        if ZoneInfo is not None:
+            tz = ZoneInfo(tzid)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=tz)
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=tz)
+
+    if all_day:
+        dtstart_line = 'DTSTART;VALUE=DATE:' + start_dt.strftime('%Y%m%d')
+        dtend_line = 'DTEND;VALUE=DATE:' + end_dt.strftime('%Y%m%d')
+    else:
+        # Use floating local time with TZID (do not convert to UTC).
+        dtstart_line = 'DTSTART;TZID=' + tzid + ':' + start_dt.strftime('%Y%m%dT%H%M%S')
+        dtend_line = 'DTEND;TZID=' + tzid + ':' + end_dt.strftime('%Y%m%dT%H%M%S')
+
+    safe_suffix = re.sub(r'[^a-zA-Z0-9_-]', '', str(uid_suffix or 'inbox'))[:40] or 'inbox'
+    uid = f'{safe_suffix}-{index}@inbox.mychannelview.com'
+
+    org = (organizer_email or '').strip() or 'noreply@mychannelview.com'
+
+    lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Channel One//Inbox Agent//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:REQUEST',
+        'BEGIN:VEVENT',
+        'UID:' + uid,
+        'DTSTAMP:' + now_utc,
+        dtstart_line,
+        dtend_line,
+        'SUMMARY:' + _ics_escape(title),
+        'ORGANIZER:mailto:' + org,
+        'END:VEVENT',
+        'END:VCALENDAR',
+    ]
+    return '\r\n'.join(lines) + '\r\n'
+
+
+def _ics_attachments_for_summary(data: dict, organizer_email: str, uid_suffix: str) -> list:
+    """Build a Postmark-style Attachments list for every dict-shape date item
+    that has a parseable `start`. Silently skips items that can't be built.
+    """
+    attachments = []
+    for i, item in enumerate(((data or {}).get('dates') or [])):
+        if not isinstance(item, dict):
+            continue
+        if not (item.get('start') or '').strip():
+            continue
+        try:
+            ics_text = _build_ics(item, organizer_email, uid_suffix, index=i)
+        except Exception:
+            continue
+        try:
+            title_src = item.get('title') or item.get('what') or item.get('when') or 'event'
+            title_safe = re.sub(r'[^a-zA-Z0-9_-]', '_', str(title_src))[:40] or 'event'
+            attachments.append({
+                'Name': title_safe + '.ics',
+                'Content': base64.b64encode(ics_text.encode('utf-8')).decode('ascii'),
+                'ContentType': 'text/calendar; method=REQUEST; charset=utf-8',
+            })
+        except Exception:
+            continue
+    return attachments
 
 
 def render_summary_html(data: dict, first_name: str, alias: str) -> str:
@@ -917,14 +1077,28 @@ def render_summary_html(data: dict, first_name: str, alias: str) -> str:
         if dates:
             items = ''
             for d in dates:
-                wh = _html_escape(d.get('when', ''))
-                wt = _html_escape(d.get('what', ''))
+                if isinstance(d, dict):
+                    wh_raw = d.get('when', '') or ''
+                    wt_raw = d.get('what', '') or ''
+                    has_ics = bool((d.get('start') or '').strip())
+                else:
+                    wh_raw = str(d)
+                    wt_raw = ''
+                    has_ics = False
+                wh = _html_escape(wh_raw)
+                wt = _html_escape(wt_raw)
+                ics_note = (
+                    '<div style="color:#0a8a0a;font-size:12px;margin-top:2px">'
+                    '(calendar invite attached)</div>'
+                    if has_ics else ''
+                )
                 items += (
                     '<li style="margin:6px 0;list-style:none;padding-left:20px;'
                     'position:relative">'
                     '<span style="position:absolute;left:0">&#128197;</span>'
                     '<span style="font-weight:600">' + wh + '</span>'
                     + ((' <span style="color:#666">- ' + wt + '</span>') if wt else '')
+                    + ics_note
                     + '</li>'
                 )
             sections.append(
@@ -1144,10 +1318,13 @@ def _from_with_display_name() -> str:
 
 
 def postmark_send(to: str, subject: str, text_body: str,
-                  reply_to: str = '', html_body: str = '') -> dict:
+                  reply_to: str = '', html_body: str = '',
+                  attachments=None) -> dict:
     """Send an email via Postmark. Returns parsed response.
     Always includes a plain-text body; optionally includes HTML for better
     client rendering. The From header carries a display name for deliverability.
+    `attachments`, if supplied, is a list of Postmark-format attachment dicts
+    (keys: Name, Content [base64], ContentType [and optionally ContentID]).
     """
     if not POSTMARK_SERVER_TOKEN:
         raise RuntimeError('POSTMARK_SERVER_TOKEN not set — cannot send reply.')
@@ -1162,6 +1339,8 @@ def postmark_send(to: str, subject: str, text_body: str,
         body['HtmlBody'] = html_body
     if reply_to:
         body['ReplyTo'] = reply_to
+    if attachments:
+        body['Attachments'] = attachments
     return _http_post_json(
         'https://api.postmarkapp.com/email',
         headers={
@@ -2408,12 +2587,26 @@ def _handle_inbound():
         print(f'[inbox_agent] store thread failed: {_e}')
         thread_id = None
 
+    # Build .ics calendar attachments for any structured Key Dates (Batch 5).
+    try:
+        _mid_for_uid = payload.get('MessageID') or payload.get('message_id') or ''
+        _uid_suffix = hashlib.sha1(
+            (str(_mid_for_uid) + '|' + str(alias or '')).encode('utf-8')
+        ).hexdigest()[:16] if _mid_for_uid else uuid.uuid4().hex[:16]
+        organizer_email = (user.get('alias') if user else '') or alias or 'noreply'
+        organizer_addr = f'{organizer_email}@inbox.mychannelview.com'
+        ics_attachments = _ics_attachments_for_summary(data, organizer_addr, _uid_suffix)
+    except Exception as _e:
+        print(f'[inbox_agent] ics build failed: {_e}')
+        ics_attachments = []
+
     try:
         pm_resp = postmark_send(
             to=from_email,
             subject=reply_subject,
             text_body=reply_text,
             html_body=reply_html,
+            attachments=(ics_attachments or None),
         )
     except Exception as e:
         print(f'[inbox_agent] reply send failed: {e}')
