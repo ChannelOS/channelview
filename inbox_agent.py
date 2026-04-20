@@ -755,6 +755,47 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> dict:
     return out
 
 
+def claude_answer_question(thread_text: str, question: str, requester_email: str = '') -> str:
+    """Call Anthropic API to answer a user's question about a stored thread."""
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError('ANTHROPIC_API_KEY not set - cannot answer.')
+
+    capped = thread_text[:40000]
+    if len(thread_text) > 40000:
+        capped += "\n\n[truncated - original was {} chars]".format(len(thread_text))
+
+    system_prompt = (
+        "You are Inbox Agent. A user has a question about an email thread they "
+        "previously forwarded to you. Answer their question directly and concisely, "
+        "grounded in what the thread actually says. If the thread doesn't contain "
+        "the answer, say so plainly. Plain text, no markdown, no preamble, no sign-off. "
+        "Keep it under 200 words unless the question genuinely requires more."
+    )
+    user_content = (
+        f"Thread (from {requester_email}):\n"
+        f"--- BEGIN THREAD ---\n{capped}\n--- END THREAD ---\n\n"
+        f"User question: {question}"
+    )
+    result = _http_post_json(
+        'https://api.anthropic.com/v1/messages',
+        headers={
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+        },
+        body={
+            'model': ANTHROPIC_MODEL,
+            'max_tokens': 1024,
+            'system': system_prompt,
+            'messages': [{'role': 'user', 'content': user_content}],
+        },
+        timeout=60,
+    )
+    blocks = result.get('content', [])
+    text_parts = [b.get('text', '') for b in blocks if b.get('type') == 'text']
+    return ('\n'.join(text_parts)).strip() or '(no answer)'
+
+
 def _html_escape(s: str) -> str:
     return (str(s)
             .replace('&', '&amp;')
@@ -1011,6 +1052,79 @@ def render_summary_text(data: dict, first_name: str, alias: str) -> str:
         lines += ['DRAFT REPLY (copy & paste)', draft, '']
 
     lines += [
+        '---',
+        'Inbox Agent - Channel One Strategies',
+        'Forward another thread anytime to ' + alias + '@inbox.mychannelview.com',
+    ]
+    return '\n'.join(lines)
+
+
+def render_answer_html(question: str, answer: str, first_name: str, alias: str) -> str:
+    """Render a Q/A reply email in the Channel One branded style."""
+    font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+    q = _html_escape(question).replace('\n', '<br>')
+    a = _html_escape(answer).replace('\n', '<br>')
+    mailto = 'mailto:' + _html_escape(alias) + '@inbox.mychannelview.com'
+
+    header = (
+        '<tr><td style="background:#111111;padding:16px 24px;font-family:' + font + '">'
+        '<span style="display:inline-block;width:14px;height:14px;background:#0ace0a;'
+        'vertical-align:middle;border-radius:2px"></span>'
+        '<span style="color:#ffffff;font-weight:700;letter-spacing:1px;margin-left:10px;'
+        'vertical-align:middle">CHANNEL ONE</span>'
+        '<span style="color:#999;margin-left:10px;vertical-align:middle">&middot;</span>'
+        '<span style="color:#ffffff;margin-left:10px;vertical-align:middle">Inbox Agent</span>'
+        '</td></tr>'
+    )
+    greeting = (
+        '<tr><td style="padding:20px 24px 6px 24px;font-family:' + font + ';'
+        'color:#111;font-size:15px">Hi ' + _html_escape(first_name or 'there') + ' -</td></tr>'
+    )
+    qblock = (
+        '<tr><td style="padding:10px 24px 8px 24px;font-family:' + font + '">'
+        '<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;'
+        'font-weight:700;color:#888;margin:0 0 8px 0">Your question</div>'
+        '<div style="background:#f6f6f6;border-radius:6px;padding:12px 16px;'
+        'color:#333;font-size:14px;line-height:1.5">' + q + '</div></td></tr>'
+    )
+    ablock = (
+        '<tr><td style="padding:10px 24px 16px 24px;font-family:' + font + '">'
+        '<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;'
+        'font-weight:700;color:#0a8a0a;margin:0 0 8px 0">Answer</div>'
+        '<div style="background:#e6fce6;border-radius:8px;padding:16px 18px;'
+        'color:#111;font-size:15px;line-height:1.55">' + a + '</div></td></tr>'
+    )
+    footer = (
+        '<tr><td style="padding:24px;font-family:' + font + ';color:#888;'
+        'font-size:12px;text-align:center;border-top:1px solid #eee">'
+        'Inbox Agent - Channel One Strategies<br>'
+        '<a href="' + mailto + '" style="color:#0a8a0a;text-decoration:none">'
+        'Forward another thread anytime &rarr;</a></td></tr>'
+    )
+    return (
+        '<!doctype html><html><body style="margin:0;padding:0;background:#f4f4f4">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#f4f4f4;padding:24px 0">'
+        '<tr><td align="center">'
+        '<table role="presentation" width="620" cellpadding="0" cellspacing="0" '
+        'style="max-width:620px;width:100%;background:#ffffff;border-radius:10px;'
+        'overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06)">'
+        + header + greeting + qblock + ablock + footer +
+        '</table></td></tr></table></body></html>'
+    )
+
+
+def render_answer_text(question: str, answer: str, first_name: str, alias: str) -> str:
+    """Plain-text fallback for the answer email."""
+    lines = [
+        'Hi ' + (first_name or 'there') + ' -',
+        '',
+        'YOUR QUESTION',
+        question,
+        '',
+        'ANSWER',
+        answer,
+        '',
         '---',
         'Inbox Agent - Channel One Strategies',
         'Forward another thread anytime to ' + alias + '@inbox.mychannelview.com',
@@ -1600,6 +1714,117 @@ def _handle_auth_success():
     )
 
 
+def _get_header(payload: dict, name: str) -> str:
+    """Return a named header value from the Postmark inbound payload's Headers list."""
+    for h in (payload.get('Headers') or []):
+        if (h.get('Name', '') or '').lower() == name.lower():
+            return str(h.get('Value', '') or '').strip()
+    return ''
+
+
+def _extract_reply_question(body: str) -> str:
+    """Strip quoted original content from a reply body, returning just the user's question."""
+    if not body:
+        return ''
+    import re as _re
+    text = body.replace('\r\n', '\n').replace('\r', '\n')
+    markers = []
+    # "On Thu, Apr 24, 2026 at 11:15 AM Joe <joe@x.com> wrote:"
+    m = _re.search(r'\nOn .{5,200}? wrote:', text, _re.DOTALL)
+    if m:
+        markers.append(m.start())
+    # Outlook banner
+    idx = text.find('\n-----Original Message-----')
+    if idx >= 0:
+        markers.append(idx)
+    # Outlook-style From: header at line start
+    m = _re.search(r'\nFrom: ', text)
+    if m:
+        markers.append(m.start())
+    # First quoted line
+    m = _re.search(r'\n> ', text)
+    if m:
+        markers.append(m.start())
+    if markers:
+        cut = min(markers)
+        stripped = text[:cut].strip()
+        if stripped:
+            return stripped
+    return text.strip()
+
+
+def _row_get(row, key, default=None):
+    """Safe accessor that works for dict (RealDictCursor) and sqlite3.Row."""
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
+def _handle_ask_reply(user, payload, thread_row):
+    """Handle a reply to a summary email - treat the body as a question about the stored thread."""
+    from_email = (payload.get('FromFull') or {}).get('Email') or payload.get('From') or ''
+    raw_body = (payload.get('TextBody') or '').strip()
+    if not raw_body:
+        raw_body = (payload.get('StrippedTextReply') or '').strip()
+    question = _extract_reply_question(raw_body)
+    if not question:
+        question = raw_body.strip()
+    if not question:
+        print('[inbox_agent] ask: empty question; skipping')
+        return ('empty question', 200)
+
+    thread_text = _row_get(thread_row, 'thread_text', '')
+    if not thread_text:
+        print('[inbox_agent] ask: stored thread text missing; skipping')
+        return ('no thread text', 200)
+
+    subject = payload.get('Subject') or 'Re: your question'
+    reply_subject = subject if subject.lower().startswith('re:') else f'Re: {subject}'
+    alias = ''
+    first_name = 'there'
+    if user is not None:
+        alias = _row_get(user, 'alias', '') or ''
+        first_name = _row_get(user, 'first_name', '') or 'there'
+
+    try:
+        answer = claude_answer_question(thread_text, question, requester_email=from_email)
+    except Exception as e:
+        print(f'[inbox_agent] ask claude failed: {e}')
+        try:
+            postmark_send(
+                to=from_email,
+                subject=reply_subject,
+                text_body=f"Inbox Agent couldn't answer that just now. Please try again.\n\n(debug: {str(e)[:200]})\n\n- Inbox Agent",
+            )
+        except Exception:
+            pass
+        return ('ask error', 200)
+
+    reply_text = render_answer_text(question, answer, first_name, alias)
+    reply_html = render_answer_html(question, answer, first_name, alias)
+
+    try:
+        postmark_send(
+            to=from_email,
+            subject=reply_subject,
+            text_body=reply_text,
+            html_body=reply_html,
+        )
+    except Exception as e:
+        print(f'[inbox_agent] ask send failed: {e}')
+        return ('send error', 200)
+
+    uid = _row_get(user, 'id', '?')
+    tid = _row_get(thread_row, 'id', '?')
+    print(f'[inbox_agent] ask answered for user {uid} thread {tid}')
+    return ('ok', 200)
+
+
 # ---------------------------------------------------------------------------
 # Postmark inbound webhook
 # ---------------------------------------------------------------------------
@@ -1655,6 +1880,41 @@ def _handle_inbound():
         except Exception as e:
             print(f'[inbox_agent] bounce send failed: {e}')
         return ('sender mismatch', 200)
+
+    # Detect reply-to-summary: match In-Reply-To or References against stored reply_message_id
+    in_reply_to = _get_header(payload, 'In-Reply-To')
+    references = _get_header(payload, 'References')
+    candidate_mids = []
+    if in_reply_to:
+        candidate_mids.append(in_reply_to.strip().strip('<>'))
+    if references:
+        for mid in references.split():
+            candidate_mids.append(mid.strip().strip('<>'))
+    if candidate_mids and user:
+        try:
+            patterns = []
+            for mid in candidate_mids:
+                if mid:
+                    patterns.append(mid)
+                    patterns.append('<' + mid + '>')
+            if patterns:
+                phs = ','.join(['%s'] * len(patterns))
+                with get_db(autocommit=True) as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        f"SELECT id, user_id, subject, from_email, thread_text, summary_json, reply_message_id "
+                        f"FROM inbox_threads WHERE reply_message_id IN ({phs}) ORDER BY id DESC LIMIT 1",
+                        patterns,
+                    )
+                    row = cur.fetchone()
+                    if row is not None:
+                        row_uid = _row_get(row, 'user_id')
+                        user_uid = _row_get(user, 'id')
+                        if row_uid == user_uid:
+                            return _handle_ask_reply(user, payload, row)
+        except Exception as _e:
+            print(f'[inbox_agent] ask-lookup failed: {_e}')
+    # else: fall through to existing summarize flow
 
     thread = extract_thread_text(payload)
     if not thread:
