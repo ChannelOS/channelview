@@ -591,26 +591,35 @@ def _http_post_json(url: str, headers: dict, body: dict, timeout: int = 30) -> d
         raise RuntimeError(f'HTTP {e.code} from {url}: {err_body}')
 
 
-def claude_summarize(thread_text: str, requester_email: str = '') -> str:
+def claude_summarize(thread_text: str, requester_email: str = '') -> dict:
     """Call Anthropic API to summarize a forwarded email thread.
-    Returns plain-text summary suitable for email reply.
+    Returns a structured dict with keys:
+      tldr, people, key_points, asks, next_step, dates, draft_reply, raw_fallback
+    On JSON parse failure, raw_fallback holds the raw text and other fields are empty.
     """
     if not ANTHROPIC_API_KEY:
-        raise RuntimeError('ANTHROPIC_API_KEY not set — cannot summarize.')
+        raise RuntimeError('ANTHROPIC_API_KEY not set - cannot summarize.')
 
-    # Cap input to keep cost/latency sane. ~40k chars is roughly 10k tokens.
     capped = thread_text[:40000]
     if len(thread_text) > 40000:
-        capped += "\n\n[truncated — original was {} chars]".format(len(thread_text))
+        capped += "\n\n[truncated - original was {} chars]".format(len(thread_text))
 
     system_prompt = (
-        "You are Inbox Agent, a sharp executive assistant who summarizes email "
-        "threads forwarded to you. Produce a crisp plain-text summary of the "
-        "thread. Structure it as: (1) one-sentence TL;DR, (2) the key people "
-        "involved and their positions, (3) the 2-5 main points or decisions, "
-        "(4) any explicit asks of the reader, (5) suggested next step if one "
-        "is obvious. Skip signatures, legal boilerplate, and quoted duplicates. "
-        "Be direct. No preamble. No sign-off. Plain text only (no markdown)."
+        "You are Inbox Agent, a sharp executive assistant who summarizes forwarded "
+        "email threads. Respond with ONLY a single valid JSON object (no markdown "
+        "code fences, no prose before or after) with these exact keys:\n"
+        '{\n'
+        '  "tldr": "one sentence, direct, under 25 words",\n'
+        '  "people": [{"name":"...","role":"short title or company","stance":"their position or ask in one line"}],\n'
+        '  "key_points": ["short bullets of what was decided or discussed"],\n'
+        '  "asks": ["things the thread explicitly asks of the reader"],\n'
+        '  "next_step": "one concrete suggested next action, or empty string",\n'
+        '  "dates": [{"when":"Thu Apr 24 at 2pm ET","what":"Pricing call"}],\n'
+        '  "draft_reply": "a complete professional draft reply the reader could send, plain text, 3-6 sentences"\n'
+        '}\n'
+        "Use [] or \"\" for sections that don't apply. Skip signatures, legal "
+        "disclaimers, and quoted duplicates. Be direct. Do not wrap the JSON in "
+        "backticks or add any commentary."
     )
 
     user_content = (
@@ -627,16 +636,299 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> str:
         },
         body={
             'model': ANTHROPIC_MODEL,
-            'max_tokens': 1024,
+            'max_tokens': 2048,
             'system': system_prompt,
             'messages': [{'role': 'user', 'content': user_content}],
         },
         timeout=60,
     )
-    # Response shape: {"content":[{"type":"text","text":"..."}], ...}
     blocks = result.get('content', [])
     text_parts = [b.get('text', '') for b in blocks if b.get('type') == 'text']
-    return ('\n'.join(text_parts)).strip() or '(empty summary)'
+    raw = ('\n'.join(text_parts)).strip()
+
+    empty = {
+        'tldr': '', 'people': [], 'key_points': [], 'asks': [],
+        'next_step': '', 'dates': [], 'draft_reply': '', 'raw_fallback': '',
+    }
+    if not raw:
+        empty['raw_fallback'] = '(empty summary)'
+        return empty
+
+    import json as _json
+    start = raw.find('{')
+    end = raw.rfind('}')
+    if start < 0 or end < 0 or end <= start:
+        empty['raw_fallback'] = raw
+        return empty
+    try:
+        parsed = _json.loads(raw[start:end + 1])
+    except Exception:
+        empty['raw_fallback'] = raw
+        return empty
+
+    out = dict(empty)
+    out['tldr'] = str(parsed.get('tldr', '') or '').strip()
+    people = parsed.get('people', []) or []
+    out['people'] = [
+        {
+            'name': str(p.get('name', '') or '').strip(),
+            'role': str(p.get('role', '') or '').strip(),
+            'stance': str(p.get('stance', '') or '').strip(),
+        }
+        for p in people if isinstance(p, dict)
+    ]
+    out['key_points'] = [str(x).strip() for x in (parsed.get('key_points', []) or []) if str(x).strip()]
+    out['asks'] = [str(x).strip() for x in (parsed.get('asks', []) or []) if str(x).strip()]
+    out['next_step'] = str(parsed.get('next_step', '') or '').strip()
+    dates = parsed.get('dates', []) or []
+    out['dates'] = [
+        {
+            'when': str(d.get('when', '') or '').strip(),
+            'what': str(d.get('what', '') or '').strip(),
+        }
+        for d in dates if isinstance(d, dict)
+    ]
+    out['draft_reply'] = str(parsed.get('draft_reply', '') or '').strip()
+    return out
+
+
+def _html_escape(s: str) -> str:
+    return (str(s)
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;'))
+
+
+def render_summary_html(data: dict, first_name: str, alias: str) -> str:
+    """Render the structured summary dict into a branded HTML email body."""
+    font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+    fallback = (data or {}).get('raw_fallback', '')
+    tldr = (data or {}).get('tldr', '')
+    people = (data or {}).get('people', []) or []
+    points = (data or {}).get('key_points', []) or []
+    asks = (data or {}).get('asks', []) or []
+    next_step = (data or {}).get('next_step', '')
+    dates = (data or {}).get('dates', []) or []
+    draft = (data or {}).get('draft_reply', '')
+
+    def label(txt):
+        return ('<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;'
+                'font-weight:700;color:#0a8a0a;margin:0 0 8px 0">' + _html_escape(txt) + '</div>')
+
+    sections = []
+
+    # Hero TL;DR card
+    tldr_display = tldr if tldr else (fallback if fallback else '')
+    if tldr_display:
+        sections.append(
+            '<tr><td style="padding:0 24px 16px 24px;font-family:' + font + '">'
+            '<div style="background:#e6fce6;border-radius:8px;padding:18px 20px;'
+            'color:#111;font-size:18px;line-height:1.45;font-weight:600">'
+            + _html_escape(tldr_display) + '</div></td></tr>'
+        )
+
+    # If we only have the raw fallback, stop here
+    if fallback and not tldr and not points and not people and not asks:
+        pass
+    else:
+        # People
+        if people:
+            items = ''
+            for p in people:
+                nm = _html_escape(p.get('name', ''))
+                ro = _html_escape(p.get('role', ''))
+                st = _html_escape(p.get('stance', ''))
+                items += (
+                    '<li style="margin:8px 0;padding:0">'
+                    '<span style="font-weight:600;color:#111">' + nm + '</span>'
+                    + (' <span style="color:#666">- ' + ro + '</span>' if ro else '')
+                    + (('<div style="color:#444;font-size:14px;margin-top:2px">' + st + '</div>') if st else '')
+                    + '</li>'
+                )
+            sections.append(
+                '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+                + label('Key people')
+                + '<ul style="margin:0;padding-left:18px;color:#111;font-size:15px">'
+                + items + '</ul></td></tr>'
+            )
+
+        # Key points
+        if points:
+            items = ''.join(
+                '<li style="margin:6px 0;color:#111">' + _html_escape(p) + '</li>'
+                for p in points
+            )
+            sections.append(
+                '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+                + label('Key points')
+                + '<ul style="margin:0;padding-left:20px;font-size:15px;line-height:1.55">'
+                + items + '</ul></td></tr>'
+            )
+
+        # Asks (yellow callout)
+        if asks:
+            items = ''.join(
+                '<li style="margin:6px 0">' + _html_escape(a) + '</li>' for a in asks
+            )
+            sections.append(
+                '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+                + label('Asks of you')
+                + '<div style="background:#fffbe6;border-left:3px solid #ffca28;'
+                'padding:12px 16px;border-radius:4px;color:#111;font-size:14px;'
+                'line-height:1.55">'
+                + '<ul style="margin:0;padding-left:18px">' + items + '</ul>'
+                + '</div></td></tr>'
+            )
+
+        # Next step (green tint)
+        if next_step:
+            sections.append(
+                '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+                + label('Suggested next step')
+                + '<div style="background:#e6fce6;border-radius:6px;padding:14px 18px;'
+                'color:#111;font-size:15px;line-height:1.5">'
+                '<span style="color:#0ace0a;font-weight:700">&rarr;</span> '
+                + _html_escape(next_step) + '</div></td></tr>'
+            )
+
+        # Dates
+        if dates:
+            items = ''
+            for d in dates:
+                wh = _html_escape(d.get('when', ''))
+                wt = _html_escape(d.get('what', ''))
+                items += (
+                    '<li style="margin:6px 0;list-style:none;padding-left:20px;'
+                    'position:relative">'
+                    '<span style="position:absolute;left:0">&#128197;</span>'
+                    '<span style="font-weight:600">' + wh + '</span>'
+                    + ((' <span style="color:#666">- ' + wt + '</span>') if wt else '')
+                    + '</li>'
+                )
+            sections.append(
+                '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+                + label('Key dates')
+                + '<ul style="margin:0;padding-left:0;font-size:14px;line-height:1.5">'
+                + items + '</ul></td></tr>'
+            )
+
+        # Draft reply
+        if draft:
+            body = _html_escape(draft).replace('\n', '<br>')
+            sections.append(
+                '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+                + label('Draft reply (copy & paste)')
+                + '<div style="background:#ffffff;border:1px solid #e5e5e5;'
+                'border-radius:6px;padding:16px 18px;color:#111;font-size:14px;'
+                'line-height:1.55;white-space:normal">' + body + '</div></td></tr>'
+            )
+
+    body_html = ''.join(sections)
+
+    mailto = 'mailto:' + _html_escape(alias) + '@inbox.mychannelview.com'
+    footer = (
+        '<tr><td style="padding:24px;font-family:' + font + ';color:#888;'
+        'font-size:12px;text-align:center;border-top:1px solid #eee">'
+        + _html_escape('Inbox Agent - Channel One Strategies') + '<br>'
+        + '<a href="' + mailto + '" style="color:#0a8a0a;text-decoration:none">'
+        + 'Forward another thread anytime &rarr;</a></td></tr>'
+    )
+
+    header = (
+        '<tr><td style="background:#111111;padding:16px 24px;font-family:' + font + '">'
+        '<span style="display:inline-block;width:14px;height:14px;background:#0ace0a;'
+        'vertical-align:middle;border-radius:2px"></span>'
+        '<span style="color:#ffffff;font-weight:700;letter-spacing:1px;margin-left:10px;'
+        'vertical-align:middle">CHANNEL ONE</span>'
+        '<span style="color:#999;margin-left:10px;vertical-align:middle">&middot;</span>'
+        '<span style="color:#ffffff;margin-left:10px;vertical-align:middle">Inbox Agent</span>'
+        '</td></tr>'
+    )
+
+    greeting = (
+        '<tr><td style="padding:20px 24px 6px 24px;font-family:' + font + ';'
+        'color:#111;font-size:15px">Hi ' + _html_escape(first_name or 'there') + ' -</td></tr>'
+    )
+
+    return (
+        '<!doctype html><html><body style="margin:0;padding:0;background:#f4f4f4">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#f4f4f4;padding:24px 0">'
+        '<tr><td align="center">'
+        '<table role="presentation" width="620" cellpadding="0" cellspacing="0" '
+        'style="max-width:620px;width:100%;background:#ffffff;border-radius:10px;'
+        'overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06)">'
+        + header + greeting + body_html + footer +
+        '</table></td></tr></table></body></html>'
+    )
+
+
+def render_summary_text(data: dict, first_name: str, alias: str) -> str:
+    """Plain-text fallback for the summary email."""
+    fallback = (data or {}).get('raw_fallback', '')
+    tldr = (data or {}).get('tldr', '')
+    people = (data or {}).get('people', []) or []
+    points = (data or {}).get('key_points', []) or []
+    asks = (data or {}).get('asks', []) or []
+    next_step = (data or {}).get('next_step', '')
+    dates = (data or {}).get('dates', []) or []
+    draft = (data or {}).get('draft_reply', '')
+
+    lines = ['Hi ' + (first_name or 'there') + ' -', '']
+
+    if tldr:
+        lines += ['TL;DR', tldr, '']
+    elif fallback:
+        lines += ['Summary', fallback, '']
+
+    if people:
+        lines += ['KEY PEOPLE']
+        for p in people:
+            bits = [p.get('name', '').strip()]
+            if p.get('role'):
+                bits.append('(' + p['role'] + ')')
+            head = ' '.join(b for b in bits if b)
+            lines.append('- ' + head)
+            if p.get('stance'):
+                lines.append('  ' + p['stance'])
+        lines.append('')
+
+    if points:
+        lines += ['KEY POINTS']
+        for pt in points:
+            lines.append('- ' + pt)
+        lines.append('')
+
+    if asks:
+        lines += ['ASKS OF YOU']
+        for a in asks:
+            lines.append('- ' + a)
+        lines.append('')
+
+    if next_step:
+        lines += ['SUGGESTED NEXT STEP', '-> ' + next_step, '']
+
+    if dates:
+        lines += ['KEY DATES']
+        for d in dates:
+            when = d.get('when', '').strip()
+            what = d.get('what', '').strip()
+            if when and what:
+                lines.append('- ' + when + ' - ' + what)
+            elif when:
+                lines.append('- ' + when)
+        lines.append('')
+
+    if draft:
+        lines += ['DRAFT REPLY (copy & paste)', draft, '']
+
+    lines += [
+        '---',
+        'Inbox Agent - Channel One Strategies',
+        'Forward another thread anytime to ' + alias + '@inbox.mychannelview.com',
+    ]
+    return '\n'.join(lines)
 
 
 def _from_with_display_name() -> str:
@@ -1295,7 +1587,7 @@ def _handle_inbound():
         return ('empty body', 200)
 
     try:
-        summary = claude_summarize(thread, requester_email=from_email)
+        data = claude_summarize(thread, requester_email=from_email)
     except Exception as e:
         print(f'[inbox_agent] summarize failed: {e}')
         try:
@@ -1303,8 +1595,8 @@ def _handle_inbound():
                 to=from_email,
                 subject=f'Re: {subject}',
                 text_body=(
-                    "Inbox Agent hit a snag running the summary. I've logged "
-                    "it - try forwarding again in a few minutes.\n\n"
+                    "Inbox Agent hit a snag running the summary. "
+                    "Please forward again in a minute.\n\n"
                     f"(debug: {str(e)[:200]})\n\n- Inbox Agent"
                 ),
             )
@@ -1313,27 +1605,16 @@ def _handle_inbound():
         return ('summarize error', 200)
 
     reply_subject = subject if subject.lower().startswith('re:') else f'Re: {subject}'
-    reply_body = (
-        f"Hi {user['first_name'] or 'there'} -\n\n"
-        f"{summary}\n\n"
-        "- Inbox Agent\n"
-        "(Reply to this email if the summary missed something; Joe will take a look.)"
-    )
-    html_summary = (
-        '<p>Hi ' + (user['first_name'] or 'there') + ' &mdash;</p>'
-        '<div style="white-space:pre-wrap;font-family:-apple-system,BlinkMacSystemFont,'
-        "'Segoe UI',Helvetica,Arial,sans-serif;color:#111;line-height:1.55;font-size:15px"
-        '">' + (summary.replace('<', '&lt;').replace('>', '&gt;')) + '</div>'
-        '<p style="font-size:13px;color:#888;margin-top:24px">&mdash; Inbox Agent<br>'
-        '<em>Reply to this email if the summary missed something; Joe will take a look.</em></p>'
-    )
+    first_name = (user['first_name'] or 'there') if user else 'there'
+    reply_text = render_summary_text(data, first_name, alias)
+    reply_html = render_summary_html(data, first_name, alias)
+
     try:
         postmark_send(
             to=from_email,
             subject=reply_subject,
-            text_body=reply_body,
-            html_body=html_summary,
-            reply_to='joe@channelonestrategies.com',
+            text_body=reply_text,
+            html_body=reply_html,
         )
     except Exception as e:
         print(f'[inbox_agent] reply send failed: {e}')
