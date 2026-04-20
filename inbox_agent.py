@@ -1826,6 +1826,414 @@ def _handle_ask_reply(user, payload, thread_row):
 
 
 # ---------------------------------------------------------------------------
+# Anytime Brief — user emails their alias with subject "brief" (as a whole
+# word, case-insensitive). Aggregate the last 7 days of stored summaries and
+# send back a digest.
+# ---------------------------------------------------------------------------
+
+def _gather_brief_data(user_id: int, days: int = 7) -> dict:
+    """Pull the user's inbox_threads rows from the last `days` days and
+    structure them for the brief email.
+
+    Returns:
+        {
+          'threads':   [ {id, subject, from_email, created_at, tldr,
+                          todos, asks, dates, next_step}, ... ],
+          'all_todos': [...unique strings, newest first...],
+          'all_dates': [ {when, what, from_subject}, ... ],
+          'attention': [ ...threads where asks is non-empty... ],
+        }
+    """
+    import json as _json
+    threads_out = []
+    all_todos_seen = set()
+    all_todos = []
+    all_dates = []
+    attention = []
+
+    try:
+        safe_days = int(days)
+        with get_db(autocommit=True) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT id, subject, from_email, summary_json, created_at "
+                f"FROM inbox_threads "
+                f"WHERE user_id = %s AND created_at > NOW() - INTERVAL '{safe_days} days' "
+                f"ORDER BY created_at DESC",
+                (user_id,),
+            )
+            rows = cur.fetchall() or []
+    except Exception as e:
+        print(f'[inbox_agent] brief gather failed: {e}')
+        rows = []
+
+    for row in rows:
+        tid = _row_get(row, 'id')
+        subject = _row_get(row, 'subject', '') or ''
+        from_email = _row_get(row, 'from_email', '') or ''
+        created_at = _row_get(row, 'created_at')
+        summary = _row_get(row, 'summary_json')
+        # summary_json: PG RealDictCursor returns dicts for jsonb; if the
+        # column was stored as text, fall back to a json.loads.
+        if isinstance(summary, str):
+            try:
+                summary = _json.loads(summary)
+            except Exception:
+                summary = {}
+        if not isinstance(summary, dict):
+            summary = {}
+
+        tldr = summary.get('tldr') or summary.get('raw_fallback') or ''
+        todos = summary.get('todos') or []
+        asks = summary.get('asks') or []
+        dates = summary.get('dates') or []
+        next_step = summary.get('next_step') or ''
+
+        thread_entry = {
+            'id': tid,
+            'subject': subject,
+            'from_email': from_email,
+            'created_at': created_at,
+            'tldr': tldr,
+            'todos': todos,
+            'asks': asks,
+            'dates': dates,
+            'next_step': next_step,
+        }
+        threads_out.append(thread_entry)
+
+        for t in todos:
+            if not isinstance(t, str):
+                continue
+            key = t.strip().lower()
+            if not key or key in all_todos_seen:
+                continue
+            all_todos_seen.add(key)
+            all_todos.append(t.strip())
+
+        for d in dates:
+            if not isinstance(d, dict):
+                continue
+            when = (d.get('when') or '').strip()
+            what = (d.get('what') or '').strip()
+            if not when and not what:
+                continue
+            all_dates.append({
+                'when': when,
+                'what': what,
+                'from_subject': subject,
+            })
+
+        if asks:
+            attention.append(thread_entry)
+
+    return {
+        'threads': threads_out,
+        'all_todos': all_todos,
+        'all_dates': all_dates,
+        'attention': attention,
+    }
+
+
+def _brief_first_line(s: str, limit: int = 160) -> str:
+    """Return the first non-empty line, truncated to `limit` chars."""
+    if not s:
+        return ''
+    for line in str(s).splitlines():
+        ln = line.strip()
+        if ln:
+            if len(ln) > limit:
+                return ln[:limit - 1].rstrip() + '...'
+            return ln
+    return ''
+
+
+def _brief_format_created(created_at) -> str:
+    """Format a created_at timestamp for compact display. Accepts datetime or str."""
+    if not created_at:
+        return ''
+    try:
+        if hasattr(created_at, 'strftime'):
+            return created_at.strftime('%b %d')
+    except Exception:
+        pass
+    s = str(created_at)
+    # Best-effort trim: "2026-04-19 11:15:00+00" -> "2026-04-19"
+    return s[:10]
+
+
+def render_brief_html(data: dict, first_name: str, alias: str) -> str:
+    """Render the 7-day brief as a Channel One branded HTML email."""
+    font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+    threads = (data or {}).get('threads', []) or []
+    all_todos = (data or {}).get('all_todos', []) or []
+    all_dates = (data or {}).get('all_dates', []) or []
+    attention = (data or {}).get('attention', []) or []
+
+    n_threads = len(threads)
+    n_todos = len(all_todos)
+    n_dates = len(all_dates)
+
+    def label(txt):
+        return ('<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;'
+                'font-weight:700;color:#0a8a0a;margin:0 0 8px 0">' + _html_escape(txt) + '</div>')
+
+    sections = []
+
+    # Hero overview card
+    if n_threads == 0:
+        hero_text = ('No threads summarized in the last 7 days. '
+                     'Forward a thread anytime to get started.')
+    else:
+        hero_text = (
+            'In the last 7 days: ' + str(n_threads)
+            + (' threads summarized, ' if n_threads != 1 else ' thread summarized, ')
+            + str(n_todos) + (' open todos, ' if n_todos != 1 else ' open todo, ')
+            + str(n_dates) + (' upcoming dates.' if n_dates != 1 else ' upcoming date.')
+        )
+    sections.append(
+        '<tr><td style="padding:0 24px 16px 24px;font-family:' + font + '">'
+        '<div style="background:#e6fce6;border-radius:8px;padding:18px 20px;'
+        'color:#111;font-size:17px;line-height:1.45;font-weight:600">'
+        + _html_escape(hero_text) + '</div></td></tr>'
+    )
+
+    # NEEDS ATTENTION (yellow callout) — max 5
+    if attention:
+        items = ''
+        for th in attention[:5]:
+            subj = _html_escape(th.get('subject') or '(no subject)')
+            asks = th.get('asks') or []
+            first_ask = _html_escape(asks[0]) if asks else ''
+            items += (
+                '<li style="margin:8px 0">'
+                '<div style="font-weight:600;color:#111">' + subj + '</div>'
+                + (('<div style="color:#444;font-size:14px;margin-top:2px">'
+                    + first_ask + '</div>') if first_ask else '')
+                + '</li>'
+            )
+        sections.append(
+            '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+            + label('Needs attention')
+            + '<div style="background:#fffbe6;border-left:3px solid #ffca28;'
+              'padding:12px 16px;border-radius:4px;color:#111;font-size:14px;'
+              'line-height:1.55">'
+            + '<ul style="margin:0;padding-left:18px">' + items + '</ul>'
+            + '</div></td></tr>'
+        )
+
+    # OPEN TODOS — max 10
+    if all_todos:
+        items = ''.join(
+            '<li style="margin:6px 0;list-style:none;padding-left:26px;position:relative;color:#111">'
+            '<span style="position:absolute;left:0;top:0;display:inline-block;width:16px;height:16px;'
+            'border:2px solid #0ace0a;border-radius:3px;background:#ffffff"></span>'
+            + _html_escape(t) + '</li>'
+            for t in all_todos[:10]
+        )
+        sections.append(
+            '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+            + label('Open todos')
+            + '<ul style="margin:0;padding:0;font-size:15px;line-height:1.5">'
+            + items + '</ul></td></tr>'
+        )
+
+    # UPCOMING DATES — max 8
+    if all_dates:
+        items = ''
+        for d in all_dates[:8]:
+            wh = _html_escape(d.get('when', ''))
+            wt = _html_escape(d.get('what', ''))
+            src = _html_escape(d.get('from_subject', ''))
+            items += (
+                '<li style="margin:6px 0;list-style:none;padding-left:20px;position:relative">'
+                '<span style="position:absolute;left:0">&#128197;</span>'
+                '<span style="font-weight:600">' + wh + '</span>'
+                + ((' <span style="color:#666">- ' + wt + '</span>') if wt else '')
+                + ((' <span style="color:#999;font-size:12px">(' + src + ')</span>') if src else '')
+                + '</li>'
+            )
+        sections.append(
+            '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+            + label('Upcoming dates')
+            + '<ul style="margin:0;padding-left:0;font-size:14px;line-height:1.5">'
+            + items + '</ul></td></tr>'
+        )
+
+    # RECENT THREADS — max 10 (compact)
+    if threads:
+        items = ''
+        for th in threads[:10]:
+            subj = _html_escape(th.get('subject') or '(no subject)')
+            tldr_line = _html_escape(_brief_first_line(th.get('tldr') or ''))
+            when = _html_escape(_brief_format_created(th.get('created_at')))
+            items += (
+                '<li style="margin:10px 0;list-style:none;padding:0;color:#111">'
+                '<div style="font-weight:600;color:#111">' + subj
+                + ((' <span style="color:#999;font-size:12px;font-weight:400">' + when + '</span>') if when else '')
+                + '</div>'
+                + (('<div style="color:#444;font-size:13px;margin-top:2px;line-height:1.5">'
+                    + tldr_line + '</div>') if tldr_line else '')
+                + '</li>'
+            )
+        sections.append(
+            '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+            + label('Recent threads')
+            + '<ul style="margin:0;padding:0;font-size:14px">'
+            + items + '</ul></td></tr>'
+        )
+
+    body_html = ''.join(sections)
+
+    mailto = 'mailto:' + _html_escape(alias) + '@inbox.mychannelview.com'
+    footer = (
+        '<tr><td style="padding:24px;font-family:' + font + ';color:#888;'
+        'font-size:12px;text-align:center;border-top:1px solid #eee">'
+        + _html_escape('Inbox Agent - Channel One Strategies') + '<br>'
+        + '<a href="' + mailto + '" style="color:#0a8a0a;text-decoration:none">'
+        + 'Forward another thread anytime &rarr;</a></td></tr>'
+    )
+
+    header = (
+        '<tr><td style="background:#111111;padding:16px 24px;font-family:' + font + '">'
+        '<span style="display:inline-block;width:14px;height:14px;background:#0ace0a;'
+        'vertical-align:middle;border-radius:2px"></span>'
+        '<span style="color:#ffffff;font-weight:700;letter-spacing:1px;margin-left:10px;'
+        'vertical-align:middle">CHANNEL ONE</span>'
+        '<span style="color:#999;margin-left:10px;vertical-align:middle">&middot;</span>'
+        '<span style="color:#ffffff;margin-left:10px;vertical-align:middle">Inbox Agent</span>'
+        '</td></tr>'
+    )
+
+    greeting = (
+        '<tr><td style="padding:20px 24px 6px 24px;font-family:' + font + ';'
+        'color:#111;font-size:15px">Hi ' + _html_escape(first_name or 'there')
+        + ' - here\'s your 7-day brief.</td></tr>'
+    )
+
+    return (
+        '<!doctype html><html><body style="margin:0;padding:0;background:#f4f4f4">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#f4f4f4;padding:24px 0">'
+        '<tr><td align="center">'
+        '<table role="presentation" width="620" cellpadding="0" cellspacing="0" '
+        'style="max-width:620px;width:100%;background:#ffffff;border-radius:10px;'
+        'overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06)">'
+        + header + greeting + body_html + footer +
+        '</table></td></tr></table></body></html>'
+    )
+
+
+def render_brief_text(data: dict, first_name: str, alias: str) -> str:
+    """Plain-text fallback for the 7-day brief email."""
+    threads = (data or {}).get('threads', []) or []
+    all_todos = (data or {}).get('all_todos', []) or []
+    all_dates = (data or {}).get('all_dates', []) or []
+    attention = (data or {}).get('attention', []) or []
+
+    n_threads = len(threads)
+    n_todos = len(all_todos)
+    n_dates = len(all_dates)
+
+    lines = ['Hi ' + (first_name or 'there') + " - here's your 7-day brief.", '']
+
+    if n_threads == 0:
+        lines += [
+            'No threads summarized in the last 7 days.',
+            'Forward a thread anytime to get started.',
+            '',
+        ]
+    else:
+        lines += [
+            ('In the last 7 days: ' + str(n_threads)
+             + (' threads summarized, ' if n_threads != 1 else ' thread summarized, ')
+             + str(n_todos) + (' open todos, ' if n_todos != 1 else ' open todo, ')
+             + str(n_dates) + (' upcoming dates.' if n_dates != 1 else ' upcoming date.')),
+            '',
+        ]
+
+    if attention:
+        lines += ['=== NEEDS ATTENTION ===']
+        for th in attention[:5]:
+            subj = th.get('subject') or '(no subject)'
+            asks = th.get('asks') or []
+            first_ask = asks[0] if asks else ''
+            lines.append('- ' + subj)
+            if first_ask:
+                lines.append('  ' + first_ask)
+        lines.append('')
+
+    if all_todos:
+        lines += ['=== OPEN TODOS ===']
+        for t in all_todos[:10]:
+            lines.append('[ ] ' + t)
+        lines.append('')
+
+    if all_dates:
+        lines += ['=== UPCOMING DATES ===']
+        for d in all_dates[:8]:
+            when = (d.get('when') or '').strip()
+            what = (d.get('what') or '').strip()
+            src = (d.get('from_subject') or '').strip()
+            bits = []
+            if when:
+                bits.append(when)
+            if what:
+                bits.append('- ' + what)
+            if src:
+                bits.append('(' + src + ')')
+            lines.append('- ' + ' '.join(bits))
+        lines.append('')
+
+    if threads:
+        lines += ['=== RECENT THREADS ===']
+        for th in threads[:10]:
+            subj = th.get('subject') or '(no subject)'
+            when = _brief_format_created(th.get('created_at'))
+            tldr_line = _brief_first_line(th.get('tldr') or '')
+            head = '- ' + subj + ((' (' + when + ')') if when else '')
+            lines.append(head)
+            if tldr_line:
+                lines.append('  ' + tldr_line)
+        lines.append('')
+
+    lines += [
+        '---',
+        'Inbox Agent - Channel One Strategies',
+        'Forward another thread anytime to ' + alias + '@inbox.mychannelview.com',
+    ]
+    return '\n'.join(lines)
+
+
+def _handle_brief_request(user, payload):
+    """Send the user a 7-day digest of their summarized threads."""
+    from_email = (payload.get('FromFull') or {}).get('Email') or payload.get('From') or ''
+    alias = (user['alias'] if user else '') or ''
+    first_name = (user['first_name'] or 'there') if user else 'there'
+
+    data = _gather_brief_data(user['id'], days=7)
+    subject = 'Your Inbox Agent brief'
+
+    reply_text = render_brief_text(data, first_name, alias)
+    reply_html = render_brief_html(data, first_name, alias)
+
+    try:
+        postmark_send(
+            to=from_email,
+            subject=subject,
+            text_body=reply_text,
+            html_body=reply_html,
+        )
+    except Exception as e:
+        print(f'[inbox_agent] brief send failed: {e}')
+        return ('send error', 200)
+
+    uid = _row_get(user, 'id', '?')
+    print(f'[inbox_agent] brief delivered to {from_email} for user {uid} ({len(data.get("threads") or [])} threads)')
+    return ('ok', 200)
+
+
+# ---------------------------------------------------------------------------
 # Postmark inbound webhook
 # ---------------------------------------------------------------------------
 
@@ -1880,6 +2288,16 @@ def _handle_inbound():
         except Exception as e:
             print(f'[inbox_agent] bounce send failed: {e}')
         return ('sender mismatch', 200)
+
+    # Anytime Brief: if the subject contains the whole word "brief" AND there's
+    # no In-Reply-To/References header (so we don't hijack an ask-reply that
+    # happens to mention "brief"), aggregate the last 7 days of summaries and
+    # send a digest back.
+    subject_lower = (payload.get('Subject') or '').lower()
+    has_reply_header = bool(_get_header(payload, 'In-Reply-To') or _get_header(payload, 'References'))
+    is_brief_request = (not has_reply_header) and re.search(r'\bbrief\b', subject_lower) is not None
+    if is_brief_request and user:
+        return _handle_brief_request(user, payload)
 
     # Detect reply-to-summary: match In-Reply-To or References against stored reply_message_id
     in_reply_to = _get_header(payload, 'In-Reply-To')
