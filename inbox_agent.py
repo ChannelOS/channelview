@@ -682,8 +682,16 @@ def postmark_send(to: str, subject: str, text_body: str,
 
 
 def _verify_url(token: str) -> str:
-    """Build the absolute verification URL for an email signup."""
-    return f'https://{INBOX_HOST}/verify?token={urllib.parse.quote(token, safe="")}'
+    """Build the absolute verification URL for an email signup.
+
+    Uses VERIFY_URL_BASE if set (e.g. 'https://mychannelview.com/__inbox'),
+    otherwise defaults to https://{INBOX_HOST}. The main-domain path keeps
+    the verify link working even before inbox.mychannelview.com has TLS.
+    """
+    base = os.environ.get('VERIFY_URL_BASE', '').rstrip('/')
+    if not base:
+        base = f'https://{INBOX_HOST}'
+    return f'{base}/verify?token={urllib.parse.quote(token, safe="")}'
 
 
 def send_verification_email(to: str, first_name: str, token: str) -> None:
@@ -1385,3 +1393,28 @@ def register_inbox_routes(app):
         if request.method not in ('GET', 'HEAD'):
             abort(405)
         return handler()
+
+    # Path-based fallbacks on the main domain so the signup flow is reachable
+    # at https://mychannelview.com/__inbox/* even before inbox.mychannelview.com
+    # has its own cert. Postmark's inbound webhook already uses this path.
+    @app.route('/__inbox/signup', methods=['GET', 'POST'], endpoint='_inbox_path_signup')
+    def _inbox_path_signup():
+        if request.method == 'POST':
+            return _handle_signup_post()
+        return _render_signup_form()
+
+    @app.route('/__inbox/verify', methods=['GET'], endpoint='_inbox_path_verify')
+    def _inbox_path_verify():
+        return _handle_verify()
+
+    @app.route('/__inbox/inbound', methods=['POST'], endpoint='_inbox_path_inbound')
+    def _inbox_path_inbound():
+        return _handle_inbound()
+
+    @app.route('/__inbox/health', methods=['GET'], endpoint='_inbox_path_health')
+    def _inbox_path_health():
+        return {
+            'ok': True,
+            'service': 'inbox-agent',
+            'time': datetime.utcnow().isoformat() + 'Z',
+        }
