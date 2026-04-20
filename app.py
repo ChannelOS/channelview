@@ -109,6 +109,7 @@ def csrf_protect():
         '/api/integrations/zapier/webhook',  # Zapier inbound webhook
         '/api/voice/webhook',  # Retell AI webhook (uses its own verification)
         '/api/public/',  # Public endpoints (channelcareers.io apply, etc.) — IP rate-limited
+        '/__inbox/',  # Inbox Agent (signup, verify, inbound webhook) — public + Postmark
     ]
     if request.method in ('GET', 'HEAD', 'OPTIONS'):
         return
