@@ -385,7 +385,7 @@ LANDING_HTML = r"""<!DOCTYPE html>
     <h2>Get your address</h2>
     <p>Sign up in fifteen seconds. You'll get a verification email — click the link and your
     forwarding address is live.</p>
-    <form method="POST" action="/signup">
+    <form method="POST" action="">
       <label for="first_name">First name</label>
       <input type="text" id="first_name" name="first_name" required maxlength="30"
              autocomplete="given-name" value="{{ first_name or '' }}">
@@ -1418,3 +1418,4 @@ def register_inbox_routes(app):
             'service': 'inbox-agent',
             'time': datetime.utcnow().isoformat() + 'Z',
         }
+       
