@@ -26,7 +26,7 @@ import base64
 import hashlib
 import hmac
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import request, redirect, abort, make_response, render_template_string
 
@@ -100,26 +100,55 @@ CREATE TABLE IF NOT EXISTS inbox_users (
     timezone TEXT DEFAULT 'America/Chicago',
     last_brief_sent_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    verified INTEGER DEFAULT 0,
+    verify_token TEXT,
+    token_expires_at TIMESTAMP,
+    signup_ip TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_inbox_users_email ON inbox_users(email);
 CREATE INDEX IF NOT EXISTS idx_inbox_users_alias ON inbox_users(alias);
+CREATE INDEX IF NOT EXISTS idx_inbox_users_verify_token ON inbox_users(verify_token);
 """
+
+# Idempotent ALTER TABLE migrations for when the table already exists without
+# the new signup columns. Each is wrapped in try/except in init_inbox_schema.
+SIGNUP_MIGRATIONS_PG = [
+    "ALTER TABLE inbox_users ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE inbox_users ADD COLUMN IF NOT EXISTS verify_token TEXT",
+    "ALTER TABLE inbox_users ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMP",
+    "ALTER TABLE inbox_users ADD COLUMN IF NOT EXISTS signup_ip TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_users_verify_token ON inbox_users(verify_token)",
+]
+SIGNUP_MIGRATIONS_SQLITE = [
+    "ALTER TABLE inbox_users ADD COLUMN verified INTEGER DEFAULT 0",
+    "ALTER TABLE inbox_users ADD COLUMN verify_token TEXT",
+    "ALTER TABLE inbox_users ADD COLUMN token_expires_at TIMESTAMP",
+    "ALTER TABLE inbox_users ADD COLUMN signup_ip TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_users_verify_token ON inbox_users(verify_token)",
+]
 
 
 def init_inbox_schema():
-    """Create inbox_users table if it does not exist. Idempotent."""
+    """Create inbox_users table if it does not exist, and run signup-column
+    migrations for older deployments. Idempotent.
+    """
+    is_pg = os.environ.get('DATABASE_URL', '').startswith('postgres')
+
+    # ---- Step 1: Ensure the base table + indexes exist ----
     try:
         conn = get_db(autocommit=True)
-        # Postgres does not support AUTOINCREMENT — rewrite if running PG
         sql = SCHEMA
-        if os.environ.get('DATABASE_URL', '').startswith('postgres'):
+        if is_pg:
             sql = sql.replace(
                 'INTEGER PRIMARY KEY AUTOINCREMENT',
                 'SERIAL PRIMARY KEY'
             ).replace(
                 'brief_enabled INTEGER DEFAULT 1',
                 'brief_enabled BOOLEAN DEFAULT TRUE'
+            ).replace(
+                'verified INTEGER DEFAULT 0',
+                'verified BOOLEAN DEFAULT FALSE'
             )
         conn.executescript(sql) if hasattr(conn, 'executescript') else [
             conn.cursor().execute(stmt) for stmt in sql.split(';') if stmt.strip()
@@ -129,8 +158,29 @@ def init_inbox_schema():
         except Exception:
             pass
     except Exception as e:
-        # Don't crash app startup if inbox schema fails — log and continue.
-        print(f"[inbox_agent] init_inbox_schema failed: {e}")
+        print(f"[inbox_agent] init_inbox_schema (base) failed: {e}")
+
+    # ---- Step 2: Run signup-column migrations for older tables ----
+    # Each ALTER is wrapped individually — "already exists" errors are expected
+    # on re-runs and are safely ignored. PG gets IF NOT EXISTS; SQLite doesn't
+    # support it on ADD COLUMN so we rely on try/except.
+    migrations = SIGNUP_MIGRATIONS_PG if is_pg else SIGNUP_MIGRATIONS_SQLITE
+    for stmt in migrations:
+        try:
+            conn = get_db(autocommit=True)
+            try:
+                conn.cursor().execute(stmt) if not hasattr(conn, 'executescript') \
+                    else conn.executescript(stmt)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            msg = str(e).lower()
+            if 'already exists' in msg or 'duplicate column' in msg:
+                continue  # Already applied; fine.
+            print(f"[inbox_agent] migration skipped ({stmt[:60]}...): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -277,14 +327,8 @@ def _parse_id_token(id_token: str) -> dict:
 # Templates (inline to keep feature self-contained)
 # ---------------------------------------------------------------------------
 
-LANDING_HTML = r"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Inbox Agent — Channel One</title>
-<style>
- :root{--green:#0ace0a;--green-dark:#08a808;--ink:#111;--muted:#555;--line:#e5e5e5}
+_SHARED_CSS = r"""
+ :root{--green:#0ace0a;--green-dark:#08a808;--ink:#111;--muted:#555;--line:#e5e5e5;--tint:#e6fce6}
  *{box-sizing:border-box}
  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
       margin:0;color:var(--ink);background:#fff;line-height:1.55}
@@ -295,55 +339,166 @@ LANDING_HTML = r"""<!DOCTYPE html>
  .lede{font-size:17px;color:var(--muted);margin:0 0 36px;max-width:520px}
  .card{border:1px solid var(--line);border-radius:12px;padding:28px;margin-bottom:20px;background:#fff}
  .card h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;color:#000}
- .card p{margin:0 0 16px;color:var(--muted);font-size:15px}
- .cta{display:inline-flex;align-items:center;gap:10px;background:#000;color:#fff;border:0;
-      padding:14px 22px;border-radius:8px;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer}
- .cta:hover{background:#222}
- .cta.green{background:var(--green);color:#000}
- .cta.green:hover{background:var(--green-dark)}
+ .card p{margin:0 0 14px;color:var(--muted);font-size:15px}
+ label{display:block;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#000;margin:14px 0 6px;font-weight:600}
+ input[type=email],input[type=text]{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:8px;font-size:15px;font-family:inherit;color:#000}
+ input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(10,206,10,.18)}
+ .cta{display:inline-flex;align-items:center;gap:10px;background:var(--green);color:#000;border:0;
+      padding:14px 22px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;cursor:pointer;margin-top:18px}
+ .cta:hover{background:var(--green-dark)}
+ .cta-full{width:100%;justify-content:center}
  .steps{counter-reset:step;padding:0;margin:0 0 8px;list-style:none}
  .steps li{counter-increment:step;padding:6px 0 6px 34px;position:relative;font-size:15px;color:var(--muted)}
  .steps li::before{content:counter(step);position:absolute;left:0;top:4px;width:24px;height:24px;
       border-radius:50%;background:var(--green);color:#000;font-weight:700;font-size:13px;
       display:flex;align-items:center;justify-content:center}
+ .alias-box{background:var(--tint);border:1px solid #c6efc6;border-radius:10px;padding:20px 22px;margin:22px 0 24px}
+ .alias-box .label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#2a7a2a;margin-bottom:8px;font-weight:700}
+ .alias-box .addr{font-size:22px;font-weight:700;color:#000;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+ .banner-error{background:#fff4f4;border:1px solid #f3c6c6;color:#9a1f1f;padding:12px 14px;border-radius:8px;margin:0 0 20px;font-size:14px}
  .foot{margin-top:48px;padding-top:24px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
  .foot a{color:#000}
- .ms-logo{width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:2px}
-</style>
+ code{background:#f4f4f4;padding:2px 6px;border-radius:4px;font-size:14px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+"""
+
+
+LANDING_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inbox Agent — Channel One</title>
+<style>""" + _SHARED_CSS + r"""</style>
 </head>
 <body>
 <div class="wrap">
   <div class="logo"><span class="u"></span> CHANNEL ONE &nbsp;·&nbsp; Inbox Agent</div>
 
   <h1>An email address that thinks.</h1>
-  <p class="lede">Forward something to Inbox Agent — a scheduling back-and-forth, a messy client thread,
-  a half-written reply you don't want to finish — and it handles the next step for you.
-  Replies, drafts, summaries, follow-ups, reminders, all inside your existing inbox.</p>
+  <p class="lede">Forward any email thread to your personal Inbox Agent address and get a clean
+  TL;DR back in about ten seconds. Key people, decisions, what they're asking of you, and
+  the obvious next step — all in plain English.</p>
+
+  {% if error %}<div class="banner-error">{{ error }}</div>{% endif %}
 
   <div class="card">
-    <h2>Connect Outlook to get started</h2>
-    <p>Takes about two minutes. You'll sign in with your Microsoft 365 account and approve
-    read/send permissions. When you're done, you'll get a personal forwarding address wired
-    straight to your mailbox.</p>
-    <a class="cta green" href="/auth/microsoft/start">
-      <svg class="ms-logo" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg"><path fill="#f1511b" d="M1 1h10v10H1z"/><path fill="#80cc28" d="M12 1h10v10H12z"/><path fill="#00adef" d="M1 12h10v10H1z"/><path fill="#fbbc09" d="M12 12h10v10H12z"/></svg>
-      Connect Outlook
-    </a>
+    <h2>Get your address</h2>
+    <p>Sign up in fifteen seconds. You'll get a verification email — click the link and your
+    forwarding address is live.</p>
+    <form method="POST" action="/signup">
+      <label for="first_name">First name</label>
+      <input type="text" id="first_name" name="first_name" required maxlength="30"
+             autocomplete="given-name" value="{{ first_name or '' }}">
+      <label for="email">Your email address</label>
+      <input type="email" id="email" name="email" required
+             autocomplete="email" value="{{ email or '' }}"
+             placeholder="you@company.com">
+      <button class="cta cta-full" type="submit">Send my verification link →</button>
+    </form>
   </div>
 
   <div class="card">
     <h2>How it works</h2>
     <ol class="steps">
-      <li>Sign in with your Microsoft 365 account (multi-business inboxes are supported — one connect covers all of them)</li>
-      <li>Approve the read/send permissions (standard Microsoft Graph scopes, revocable any time)</li>
+      <li>Sign up and verify your email (one click)</li>
       <li>Get your personal forwarding address: <code>yourname-a3f8@inbox.mychannelview.com</code></li>
-      <li>Forward any thread to it, or email <code>agent@inbox.mychannelview.com</code> with a plain-English ask</li>
+      <li>Forward any thread to it from your verified address</li>
+      <li>Get a crisp summary back in your inbox within ~10 seconds</li>
     </ol>
   </div>
 
   <div class="foot">
     Questions? Email <a href="mailto:joe@channelonestrategies.com">joe@channelonestrategies.com</a>.
-    Revoke access any time at <a href="https://account.microsoft.com/privacy">account.microsoft.com/privacy</a>.
+    Only the address you verify can forward threads to your alias — no one else can piggyback on it.
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+SIGNUP_PENDING_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Check your email — Inbox Agent</title>
+<style>""" + _SHARED_CSS + r"""</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="u"></span> CHANNEL ONE &nbsp;·&nbsp; Inbox Agent</div>
+  <h1>Check your email, {{ first_name }}.</h1>
+  <p class="lede">We just sent a verification link to <strong>{{ email }}</strong>.
+  Click it to activate your forwarding address. The link is good for 24 hours.</p>
+
+  <div class="card">
+    <h2>Didn't see it?</h2>
+    <p>Give it a minute, then check your junk or spam folder — Inbox Agent is a new sender so
+    some mailboxes route the first message there. Mark it "not junk" and future summaries
+    will land in your inbox.</p>
+    <p>Still nothing? <a href="/">Start over</a> or email
+    <a href="mailto:joe@channelonestrategies.com">joe@channelonestrategies.com</a>.</p>
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+VERIFY_SUCCESS_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>You're verified — Inbox Agent</title>
+<style>""" + _SHARED_CSS + r"""</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="u"></span> CHANNEL ONE &nbsp;·&nbsp; Inbox Agent</div>
+  <h1>You're in, {{ first_name }}.</h1>
+  <p class="lede">Your personal forwarding address is live. Forward any email thread to it from
+  <strong>{{ email }}</strong> and you'll get a summary back within about ten seconds.</p>
+
+  <div class="alias-box">
+    <div class="label">Your forwarding address</div>
+    <div class="addr">{{ alias }}@{{ inbox_host }}</div>
+  </div>
+
+  <div class="card">
+    <h2>How to use it</h2>
+    <p>In your email client, forward any thread you want summarized to
+    <code>{{ alias }}@{{ inbox_host }}</code>. The summary comes back as a reply.</p>
+    <p>Only emails sent from <strong>{{ email }}</strong> will trigger a summary — no one else
+    can use your alias.</p>
+  </div>
+
+  <div class="foot">
+    Something off? Reply to your welcome email and Joe will take a look.
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+VERIFY_FAILED_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verification link expired — Inbox Agent</title>
+<style>""" + _SHARED_CSS + r"""</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="u"></span> CHANNEL ONE &nbsp;·&nbsp; Inbox Agent</div>
+  <h1>That link didn't work.</h1>
+  <p class="lede">{{ message }}</p>
+  <div class="card">
+    <p><a href="/">← Start a new signup</a> or email
+    <a href="mailto:joe@channelonestrategies.com">joe@channelonestrategies.com</a>.</p>
   </div>
 </div>
 </body>
@@ -484,17 +639,34 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> str:
     return ('\n'.join(text_parts)).strip() or '(empty summary)'
 
 
-def postmark_send(to: str, subject: str, text_body: str, reply_to: str = '') -> dict:
-    """Send a plain-text email via Postmark. Returns parsed response."""
+def _from_with_display_name() -> str:
+    """Return AGENT_FROM_ADDRESS wrapped with a display name so it lands in
+    real inboxes rather than junk folders. If the env var already includes a
+    display name (RFC 5322 '"Name" <addr@x>'), leave it alone.
+    """
+    raw = AGENT_FROM_ADDRESS or ''
+    if '<' in raw and '>' in raw:
+        return raw
+    return f'ChannelView Inbox Agent <{raw}>'
+
+
+def postmark_send(to: str, subject: str, text_body: str,
+                  reply_to: str = '', html_body: str = '') -> dict:
+    """Send an email via Postmark. Returns parsed response.
+    Always includes a plain-text body; optionally includes HTML for better
+    client rendering. The From header carries a display name for deliverability.
+    """
     if not POSTMARK_SERVER_TOKEN:
         raise RuntimeError('POSTMARK_SERVER_TOKEN not set — cannot send reply.')
     body = {
-        'From': AGENT_FROM_ADDRESS,
+        'From': _from_with_display_name(),
         'To': to,
         'Subject': subject,
         'TextBody': text_body,
         'MessageStream': 'outbound',
     }
+    if html_body:
+        body['HtmlBody'] = html_body
     if reply_to:
         body['ReplyTo'] = reply_to
     return _http_post_json(
@@ -506,6 +678,73 @@ def postmark_send(to: str, subject: str, text_body: str, reply_to: str = '') -> 
         },
         body=body,
         timeout=20,
+    )
+
+
+def _verify_url(token: str) -> str:
+    """Build the absolute verification URL for an email signup."""
+    return f'https://{INBOX_HOST}/verify?token={urllib.parse.quote(token, safe="")}'
+
+
+def send_verification_email(to: str, first_name: str, token: str) -> None:
+    """Send the 'click-to-verify' email to a new signup."""
+    url = _verify_url(token)
+    text = (
+        f"Hi {first_name},\n\n"
+        "Thanks for signing up for Inbox Agent.\n\n"
+        "Click the link below to activate your personal forwarding address:\n\n"
+        f"{url}\n\n"
+        "This link is good for 24 hours. If you didn't sign up, just ignore this "
+        "message — your alias stays inactive.\n\n"
+        "— Inbox Agent\n"
+        "Channel One Strategies"
+    )
+    html = f"""<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111;line-height:1.55;max-width:560px;margin:0 auto;padding:32px 20px">
+<p>Hi {first_name},</p>
+<p>Thanks for signing up for <strong>Inbox Agent</strong>.</p>
+<p>Click the button below to activate your personal forwarding address:</p>
+<p style="margin:28px 0"><a href="{url}" style="background:#0ace0a;color:#000;padding:14px 22px;border-radius:8px;font-weight:700;text-decoration:none;display:inline-block">Verify my email</a></p>
+<p style="font-size:13px;color:#555">Or paste this link in your browser:<br><a href="{url}" style="color:#555;word-break:break-all">{url}</a></p>
+<p style="font-size:13px;color:#555">This link is good for 24 hours. If you didn't sign up, just ignore this message &mdash; your alias stays inactive.</p>
+<p style="font-size:13px;color:#888;margin-top:36px">&mdash; Inbox Agent, Channel One Strategies</p>
+</body></html>"""
+    postmark_send(
+        to=to,
+        subject='Activate your Inbox Agent address',
+        text_body=text,
+        html_body=html,
+        reply_to='joe@channelonestrategies.com',
+    )
+
+
+def send_welcome_email(to: str, first_name: str, alias: str) -> None:
+    """Send the 'you're verified, here's your alias' email."""
+    forward_addr = f'{alias}@{INBOX_HOST}'
+    text = (
+        f"Hi {first_name},\n\n"
+        "Your Inbox Agent is live. Here's your personal forwarding address:\n\n"
+        f"    {forward_addr}\n\n"
+        f"Forward any email thread to {forward_addr} (from {to}) and you'll get "
+        "a clean summary back in about ten seconds. Key people, main points, "
+        "what they're asking of you, and the obvious next step.\n\n"
+        "Give it a try with any messy thread you want a fast read on.\n\n"
+        "— Inbox Agent\n"
+        "Channel One Strategies"
+    )
+    html = f"""<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111;line-height:1.55;max-width:560px;margin:0 auto;padding:32px 20px">
+<p>Hi {first_name},</p>
+<p>Your <strong>Inbox Agent</strong> is live. Here's your personal forwarding address:</p>
+<div style="background:#e6fce6;border:1px solid #c6efc6;border-radius:10px;padding:18px 20px;margin:22px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px;font-weight:700;color:#000;word-break:break-all">{forward_addr}</div>
+<p>Forward any email thread to <strong>{forward_addr}</strong> (from {to}) and you'll get a clean summary back in about ten seconds. Key people, main points, what they're asking of you, and the obvious next step.</p>
+<p>Give it a try with any messy thread you want a fast read on.</p>
+<p style="font-size:13px;color:#888;margin-top:36px">&mdash; Inbox Agent, Channel One Strategies</p>
+</body></html>"""
+    postmark_send(
+        to=to,
+        subject='Your Inbox Agent address is live',
+        text_body=text,
+        html_body=html,
+        reply_to='joe@channelonestrategies.com',
     )
 
 
@@ -576,11 +815,11 @@ def _extract_recipient_alias(payload: dict) -> str:
 
 
 def _lookup_user_by_alias(alias: str):
-    """Return (id, email, first_name, alias) or None."""
+    """Return dict with id/email/first_name/alias/verified, or None."""
     conn = get_db()
     try:
         cur = conn.execute(
-            'SELECT id, email, first_name, alias FROM inbox_users WHERE alias = ?',
+            'SELECT id, email, first_name, alias, verified FROM inbox_users WHERE alias = ?',
             (alias,)
         )
         row = cur.fetchone()
@@ -592,11 +831,13 @@ def _lookup_user_by_alias(alias: str):
                 'email': row['email'],
                 'first_name': row['first_name'],
                 'alias': row['alias'],
+                'verified': bool(row['verified']) if row['verified'] is not None else False,
             }
         except (TypeError, KeyError, IndexError):
             return {
                 'id': row[0], 'email': row[1],
                 'first_name': row[2], 'alias': row[3],
+                'verified': bool(row[4]) if row[4] is not None else False,
             }
     finally:
         try:
@@ -617,8 +858,234 @@ def _is_inbox_host() -> bool:
 
 
 def _handle_landing():
-    return LANDING_HTML
+    return render_template_string(LANDING_HTML, error=None, email='', first_name='')
 
+
+# ---------------------------------------------------------------------------
+# Email-signup flow (replaces OAuth for MVP; OAuth remains wired for later)
+# ---------------------------------------------------------------------------
+
+_EMAIL_RE = re.compile(r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$')
+
+
+def _find_user_by_email(email: str):
+    """Return row dict or None. Used to detect duplicate signups."""
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            'SELECT id, alias, email, first_name, verified FROM inbox_users WHERE LOWER(email) = ?',
+            (email.lower(),)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        try:
+            return {
+                'id': row['id'],
+                'alias': row['alias'],
+                'email': row['email'],
+                'first_name': row['first_name'],
+                'verified': bool(row['verified']) if row['verified'] is not None else False,
+            }
+        except (TypeError, KeyError, IndexError):
+            return {
+                'id': row[0], 'alias': row[1], 'email': row[2],
+                'first_name': row[3],
+                'verified': bool(row[4]) if row[4] is not None else False,
+            }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _render_signup_form(error=None, email='', first_name=''):
+    return render_template_string(
+        LANDING_HTML, error=error, email=email, first_name=first_name
+    )
+
+
+def _handle_signup_post():
+    """Process the signup form. Creates an unverified user row and sends the
+    click-to-verify email. Idempotent on re-submits.
+    """
+    email = (request.form.get('email') or '').strip().lower()
+    first_name = (request.form.get('first_name') or '').strip()[:30]
+
+    if not email or not _EMAIL_RE.match(email):
+        return _render_signup_form(
+            error='Please enter a valid email address.',
+            email=email, first_name=first_name
+        ), 400
+    if not first_name or not re.match(r"^[A-Za-z][A-Za-z\s\-'.]{0,29}$", first_name):
+        return _render_signup_form(
+            error='Please enter a first name (letters only).',
+            email=email, first_name=first_name
+        ), 400
+
+    client_ip = (request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+                 or request.remote_addr or '')
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(hours=24)
+
+    existing = _find_user_by_email(email)
+
+    conn = get_db(autocommit=True)
+    try:
+        if existing:
+            if existing.get('verified'):
+                try:
+                    send_welcome_email(email, existing.get('first_name') or first_name,
+                                       existing['alias'])
+                except Exception as e:
+                    print(f'[inbox_agent] re-welcome send failed: {e}')
+                return render_template_string(
+                    SIGNUP_PENDING_HTML,
+                    first_name=existing.get('first_name') or first_name,
+                    email=email,
+                )
+            conn.execute(
+                """UPDATE inbox_users
+                   SET verify_token = ?, token_expires_at = ?,
+                       first_name = ?, signup_ip = ?,
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE id = ?""",
+                (token, expires_at, first_name, client_ip, existing['id'])
+            )
+        else:
+            alias = generate_alias(first_name, _alias_exists)
+            ms_obj_placeholder = f'local-{alias}'
+            conn.execute(
+                """INSERT INTO inbox_users
+                   (ms_object_id, email, first_name, alias,
+                    verified, verify_token, token_expires_at, signup_ip)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (ms_obj_placeholder, email, first_name, alias,
+                 False, token, expires_at, client_ip)
+            )
+    except Exception as e:
+        print(f'[inbox_agent] signup db error: {e}')
+        return _render_signup_form(
+            error='Something went wrong on our end. Try again in a minute.',
+            email=email, first_name=first_name
+        ), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    try:
+        send_verification_email(email, first_name, token)
+    except Exception as e:
+        print(f'[inbox_agent] verify email send failed: {e}')
+        return _render_signup_form(
+            error="We couldn't send the verification email. Check the address and try again.",
+            email=email, first_name=first_name
+        ), 500
+
+    print(f'[inbox_agent] signup: sent verify link to {email} (first_name={first_name!r})')
+    return render_template_string(
+        SIGNUP_PENDING_HTML, first_name=first_name, email=email
+    )
+
+
+def _handle_verify():
+    """GET /verify?token=... — activates an account and shows the success page."""
+    token = (request.args.get('token') or '').strip()
+    if not token:
+        return render_template_string(
+            VERIFY_FAILED_HTML,
+            message='This verification link is missing its token. Try signing up again.'
+        ), 400
+
+    conn = get_db(autocommit=True)
+    try:
+        cur = conn.execute(
+            """SELECT id, email, first_name, alias, verified, token_expires_at
+               FROM inbox_users WHERE verify_token = ?""",
+            (token,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return render_template_string(
+                VERIFY_FAILED_HTML,
+                message=("We couldn't find a signup for this link. It may have "
+                         "already been used or the signup was never completed.")
+            ), 404
+
+        try:
+            rec = {
+                'id': row['id'], 'email': row['email'],
+                'first_name': row['first_name'], 'alias': row['alias'],
+                'verified': row['verified'], 'token_expires_at': row['token_expires_at'],
+            }
+        except (TypeError, KeyError, IndexError):
+            rec = {
+                'id': row[0], 'email': row[1], 'first_name': row[2],
+                'alias': row[3], 'verified': row[4], 'token_expires_at': row[5],
+            }
+
+        if rec.get('verified'):
+            return render_template_string(
+                VERIFY_SUCCESS_HTML,
+                first_name=rec['first_name'] or 'there',
+                email=rec['email'],
+                alias=rec['alias'],
+                inbox_host=INBOX_HOST,
+            )
+
+        exp = rec.get('token_expires_at')
+        if exp is not None:
+            if isinstance(exp, str):
+                try:
+                    exp = datetime.fromisoformat(exp.replace('Z', ''))
+                except Exception:
+                    exp = None
+            if exp and exp < datetime.utcnow():
+                return render_template_string(
+                    VERIFY_FAILED_HTML,
+                    message='This link expired (links are good for 24 hours). Please sign up again.'
+                ), 410
+
+        conn.execute(
+            """UPDATE inbox_users
+               SET verified = ?, verify_token = NULL, token_expires_at = NULL,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (True, rec['id'])
+        )
+
+        try:
+            send_welcome_email(rec['email'], rec['first_name'] or 'there', rec['alias'])
+        except Exception as e:
+            print(f'[inbox_agent] welcome email send failed: {e}')
+
+        print(f'[inbox_agent] verify: activated alias={rec["alias"]} email={rec["email"]}')
+        return render_template_string(
+            VERIFY_SUCCESS_HTML,
+            first_name=rec['first_name'] or 'there',
+            email=rec['email'],
+            alias=rec['alias'],
+            inbox_host=INBOX_HOST,
+        )
+    except Exception as e:
+        print(f'[inbox_agent] verify error: {e}')
+        return render_template_string(
+            VERIFY_FAILED_HTML,
+            message='Something went wrong verifying your email. Try the link again or sign up again.'
+        ), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# OAuth handlers (kept for future use; not linked from the new landing page)
+# ---------------------------------------------------------------------------
 
 def _handle_auth_start():
     if not MS_CLIENT_ID or not MS_CLIENT_SECRET:
@@ -704,20 +1171,21 @@ def _handle_auth_callback():
                 """UPDATE inbox_users
                    SET refresh_token_enc = ?, email = ?, display_name = ?,
                        first_name = ?, scopes = ?, ms_tenant_id = ?,
+                       verified = ?, verify_token = NULL, token_expires_at = NULL,
                        updated_at = CURRENT_TIMESTAMP
                    WHERE ms_object_id = ?""",
                 (refresh_enc, email, display_name, first_name,
-                 scopes_granted, ms_tenant_id, ms_object_id)
+                 scopes_granted, ms_tenant_id, True, ms_object_id)
             )
         else:
             alias = generate_alias(first_name, _alias_exists)
             conn.execute(
                 """INSERT INTO inbox_users
                    (ms_object_id, ms_tenant_id, email, display_name, first_name,
-                    alias, refresh_token_enc, scopes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    alias, refresh_token_enc, scopes, verified)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (ms_object_id, ms_tenant_id, email, display_name,
-                 first_name, alias, refresh_enc, scopes_granted)
+                 first_name, alias, refresh_enc, scopes_granted, True)
             )
     except Exception as e:
         return render_template_string(ERROR_HTML, message=f'Database error: {e}'), 500
@@ -740,20 +1208,17 @@ def _handle_auth_success():
     first_name = request.cookies.get('inbox_first', 'there')
     email = request.cookies.get('inbox_email', 'your account')
     return render_template_string(
-        SUCCESS_HTML, alias=alias, first_name=first_name, email=email
+        VERIFY_SUCCESS_HTML, alias=alias, first_name=first_name, email=email,
+        inbox_host=INBOX_HOST,
     )
 
 
+# ---------------------------------------------------------------------------
+# Postmark inbound webhook
+# ---------------------------------------------------------------------------
+
 def _handle_inbound():
-    """Postmark inbound webhook.
-    Expects a JSON body from Postmark's inbound stream. Looks up the target
-    alias in inbox_users, runs the forwarded thread through Claude, and
-    emails the summary back to the sender.
-    Always returns 200 to Postmark after logging — Postmark retries on non-2xx
-    and we never want duplicate summaries.
-    """
-    # Optional webhook-auth: if POSTMARK_INBOUND_TOKEN is set, require it on a
-    # query arg ?token=... so only Postmark (or anyone we trust) can POST here.
+    """Postmark inbound webhook."""
     if POSTMARK_INBOUND_TOKEN:
         supplied = request.args.get('token', '')
         if not secrets.compare_digest(supplied, POSTMARK_INBOUND_TOKEN):
@@ -764,7 +1229,7 @@ def _handle_inbound():
         payload = request.get_json(force=True, silent=True) or {}
     except Exception as e:
         print(f'[inbox_agent] inbound: failed to parse JSON: {e}')
-        return ('bad json', 200)  # 200 so Postmark doesn't retry junk
+        return ('bad json', 200)
 
     from_email = (payload.get('From') or '').lower().strip()
     from_name = payload.get('FromName') or ''
@@ -781,25 +1246,23 @@ def _handle_inbound():
     user = _lookup_user_by_alias(alias)
     if not user:
         print(f'[inbox_agent] inbound: alias {alias!r} not found in inbox_users')
-        # Silently drop — don't reveal whether alias exists
         return ('unknown alias', 200)
 
-    # Security gate: the inbound sender must be the mailbox owner. Prevents
-    # a random outsider from triggering summaries on behalf of a connected user.
+    if not user.get('verified'):
+        print(f'[inbox_agent] inbound: alias {alias!r} unverified; dropping silently')
+        return ('unverified', 200)
+
     if from_email != (user['email'] or '').lower():
         print(f'[inbox_agent] inbound: sender {from_email!r} != owner {user["email"]!r}; rejecting')
-        # Bounce with a polite note (to the actual sender), but only once per
-        # message by relying on Postmark's dedupe on MessageID.
         try:
             postmark_send(
                 to=from_email,
                 subject=f'Re: {subject}',
                 text_body=(
-                    "Thanks for the note. This address is wired to a specific "
-                    "Microsoft 365 mailbox and only accepts forwards from that "
-                    "mailbox's owner. If you're the owner, forward from the "
-                    "signed-in account. Otherwise, please contact the owner "
-                    "directly.\n\n— Inbox Agent"
+                    "Thanks for the note. This Inbox Agent address only accepts "
+                    "forwards from its owner's verified email. If you're the owner, "
+                    "forward from the address you signed up with. Otherwise, please "
+                    "contact the owner directly.\n\n- Inbox Agent"
                 ),
             )
         except Exception as e:
@@ -816,14 +1279,13 @@ def _handle_inbound():
                 text_body=(
                     "I got your message but couldn't find any thread text to "
                     "summarize. Try forwarding the original email (not just a "
-                    "link or an attachment).\n\n— Inbox Agent"
+                    "link or an attachment).\n\n- Inbox Agent"
                 ),
             )
         except Exception:
             pass
         return ('empty body', 200)
 
-    # Summarize via Claude
     try:
         summary = claude_summarize(thread, requester_email=from_email)
     except Exception as e:
@@ -834,25 +1296,37 @@ def _handle_inbound():
                 subject=f'Re: {subject}',
                 text_body=(
                     "Inbox Agent hit a snag running the summary. I've logged "
-                    "it — try forwarding again in a few minutes. If it keeps "
-                    "happening, reply to this note and Joe will take a look.\n\n"
-                    f"(debug: {str(e)[:200]})\n\n— Inbox Agent"
+                    "it - try forwarding again in a few minutes.\n\n"
+                    f"(debug: {str(e)[:200]})\n\n- Inbox Agent"
                 ),
             )
         except Exception:
             pass
         return ('summarize error', 200)
 
-    # Reply to the forwarder with the summary
     reply_subject = subject if subject.lower().startswith('re:') else f'Re: {subject}'
     reply_body = (
-        f"Hi {user['first_name'] or 'there'} —\n\n"
+        f"Hi {user['first_name'] or 'there'} -\n\n"
         f"{summary}\n\n"
-        "— Inbox Agent\n"
-        "(Reply to this email if the summary missed something; I'll take another pass.)"
+        "- Inbox Agent\n"
+        "(Reply to this email if the summary missed something; Joe will take a look.)"
+    )
+    html_summary = (
+        '<p>Hi ' + (user['first_name'] or 'there') + ' &mdash;</p>'
+        '<div style="white-space:pre-wrap;font-family:-apple-system,BlinkMacSystemFont,'
+        "'Segoe UI',Helvetica,Arial,sans-serif;color:#111;line-height:1.55;font-size:15px"
+        '">' + (summary.replace('<', '&lt;').replace('>', '&gt;')) + '</div>'
+        '<p style="font-size:13px;color:#888;margin-top:24px">&mdash; Inbox Agent<br>'
+        '<em>Reply to this email if the summary missed something; Joe will take a look.</em></p>'
     )
     try:
-        postmark_send(to=from_email, subject=reply_subject, text_body=reply_body)
+        postmark_send(
+            to=from_email,
+            subject=reply_subject,
+            text_body=reply_body,
+            html_body=html_summary,
+            reply_to='joe@channelonestrategies.com',
+        )
     except Exception as e:
         print(f'[inbox_agent] reply send failed: {e}')
         return ('send error', 200)
@@ -861,40 +1335,35 @@ def _handle_inbound():
     return ('ok', 200)
 
 
-# Map of path -> handler for the inbox host. Keep this narrow; any path not
-# listed returns 404 on the inbox host (we don't want to leak channelview UI
-# through inbox.mychannelview.com).
+# ---------------------------------------------------------------------------
+# Route registration
+# ---------------------------------------------------------------------------
+
 _INBOX_ROUTES = {
     '/': _handle_landing,
+    '/signup': _handle_landing,
+    '/verify': _handle_verify,
     '/auth/microsoft/start': _handle_auth_start,
     '/auth/microsoft/callback': _handle_auth_callback,
     '/auth/success': _handle_auth_success,
 }
 
-# POST-only routes (webhooks, form posts). Listed separately so the dispatcher
-# can enforce the correct method per route.
 _INBOX_POST_ROUTES = {
     '/__inbox/inbound': _handle_inbound,
+    '/signup': _handle_signup_post,
 }
 
 
 def register_inbox_routes(app):
-    """Install a before_request hook that serves inbox.mychannelview.com
-    entirely, leaving channelview (mychannelview.com) untouched.
-
-    Because this runs as a before_request, it pre-empts Flask's route
-    dispatcher for inbox-host requests — even if channelview has a `/`
-    route registered, inbox gets there first.
-    """
+    """Install a before_request hook that serves inbox.mychannelview.com."""
 
     @app.before_request
     def _inbox_host_dispatcher():
         if not _is_inbox_host():
-            return None  # Let channelview's normal routing handle it
+            return None
 
         path = request.path or '/'
 
-        # Health check
         if path == '/__inbox/health':
             return {
                 'ok': True,
@@ -902,17 +1371,14 @@ def register_inbox_routes(app):
                 'time': datetime.utcnow().isoformat() + 'Z',
             }
 
-        # POST-only routes (webhooks) get first dibs
         if request.method == 'POST':
             post_handler = _INBOX_POST_ROUTES.get(path)
             if post_handler is not None:
                 return post_handler()
-            # POSTing to a GET-only route => 405
             if path in _INBOX_ROUTES:
                 abort(405)
             abort(404)
 
-        # GET (and HEAD) — look up in the GET route table
         handler = _INBOX_ROUTES.get(path)
         if handler is None:
             abort(404)
