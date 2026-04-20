@@ -1418,4 +1418,3 @@ def register_inbox_routes(app):
             'service': 'inbox-agent',
             'time': datetime.utcnow().isoformat() + 'Z',
         }
-       
