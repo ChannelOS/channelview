@@ -128,6 +128,46 @@ SIGNUP_MIGRATIONS_SQLITE = [
     "CREATE INDEX IF NOT EXISTS idx_inbox_users_verify_token ON inbox_users(verify_token)",
 ]
 
+# Thread-storage table for forwarded emails + their generated summaries.
+# Foundation for Ask-Your-Inbox (reply-to-summary with a question) and the
+# daily brief. Idempotent so init_inbox_schema can run on every boot.
+THREAD_MIGRATIONS_PG = [
+    """CREATE TABLE IF NOT EXISTS inbox_threads (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES inbox_users(id) ON DELETE CASCADE,
+        message_id TEXT,
+        in_reply_to TEXT,
+        subject TEXT,
+        from_email TEXT,
+        original_sender TEXT,
+        thread_text TEXT,
+        summary_json JSONB,
+        reply_message_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_threads_user ON inbox_threads(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_threads_reply_mid ON inbox_threads(reply_message_id)",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_threads_created ON inbox_threads(created_at DESC)",
+]
+THREAD_MIGRATIONS_SQLITE = [
+    """CREATE TABLE IF NOT EXISTS inbox_threads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES inbox_users(id) ON DELETE CASCADE,
+        message_id TEXT,
+        in_reply_to TEXT,
+        subject TEXT,
+        from_email TEXT,
+        original_sender TEXT,
+        thread_text TEXT,
+        summary_json TEXT,
+        reply_message_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_threads_user ON inbox_threads(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_threads_reply_mid ON inbox_threads(reply_message_id)",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_threads_created ON inbox_threads(created_at DESC)",
+]
+
 
 def init_inbox_schema():
     """Create inbox_users table if it does not exist, and run signup-column
@@ -181,6 +221,27 @@ def init_inbox_schema():
             if 'already exists' in msg or 'duplicate column' in msg:
                 continue  # Already applied; fine.
             print(f"[inbox_agent] migration skipped ({stmt[:60]}...): {e}")
+
+    # ---- Step 3: Thread-storage table (inbox_threads) ----
+    # Foundation for Ask-Your-Inbox + daily brief. CREATE ... IF NOT EXISTS
+    # makes every statement idempotent.
+    thread_migrations = THREAD_MIGRATIONS_PG if is_pg else THREAD_MIGRATIONS_SQLITE
+    for stmt in thread_migrations:
+        try:
+            conn = get_db(autocommit=True)
+            try:
+                conn.cursor().execute(stmt) if not hasattr(conn, 'executescript') \
+                    else conn.executescript(stmt)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            msg = str(e).lower()
+            if 'already exists' in msg:
+                continue
+            print(f"[inbox_agent] thread migration skipped ({stmt[:60]}...): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1635,8 +1696,42 @@ def _handle_inbound():
     reply_text = render_summary_text(data, first_name, alias)
     reply_html = render_summary_html(data, first_name, alias)
 
+    # Persist the forwarded thread + its summary so we can (a) answer follow-up
+    # questions when the user replies to the summary, and (b) assemble daily
+    # briefs. We capture in-reply-to from the inbound headers if present.
+    import json as _json
+    thread_id = None
     try:
-        postmark_send(
+        in_reply_to = next(
+            (h.get('Value', '') for h in (payload.get('Headers') or [])
+             if (h.get('Name', '') or '').lower() == 'in-reply-to'),
+            ''
+        )
+        with get_db(autocommit=True) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO inbox_threads
+                   (user_id, message_id, in_reply_to, subject, from_email, thread_text, summary_json)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (
+                    user['id'] if user else None,
+                    payload.get('MessageID') or payload.get('message_id') or '',
+                    in_reply_to,
+                    subject,
+                    from_email,
+                    thread,
+                    _json.dumps(data),
+                ),
+            )
+            thread_row = cur.fetchone()
+            thread_id = thread_row[0] if thread_row else None
+    except Exception as _e:
+        print(f'[inbox_agent] store thread failed: {_e}')
+        thread_id = None
+
+    try:
+        pm_resp = postmark_send(
             to=from_email,
             subject=reply_subject,
             text_body=reply_text,
@@ -1645,6 +1740,20 @@ def _handle_inbound():
     except Exception as e:
         print(f'[inbox_agent] reply send failed: {e}')
         return ('send error', 200)
+
+    # Record the outbound MessageID so inbound replies to the summary can be
+    # matched back to the stored thread (Ask-Your-Inbox).
+    try:
+        outbound_mid = (pm_resp or {}).get('MessageID') or ''
+        if thread_id and outbound_mid:
+            with get_db(autocommit=True) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    'UPDATE inbox_threads SET reply_message_id = %s WHERE id = %s',
+                    (outbound_mid, thread_id),
+                )
+    except Exception as _e:
+        print(f'[inbox_agent] update reply_message_id failed: {_e}')
 
     print(f'[inbox_agent] inbound: summary delivered to {from_email} for alias {alias}')
     return ('ok', 200)
