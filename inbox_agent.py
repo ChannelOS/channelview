@@ -615,6 +615,7 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> dict:
         '  "asks": ["things the thread explicitly asks of the reader"],\n'
         '  "next_step": "one concrete suggested next action, or empty string",\n'
         '  "dates": [{"when":"Thu Apr 24 at 2pm ET","what":"Pricing call"}],\n'
+        '  "todos": ["your personal next actions to get this thread moving (imperative, under 12 words each)"],\n'
         '  "draft_reply": "a complete professional draft reply the reader could send, plain text, 3-6 sentences"\n'
         '}\n'
         "Use [] or \"\" for sections that don't apply. Skip signatures, legal "
@@ -647,7 +648,7 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> dict:
     raw = ('\n'.join(text_parts)).strip()
 
     empty = {
-        'tldr': '', 'people': [], 'key_points': [], 'asks': [],
+        'tldr': '', 'people': [], 'key_points': [], 'todos': [], 'asks': [],
         'next_step': '', 'dates': [], 'draft_reply': '', 'raw_fallback': '',
     }
     if not raw:
@@ -678,6 +679,7 @@ def claude_summarize(thread_text: str, requester_email: str = '') -> dict:
         for p in people if isinstance(p, dict)
     ]
     out['key_points'] = [str(x).strip() for x in (parsed.get('key_points', []) or []) if str(x).strip()]
+    out['todos'] = [str(x).strip() for x in (parsed.get('todos', []) or []) if str(x).strip()]
     out['asks'] = [str(x).strip() for x in (parsed.get('asks', []) or []) if str(x).strip()]
     out['next_step'] = str(parsed.get('next_step', '') or '').strip()
     dates = parsed.get('dates', []) or []
@@ -763,6 +765,23 @@ def render_summary_html(data: dict, first_name: str, alias: str) -> str:
                 '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
                 + label('Key points')
                 + '<ul style="margin:0;padding-left:20px;font-size:15px;line-height:1.55">'
+                + items + '</ul></td></tr>'
+            )
+
+        # Your todos (green-accent list with checkbox markers)
+        todos = (data or {}).get('todos', []) or []
+        if todos:
+            items = ''.join(
+                '<li style="margin:6px 0;list-style:none;padding-left:26px;position:relative;color:#111">'
+                '<span style="position:absolute;left:0;top:0;display:inline-block;width:16px;height:16px;'
+                'border:2px solid #0ace0a;border-radius:3px;background:#ffffff"></span>'
+                + _html_escape(t) + '</li>'
+                for t in todos
+            )
+            sections.append(
+                '<tr><td style="padding:10px 24px 14px 24px;font-family:' + font + '">'
+                + label('Your todos')
+                + '<ul style="margin:0;padding:0;font-size:15px;line-height:1.5">'
                 + items + '</ul></td></tr>'
             )
 
@@ -898,6 +917,13 @@ def render_summary_text(data: dict, first_name: str, alias: str) -> str:
         lines += ['KEY POINTS']
         for pt in points:
             lines.append('- ' + pt)
+        lines.append('')
+
+    todos = (data or {}).get('todos', []) or []
+    if todos:
+        lines += ['YOUR TODOS']
+        for t in todos:
+            lines.append('[ ] ' + t)
         lines.append('')
 
     if asks:
