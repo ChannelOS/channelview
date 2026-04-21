@@ -9082,7 +9082,7 @@ def auto_advance_candidate(db, candidate_id, event_type):
     if not target_stage:
         return False
 
-    candidate = db.execute('SELECT id, pipeline_stage FROM candidates WHERE id=?', (candidate_id,)).fetchone()
+    candidate = db.execute('SELECT id, pipeline_stage, user_id FROM candidates WHERE id=?', (candidate_id,)).fetchone()
     if not candidate:
         return False
 
@@ -9102,16 +9102,28 @@ def auto_advance_candidate(db, candidate_id, event_type):
     db.execute("UPDATE candidates SET pipeline_stage=?, stage_entered_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                (target_stage, now, candidate_id))
 
-    # Log touchpoint for audit trail
+    # Log touchpoint for audit trail. IMPORTANT: this INSERT must not be allowed to
+    # poison the outer Postgres transaction. In SQLite a failed statement inside a
+    # try/except pass is a no-op; in Postgres it aborts the whole transaction and
+    # causes the preceding UPDATE to be rolled back on commit. We use a SAVEPOINT
+    # so any failure here is isolated to the touchpoint write.
     try:
+        db.execute("SAVEPOINT auto_advance_tp")
         tp_id = str(uuid.uuid4())
         stage_label = target_stage.replace('_', ' ').title()
-        db.execute("""INSERT INTO touchpoints (id, candidate_id, user_id, type, description, created_at)
-                      VALUES (?,?,?,?,?,?)""",
-                   (tp_id, candidate_id, candidate['pipeline_stage'], 'stage_change',
-                    f'Auto-advanced to {stage_label}', now))
+        db.execute("""INSERT INTO pipeline_touchpoints
+                      (id, user_id, candidate_id, touchpoint_type, channel, direction,
+                       status, notes, milestone_stage, completed_at, created_at)
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   (tp_id, candidate['user_id'], candidate_id, 'stage_change',
+                    'system', 'internal', 'completed',
+                    f'Auto-advanced to {stage_label}', target_stage, now, now))
+        db.execute("RELEASE SAVEPOINT auto_advance_tp")
     except Exception:
-        pass  # Don't fail the main flow on touchpoint logging errors
+        try:
+            db.execute("ROLLBACK TO SAVEPOINT auto_advance_tp")
+        except Exception:
+            pass  # If rollback fails (e.g. SQLite), outer transaction continues
 
     return True
 
